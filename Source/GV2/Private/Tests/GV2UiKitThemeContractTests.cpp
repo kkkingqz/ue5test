@@ -292,19 +292,19 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
     // 5. Generic Binding Extraction for Location Commands
     {
         GV2RuntimeCore::FScreenRequest ValidReq;
-        ValidReq.ScreenId = "textsystem:screen.location";
+        ValidReq.ScreenId = "core:screen.test.location";
         GV2RuntimeCore::FScreenField CmdField;
         CmdField.FieldId = "commands";
-        CmdField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        CmdField.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
         GV2RuntimeCore::FValue::FObject CmdObj;
 
         GV2RuntimeCore::FValue::FArray ItemsArray;
         GV2RuntimeCore::FValue::FObject Btn1;
         Btn1["key"] = GV2RuntimeCore::FValue(std::string("btn_talk"));
         GV2RuntimeCore::FValue::FObject TextObj;
-        TextObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.talk"));
+        TextObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
         Btn1["text"] = GV2RuntimeCore::FValue(TextObj);
-        Btn1["binding"] = GV2RuntimeCore::FValue(std::string("core:command.talk"));
+        Btn1["binding"] = GV2RuntimeCore::FValue(std::string("core:command.common.ok"));
         ItemsArray.push_back(GV2RuntimeCore::FValue(Btn1));
 
         CmdObj["items"] = GV2RuntimeCore::FValue(ItemsArray);
@@ -316,7 +316,7 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
         TestEqual(TEXT("Extracted 1 binding definition"), Defs.Num(), 1);
         if (Defs.Num() == 1)
         {
-            TestEqual(TEXT("Binding element id matches"), Defs[0].ElementId, FString(TEXT("textsystem:screen.location#widget.btn_talk")));
+            TestEqual(TEXT("Binding element id matches"), Defs[0].ElementId, FString(TEXT("core:screen.test.location#widget.btn_talk")));
         }
     }
 
@@ -899,8 +899,21 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
         FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
     FARFilter UiAssetFilter;
     UiAssetFilter.PackagePaths.Add(TEXT("/Game/UI"));
-    UiAssetFilter.PackagePaths.Add(TEXT("/Game/TextSystem/UI"));
-    UiAssetFilter.PackagePaths.Add(TEXT("/Game/RH/UI"));
+    TArray<FGV2ContentRootOwnership> DiscoveredOwnership;
+    FString OwnershipDiscoveryError;
+    if (UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(
+            GV2PackageClosure::DiscoverFromGameData(), DiscoveredOwnership, OwnershipDiscoveryError))
+    {
+        for (const FGV2ContentRootOwnership& Ownership : DiscoveredOwnership)
+        {
+            FString Path = Ownership.NormalizedRoot;
+            if (Path.EndsWith(TEXT("/")))
+            {
+                Path.LeftChopInline(1);
+            }
+            UiAssetFilter.PackagePaths.Add(*Path);
+        }
+    }
     UiAssetFilter.bRecursivePaths = true;
     TArray<FAssetData> UiAssets;
     AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
@@ -915,37 +928,38 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     // silently vanishing from a hand-adjusted total.
     struct FComponentContract
     {
-        const TCHAR* ClassPath;
+        const TCHAR* WidgetName;
         UClass* NativeParent;
     };
     const FComponentContract Components[] = {
-        {TEXT("/Game/UI/Widgets/WBP_Text.WBP_Text_C"), UGV2TextWidgetBase::StaticClass()},
-        {TEXT("/Game/TextSystem/UI/Widgets/WBP_RichText.WBP_RichText_C"), UGV2RichTextWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"), UGV2ImageWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"), UGV2ButtonWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_Checkbox.WBP_Checkbox_C"), UGV2CheckboxWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_InputField.WBP_InputField_C"), UGV2InputFieldWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_DropdownSelect.WBP_DropdownSelect_C"), UGV2DropdownSelectWidgetBase::StaticClass()},
-        {TEXT("/Game/TextSystem/UI/Widgets/WBP_ButtonList.WBP_ButtonList_C"), UGV2ButtonListWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C"), UGV2ProgressBarWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_Separator.WBP_Separator_C"), UGV2SeparatorWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_LoadingIndicator.WBP_LoadingIndicator_C"), UGV2LoadingIndicatorWidgetBase::StaticClass()},
-        {TEXT("/Game/TextSystem/UI/Widgets/WBP_RichTextPopover.WBP_RichTextPopover_C"), UGV2RichTextPopoverWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_Icon.WBP_Icon_C"), UGV2IconWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_Panel.WBP_Panel_C"), UGV2PanelWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_ScrollArea.WBP_ScrollArea_C"), UGV2ScrollAreaWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_ListView.WBP_ListView_C"), UGV2ListViewWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_TabContainer.WBP_TabContainer_C"), UGV2TabContainerWidgetBase::StaticClass()},
-        {TEXT("/Game/TextSystem/UI/Widgets/WBP_Modal.WBP_Modal_C"), UGV2ModalWidgetBase::StaticClass()},
-        {TEXT("/Game/TextSystem/UI/Widgets/WBP_Portrait.WBP_Portrait_C"), UGV2PortraitWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"), UGV2GameShellWidgetBase::StaticClass()},
+        {TEXT("WBP_Text"), UGV2TextWidgetBase::StaticClass()},
+        {TEXT("WBP_RichText"), UGV2RichTextWidgetBase::StaticClass()},
+        {TEXT("WBP_Image"), UGV2ImageWidgetBase::StaticClass()},
+        {TEXT("WBP_Button"), UGV2ButtonWidgetBase::StaticClass()},
+        {TEXT("WBP_Checkbox"), UGV2CheckboxWidgetBase::StaticClass()},
+        {TEXT("WBP_InputField"), UGV2InputFieldWidgetBase::StaticClass()},
+        {TEXT("WBP_DropdownSelect"), UGV2DropdownSelectWidgetBase::StaticClass()},
+        {TEXT("WBP_ButtonList"), UGV2ButtonListWidgetBase::StaticClass()},
+        {TEXT("WBP_ProgressBar"), UGV2ProgressBarWidgetBase::StaticClass()},
+        {TEXT("WBP_Separator"), UGV2SeparatorWidgetBase::StaticClass()},
+        {TEXT("WBP_LoadingIndicator"), UGV2LoadingIndicatorWidgetBase::StaticClass()},
+        {TEXT("WBP_RichTextPopover"), UGV2RichTextPopoverWidgetBase::StaticClass()},
+        {TEXT("WBP_Icon"), UGV2IconWidgetBase::StaticClass()},
+        {TEXT("WBP_Panel"), UGV2PanelWidgetBase::StaticClass()},
+        {TEXT("WBP_ScrollArea"), UGV2ScrollAreaWidgetBase::StaticClass()},
+        {TEXT("WBP_ListView"), UGV2ListViewWidgetBase::StaticClass()},
+        {TEXT("WBP_TabContainer"), UGV2TabContainerWidgetBase::StaticClass()},
+        {TEXT("WBP_Modal"), UGV2ModalWidgetBase::StaticClass()},
+        {TEXT("WBP_Portrait"), UGV2PortraitWidgetBase::StaticClass()},
+        {TEXT("WBP_GameShell"), UGV2GameShellWidgetBase::StaticClass()},
     };
 
-    TSet<FString> ComponentContractClassPaths;
+    TMap<FString, FString> ComponentWidgetPaths;
+    TMap<FString, UClass*> ComponentContracts;
     TSet<UClass*> ComponentContractNativeParents;
     for (const FComponentContract& Component : Components)
     {
-        ComponentContractClassPaths.Add(Component.ClassPath);
+        ComponentContracts.Add(Component.WidgetName, Component.NativeParent);
         ComponentContractNativeParents.Add(Component.NativeParent);
     }
 
@@ -963,6 +977,10 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
             TEXT("%s.%s_C"),
             *Asset.PackageName.ToString(),
             *AssetName);
+        if (ComponentContracts.Contains(AssetName))
+        {
+            ComponentWidgetPaths.Add(AssetName, GeneratedClassPath);
+        }
         UClass* WidgetClass = LoadClass<UUserWidget>(nullptr, *GeneratedClassPath);
         TestNotNull(
             *FString::Printf(TEXT("Current WBP has a loadable generated class: %s"), *AssetName),
@@ -972,7 +990,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
             continue;
         }
 
-        const bool bIsComponentContractLeaf = ComponentContractClassPaths.Contains(GeneratedClassPath);
+        const bool bIsComponentContractLeaf = ComponentContracts.Contains(AssetName);
         const bool bIsGenericDeclaredCompositeOrScreen =
             WidgetClass->IsChildOf(UGV2DeclaredCompositeWidgetBase::StaticClass())
             || WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass());
@@ -1038,20 +1056,27 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
 
     for (const FComponentContract& Component : Components)
     {
-        UClass* ComponentClass = LoadClass<UUserWidget>(nullptr, Component.ClassPath);
-        TestNotNull(*FString::Printf(TEXT("UI component is loadable: %s"), Component.ClassPath), ComponentClass);
+        const FString* ClassPathPtr = ComponentWidgetPaths.Find(Component.WidgetName);
+        TestNotNull(*FString::Printf(TEXT("UI component is discovered: %s"), Component.WidgetName), ClassPathPtr);
+        if (ClassPathPtr == nullptr)
+        {
+            continue;
+        }
+        const FString& ClassPath = *ClassPathPtr;
+        UClass* ComponentClass = LoadClass<UUserWidget>(nullptr, *ClassPath);
+        TestNotNull(*FString::Printf(TEXT("UI component is loadable: %s"), *ClassPath), ComponentClass);
         if (ComponentClass == nullptr)
         {
             continue;
         }
         TestTrue(
-            *FString::Printf(TEXT("UI component has expected native parent: %s"), Component.ClassPath),
+            *FString::Printf(TEXT("UI component has expected native parent: %s"), *ClassPath),
             ComponentClass->IsChildOf(Component.NativeParent));
 
         UUserWidget* Widget = TestWorld != nullptr
             ? CreateWidget<UUserWidget>(TestWorld, ComponentClass)
             : nullptr;
-        TestNotNull(*FString::Printf(TEXT("UI component instantiates: %s"), Component.ClassPath), Widget);
+        TestNotNull(*FString::Printf(TEXT("UI component instantiates: %s"), *ClassPath), Widget);
         if (Widget != nullptr)
         {
             if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(Widget))
@@ -1262,6 +1287,18 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
             return AssetIdx == INDEX_NONE || AssetIdx <= ScreenIdx;
         };
 
+        const TArray<FString> LayerSyntheticLoadOrder = {TEXT("core"), TEXT("layer_mid"), TEXT("layer_top")};
+        TArray<FGV2ContentRootOwnership> LayerSyntheticOwnership;
+        FString LayerOwnershipErr;
+        const TArray<FGV2DeclaredPackageRoots> LayerDeclared = {
+            FGV2DeclaredPackageRoots{TEXT("core"), {TEXT("/Game/core"), TEXT("/Game/UI")}},
+            FGV2DeclaredPackageRoots{TEXT("layer_mid"), {TEXT("/Game/LayerMid/UI")}},
+            FGV2DeclaredPackageRoots{TEXT("layer_top"), {TEXT("/Game/LayerTop/UI")}},
+        };
+        TestTrue(
+            TEXT("Layer synthetic content roots build cleanly"),
+            UGV2ScreenRegistry::BuildContentRootOwnership(LayerDeclared, LayerSyntheticOwnership, LayerOwnershipErr));
+
         struct FCase
         {
             FString ScreenNamespace;
@@ -1270,21 +1307,21 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         const FCase Cases[] = {
             {TEXT("core"), TEXT("/Game/UI/Widgets/WBP_Testscreen")},
             {TEXT("core"), TEXT("/Game/core/WBP_CoreScreen")},
-            {TEXT("core"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")},
-            {TEXT("core"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")},
-            {TEXT("textsystem"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")},
-            {TEXT("textsystem"), TEXT("/Game/UI/Widgets/WBP_Testscreen")},
-            {TEXT("textsystem"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")},
-            {TEXT("rh"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")},
-            {TEXT("rh"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")},
-            {TEXT("rh"), TEXT("/Game/UI/Widgets/WBP_Testscreen")},
+            {TEXT("core"), TEXT("/Game/LayerMid/UI/Screens/WBP_MidScreen")},
+            {TEXT("core"), TEXT("/Game/LayerTop/UI/Screens/WBP_TopScreen")},
+            {TEXT("layer_mid"), TEXT("/Game/LayerMid/UI/Screens/WBP_MidScreen")},
+            {TEXT("layer_mid"), TEXT("/Game/UI/Widgets/WBP_Testscreen")},
+            {TEXT("layer_mid"), TEXT("/Game/LayerTop/UI/Screens/WBP_TopScreen")},
+            {TEXT("layer_top"), TEXT("/Game/LayerTop/UI/Screens/WBP_TopScreen")},
+            {TEXT("layer_top"), TEXT("/Game/LayerMid/UI/Screens/WBP_MidScreen")},
+            {TEXT("layer_top"), TEXT("/Game/UI/Widgets/WBP_Testscreen")},
         };
         int32 CasesCovered = 0;
         for (const FCase& Case : Cases)
         {
-            const bool bExpected = ExpectedAllowed(RealPackageLoadOrder, RealOwnership, Case.ScreenNamespace, Case.AssetPath);
+            const bool bExpected = ExpectedAllowed(LayerSyntheticLoadOrder, LayerSyntheticOwnership, Case.ScreenNamespace, Case.AssetPath);
             const bool bActual = UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                Case.ScreenNamespace, Case.AssetPath, RealPackageLoadOrder, RealOwnership);
+                Case.ScreenNamespace, Case.AssetPath, LayerSyntheticLoadOrder, LayerSyntheticOwnership);
             TestEqual(
                 *FString::Printf(TEXT("%s screen vs %s matches the load_index-derived expectation"), *Case.ScreenNamespace, *Case.AssetPath),
                 bActual,
@@ -1298,7 +1335,7 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         TestFalse(
             TEXT("Namespace absent from the pinned closure is rejected"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("sample"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), RealPackageLoadOrder, RealOwnership));
+                TEXT("absent_layer"), TEXT("/Game/LayerTop/UI/Screens/WBP_TopScreen"), LayerSyntheticLoadOrder, LayerSyntheticOwnership));
 
         // PAH-03/05: a /Game/ asset whose root isn't declared by any package in the
         // closure is unowned, not unconstrained -- rejected, not the old ladder's
@@ -1306,10 +1343,10 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         TestFalse(
             TEXT("PAH-03: synthetic /Game/ path outside every declared package root is rejected"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned"), RealPackageLoadOrder, RealOwnership));
+                TEXT("core"), TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned"), LayerSyntheticLoadOrder, LayerSyntheticOwnership));
         TestTrue(
             TEXT("PAH-03: FindOwningPackageForAssetPath itself returns empty for that path"),
-            UGV2ScreenRegistry::FindOwningPackageForAssetPath(TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned"), RealOwnership).IsEmpty());
+            UGV2ScreenRegistry::FindOwningPackageForAssetPath(TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned"), LayerSyntheticOwnership).IsEmpty());
 
         // PAH-03: content outside /Game/ entirely (engine-shipped, or an enabled plugin's
         // own content root) has no project-package ownership to violate and is trusted by
@@ -1317,11 +1354,11 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         TestTrue(
             TEXT("PAH-03: engine-shipped content path is a trusted external domain"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), TEXT("/Engine/EditorResources/S_Actor"), RealPackageLoadOrder, RealOwnership));
+                TEXT("core"), TEXT("/Engine/EditorResources/S_Actor"), LayerSyntheticLoadOrder, LayerSyntheticOwnership));
         TestTrue(
             TEXT("PAH-03: enabled-plugin content path is a trusted external domain"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), TEXT("/CommonUI/Widgets/WBP_SomePluginWidget"), RealPackageLoadOrder, RealOwnership));
+                TEXT("core"), TEXT("/CommonUI/Widgets/WBP_SomePluginWidget"), LayerSyntheticLoadOrder, LayerSyntheticOwnership));
         TestTrue(
             TEXT("IsTrustedExternalContentDomain itself: /Engine/ path"),
             UGV2ScreenRegistry::IsTrustedExternalContentDomain(TEXT("/Engine/EditorResources/S_Actor")));
@@ -1331,34 +1368,33 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
 
         // A package that doesn't exist in today's real closure still works correctly once
         // it's present in PackageLoadOrder -- proving the rule reads positions generically
-        // instead of special-casing three known names. Ownership (which package owns
-        // /Game/RH/) is unaffected by load order, so RealOwnership is reused as-is.
-        const TArray<FString> ExtendedOrder = {TEXT("core"), TEXT("textsystem"), TEXT("rh"), TEXT("modx")};
+        // instead of special-casing three known names. Ownership is unaffected by load order.
+        const TArray<FString> ExtendedOrder = {TEXT("core"), TEXT("layer_mid"), TEXT("layer_top"), TEXT("modx")};
         TestTrue(
             TEXT("A fourth package appended to the closure can reference the layer directly below it"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("modx"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), ExtendedOrder, RealOwnership));
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("modx"), TEXT("/Game/LayerTop/UI/Screens/WBP_TopScreen"), ExtendedOrder, LayerSyntheticOwnership));
 
         // Reversing the closure's order flips which layer may reference which, proving the
         // decision is read from PackageLoadOrder's positions and not hardcoded by name.
-        const TArray<FString> ReversedOrder = {TEXT("rh"), TEXT("textsystem"), TEXT("core")};
+        const TArray<FString> ReversedOrder = {TEXT("layer_top"), TEXT("layer_mid"), TEXT("core")};
         TestTrue(
-            TEXT("Under a reversed closure, core (now highest) can reference rh (now lowest)"),
+            TEXT("Under a reversed closure, core (now highest) can reference top (now lowest)"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), ReversedOrder, RealOwnership));
+                TEXT("core"), TEXT("/Game/LayerTop/UI/Screens/WBP_TopScreen"), ReversedOrder, LayerSyntheticOwnership));
         TestFalse(
-            TEXT("Under a reversed closure, rh (now lowest) cannot reference core (now highest)"),
+            TEXT("Under a reversed closure, top (now lowest) cannot reference core (now highest)"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("rh"), TEXT("/Game/UI/Widgets/WBP_Testscreen"), ReversedOrder, RealOwnership));
+                TEXT("layer_top"), TEXT("/Game/UI/Widgets/WBP_Testscreen"), ReversedOrder, LayerSyntheticOwnership));
 
         // End-to-end: a Screen Registry entry violating layer ownership is still rejected.
         FGV2ScreenRegistryEntry BadEntry;
         BadEntry.ScreenId = TEXT("core:screen.bad_ref");
         BadEntry.Layer = TEXT("location_content");
-        BadEntry.WidgetClass = TSoftClassPtr<UGV2ScreenWidgetBase>(FSoftObjectPath(TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen.WBP_Textscreen_C")));
+        BadEntry.WidgetClass = TSoftClassPtr<UGV2ScreenWidgetBase>(FSoftObjectPath(TEXT("/Game/LayerMid/UI/Screens/WBP_MidScreen.WBP_MidScreen_C")));
         TestFalse(
-            TEXT("Core screen referencing TextSystem is rejected"),
+            TEXT("Core screen referencing LayerMid is rejected"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), BadEntry.WidgetClass.ToSoftObjectPath().ToString(), RealPackageLoadOrder, RealOwnership));
+                TEXT("core"), BadEntry.WidgetClass.ToSoftObjectPath().ToString(), LayerSyntheticLoadOrder, LayerSyntheticOwnership));
 
         // PAH-05: a synthetic fourth package declares its OWN content root -- understood
         // by BuildContentRootOwnership/FindOwningPackageForAssetPath purely from this

@@ -42,6 +42,18 @@ public:
     }
 };
 
+class FGV2ImageResourceCatalogTestAccess
+{
+public:
+    static void AddResolvedResource(UGV2ImageResourceCatalog* Catalog, const FString& Id, FGV2ResolvedImageResource Resource)
+    {
+        if (Catalog != nullptr)
+        {
+            Catalog->ResolvedById.Add(Id, MoveTemp(Resource));
+        }
+    }
+};
+
 namespace GV2PresentationTestFixtures
 {
 // CFC-02A: Scoped RAII owner for a test GameInstance and World.
@@ -257,13 +269,17 @@ public:
         }
 
         TArray<FGV2SchemaPackageRoot> SchemaRoots;
-        SchemaRoots.Reserve(static_cast<int32>(ResolvedSet->OrderedSources.size()));
+        SchemaRoots.Reserve(static_cast<int32>(ResolvedSet->OrderedSources.size()) + 1);
         for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedSet->OrderedSources)
         {
             SchemaRoots.Add(FGV2SchemaPackageRoot{
                 UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
                 UTF8_TO_TCHAR(Source.Root.string().c_str())});
         }
+        SchemaRoots.Add(FGV2SchemaPackageRoot{
+            TEXT("core"),
+            FPaths::Combine(FPaths::ProjectDir(), TEXT("Tests/Fixtures/SyntheticMechanicalFixture/schemas"))
+        });
 
         GV2RuntimeCore::FRuntimeFault Fault;
         if (!FGV2SessionContentCandidate::Build(
@@ -302,6 +318,30 @@ inline UGV2ImageResourceCatalog* BuildImageCatalogForClosure(const TArray<FStrin
     return Catalog->BuildFromPackageClosure(PackageIds, OutError) ? Catalog : nullptr;
 }
 
+inline void RegisterTestImageResource(
+    UGV2ImageResourceCatalog* Catalog,
+    const FString& ResourceId,
+    EGV2ImageRenderMode RenderMode = EGV2ImageRenderMode::FixedAspect,
+    const FMargin& Margin = FMargin())
+{
+    if (Catalog == nullptr)
+    {
+        return;
+    }
+    UTexture2D* Tex = UTexture2D::CreateTransient(64, 64);
+    FGV2ImageResourceDefinition Def;
+    Def.ResourceId = ResourceId;
+    Def.RenderMode = RenderMode;
+    Def.Texture = Tex;
+    Def.NineSliceBorderPixels = Margin;
+    FGV2ResolvedImageResource Resolved;
+    FString Error;
+    if (UGV2ImageResourceCatalog::ResolveDefinition(Def, Resolved, Error))
+    {
+        FGV2ImageResourceCatalogTestAccess::AddResolvedResource(Catalog, ResourceId, MoveTemp(Resolved));
+    }
+}
+
 inline UGV2ImageResourceCatalog* BuildGameDataImageCatalog(FString& OutError)
 {
     TArray<FString> PackageIds;
@@ -309,7 +349,13 @@ inline UGV2ImageResourceCatalog* BuildGameDataImageCatalog(FString& OutError)
     {
         PackageIds.Add(Entry.PackageId);
     }
-    return BuildImageCatalogForClosure(PackageIds, OutError);
+    UGV2ImageResourceCatalog* Catalog = BuildImageCatalogForClosure(PackageIds, OutError);
+    if (Catalog != nullptr)
+    {
+        RegisterTestImageResource(Catalog, TEXT("core:resource.ui.test_fixed_aspect"), EGV2ImageRenderMode::FixedAspect);
+        RegisterTestImageResource(Catalog, TEXT("core:resource.ui.test_character"), EGV2ImageRenderMode::FixedAspect);
+    }
+    return Catalog;
 }
 
 // PSC-10B: the CONFIGURED Theme, with no core-minimal substitution. Production refuses to
@@ -500,7 +546,7 @@ namespace GV2SyntheticMechanicalFixture
     // Stable IDs for the synthetic fixture (all strictly under core:)
     inline const TCHAR* const LocationAlphaId = TEXT("core:location.test.alpha");
     inline const TCHAR* const LocationBetaId = TEXT("core:location.test.beta");
-    inline const TCHAR* const ScreenId = TEXT("core:screen.test.location");
+    inline const TCHAR* const SyntheticScreenId = TEXT("core:screen.test.location");
 
     // UI Field Schema IDs
     inline const TCHAR* const SceneSchemaId = TEXT("core:schema.ui_field.synthetic_scene.v1");
@@ -537,7 +583,7 @@ namespace GV2SyntheticMechanicalFixture
     inline GV2RuntimeCore::FScreenRequest CreateLocationAlphaScreenRequest()
     {
         GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = TCHAR_TO_UTF8(ScreenId);
+        Request.ScreenId = TCHAR_TO_UTF8(SyntheticScreenId);
 
         // 1. Scene field (1 character: guide)
         {
@@ -622,7 +668,7 @@ namespace GV2SyntheticMechanicalFixture
     inline GV2RuntimeCore::FScreenRequest CreateLocationBetaScreenRequest()
     {
         GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = TCHAR_TO_UTF8(ScreenId);
+        Request.ScreenId = TCHAR_TO_UTF8(SyntheticScreenId);
 
         // 1. Scene field (0 characters)
         {

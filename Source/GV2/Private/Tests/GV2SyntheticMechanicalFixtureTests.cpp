@@ -15,9 +15,6 @@
 
 #include "Tests/GV2PresentationTestFixtures.h"
 
-using namespace GV2PresentationTestFixtures;
-using namespace GV2SyntheticMechanicalFixture;
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2SyntheticMechanicalFixtureContractTest,
     "GV2.Runtime.Presentation.SyntheticMechanicalFixtureContract",
@@ -25,6 +22,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2SyntheticMechanicalFixtureContractTest::RunTest(const FString& Parameters)
 {
+    using namespace GV2PresentationTestFixtures;
+    using namespace GV2SyntheticMechanicalFixture;
     // =========================================================================
     // 1. Schema Cache Compilation of Synthetic Schemas under core:
     // =========================================================================

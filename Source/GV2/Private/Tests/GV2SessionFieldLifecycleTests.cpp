@@ -91,11 +91,11 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
     // 1. Rejection at field value level: commands with unknown key
     {
         GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
+        Request.ScreenId = "core:screen.test.location";
 
         GV2RuntimeCore::FScreenField Field;
         Field.FieldId = "commands";
-        Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        Field.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
 
         FObject CmdValue;
         CmdValue["items"] = GV2RuntimeCore::FValue(FArray{});
@@ -111,11 +111,11 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
     // 2. Rejection at collection element level: unknown key on button item
     {
         GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
+        Request.ScreenId = "core:screen.test.location";
 
         GV2RuntimeCore::FScreenField Field;
         Field.FieldId = "commands";
-        Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        Field.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
 
         FObject BtnObj;
         BtnObj["key"] = GV2RuntimeCore::FValue(std::string("btn_ok"));
@@ -138,11 +138,11 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
     // 3. Rejection at nested Binding level: unknown property in binding object
     {
         GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
+        Request.ScreenId = "core:screen.test.location";
 
         GV2RuntimeCore::FScreenField Field;
         Field.FieldId = "commands";
-        Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        Field.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
 
         FObject BtnObj;
         BtnObj["key"] = GV2RuntimeCore::FValue(std::string("btn_ok"));
@@ -165,11 +165,11 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
     // 4. Rejection of duplicate button keys in collection
     {
         GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
+        Request.ScreenId = "core:screen.test.location";
 
         GV2RuntimeCore::FScreenField Field;
         Field.FieldId = "commands";
-        Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        Field.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
 
         FObject BtnObj1;
         BtnObj1["key"] = GV2RuntimeCore::FValue(std::string("btn_ok"));
@@ -228,11 +228,11 @@ bool FGV2LocationKeyBoundaryTest::RunTest(const FString& Parameters)
         auto BuildWithCommandKey = [&](const std::string& Key) -> bool
         {
             GV2RuntimeCore::FScreenRequest Request;
-            Request.ScreenId = "textsystem:screen.location";
+            Request.ScreenId = "core:screen.test.location";
 
             GV2RuntimeCore::FScreenField Field;
             Field.FieldId = "commands";
-            Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+            Field.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
 
             FObject EntryObj;
             EntryObj["key"] = GV2RuntimeCore::FValue(Key);
@@ -624,11 +624,11 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
         auto PrepareWithExtraBtnProp = [PrepareContext](const char* ExtraKey, GV2RuntimeCore::FValue ExtraValue) -> bool
         {
             GV2RuntimeCore::FScreenRequest Request;
-            Request.ScreenId = "textsystem:screen.location";
+            Request.ScreenId = "core:screen.test.location";
 
             GV2RuntimeCore::FScreenField Field;
             Field.FieldId = "commands";
-            Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+            Field.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
 
             FObject BtnObj;
             BtnObj["key"] = GV2RuntimeCore::FValue(std::string("btn_action"));
@@ -680,7 +680,7 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
     if (UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get())
     {
         Theme->TextCatalog.FindOrAdd(
-            TEXT("textsystem:text.pcc04.player_name"),
+            TEXT("core:text.character.test_hero.name"),
             FText::FromString(TEXT("Player")));
     }
 
@@ -713,7 +713,7 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
     auto RunBuildFields = [PrepareContext](const std::string& SchemaId, const std::string& FieldId, GV2RuntimeCore::FValue Value) -> bool
     {
         GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
+        Request.ScreenId = "core:screen.test.location";
         GV2RuntimeCore::FScreenField Field;
         Field.FieldId = FieldId;
         Field.SchemaId = SchemaId;
@@ -728,7 +728,7 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
     {
         FObject StatusObj;
         FObject NameObj;
-        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("textsystem:text.pcc04.player_name"));
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.character.test_hero.name"));
         StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
         
         FObject MeterObj;
@@ -739,14 +739,14 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
         StatusObj["effects"] = GV2RuntimeCore::FValue(FArray{});
 
         TestTrue(TEXT("PCC-04: Valid percent 0.5 within [0.0, 1.0] passes BuildFields"),
-            RunBuildFields("textsystem:schema.ui_field.location_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
+            RunBuildFields("core:schema.ui_field.synthetic_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
     }
 
     // Percent below min (e.g. -0.5 < 0.0) rejected by portable validator in BuildFields
     {
         FObject StatusObj;
         FObject NameObj;
-        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("textsystem:text.pcc04.player_name"));
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.character.test_hero.name"));
         StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
         
         FObject MeterObj;
@@ -757,14 +757,14 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
         StatusObj["effects"] = GV2RuntimeCore::FValue(FArray{});
 
         TestFalse(TEXT("PCC-04: Percent -0.5 below min 0.0 rejected by BuildFields"),
-            RunBuildFields("textsystem:schema.ui_field.location_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
+            RunBuildFields("core:schema.ui_field.synthetic_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
     }
 
     // Percent above max (e.g. 1.5 > 1.0) rejected by portable validator in BuildFields
     {
         FObject StatusObj;
         FObject NameObj;
-        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("textsystem:text.pcc04.player_name"));
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.character.test_hero.name"));
         StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
         
         FObject MeterObj;
@@ -775,7 +775,7 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
         StatusObj["effects"] = GV2RuntimeCore::FValue(FArray{});
 
         TestFalse(TEXT("PCC-04: Percent 1.5 above max 1.0 rejected by BuildFields"),
-            RunBuildFields("textsystem:schema.ui_field.location_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
+            RunBuildFields("core:schema.ui_field.synthetic_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
     }
 
     // 3. CFC-11: Location scene v2 schema requires characters array; empty object rejected, valid empty array accepted, populated scene accepted
@@ -783,23 +783,23 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
         // 3a. Empty object {} lacks required 'characters' -> rejected by BuildFields
         FObject EmptySceneObj;
         TestFalse(TEXT("CFC-11: Empty scene object {} missing required 'characters' rejected by BuildFields"),
-            RunBuildFields("textsystem:schema.ui_field.location_scene.v2", "scene", GV2RuntimeCore::FValue(EmptySceneObj)));
+            RunBuildFields("core:schema.ui_field.synthetic_scene.v1", "scene", GV2RuntimeCore::FValue(EmptySceneObj)));
 
         // 3b. Scene with valid empty characters [] -> passes BuildFields
         FObject ValidEmptySceneObj;
         ValidEmptySceneObj["characters"] = GV2RuntimeCore::FValue(FArray{});
         TestTrue(TEXT("CFC-11: Scene with valid empty characters array passes BuildFields"),
-            RunBuildFields("textsystem:schema.ui_field.location_scene.v2", "scene", GV2RuntimeCore::FValue(ValidEmptySceneObj)));
+            RunBuildFields("core:schema.ui_field.synthetic_scene.v1", "scene", GV2RuntimeCore::FValue(ValidEmptySceneObj)));
 
         // 3c. Populated scene with character -> passes BuildFields
         FObject PopulatedSceneObj;
         FObject CharObj;
-        CharObj["key"] = GV2RuntimeCore::FValue(std::string("innkeeper"));
-        CharObj["resource_id"] = GV2RuntimeCore::FValue(std::string("textsystem:resource.ui.missing_character"));
+        CharObj["key"] = GV2RuntimeCore::FValue(std::string("guide"));
+        CharObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.character.test_guide"));
         PopulatedSceneObj["characters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(CharObj)});
-        PopulatedSceneObj["background_resource_id"] = GV2RuntimeCore::FValue(std::string("textsystem:resource.ui.missing_background"));
+        PopulatedSceneObj["background_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.location.test_alpha_bg"));
         TestTrue(TEXT("CFC-11: Populated scene with characters passes BuildFields"),
-            RunBuildFields("textsystem:schema.ui_field.location_scene.v2", "scene", GV2RuntimeCore::FValue(PopulatedSceneObj)));
+            RunBuildFields("core:schema.ui_field.synthetic_scene.v1", "scene", GV2RuntimeCore::FValue(PopulatedSceneObj)));
     }
 
     return true;

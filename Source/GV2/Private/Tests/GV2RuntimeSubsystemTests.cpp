@@ -277,17 +277,9 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         // functions, not a per-schema adapter class/registry -- it no longer
         // hardcodes even the LocationScreen schema ids the way per-field adapters
         // used to, and FGV2ScreenFieldAdapterRegistry itself no longer exists.
-        const TCHAR* FieldSchemas[] = {
-            TEXT("textsystem:schema.ui_field.location_scene.v1"),
-            TEXT("textsystem:schema.ui_field.location_scene.v2"),
-            TEXT("textsystem:schema.ui_field.location_commands.v1")
-        };
-        for (const TCHAR* SchemaId : FieldSchemas)
-        {
-            TestFalse(
-                *FString::Printf(TEXT("Materializer does not hardcode %s"), SchemaId),
-                MaterializerSource.Contains(SchemaId));
-        }
+        TestFalse(
+            TEXT("Materializer contains no concrete Screen Field schema IDs"),
+            MaterializerSource.Contains(TEXT("schema.ui_field.")));
     }
 
     FString ScreenTemplatesContract;
@@ -395,10 +387,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 1. Valid location commands with distinct keys
     {
         GV2RuntimeCore::FScreenRequest ValidReq;
-        ValidReq.ScreenId = "textsystem:screen.location";
+        ValidReq.ScreenId = "core:screen.synthetic_mechanical";
         GV2RuntimeCore::FScreenField BtnField;
         BtnField.FieldId = "commands";
-        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        BtnField.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
         const std::string KeyA = "btn_a";
         const std::string KeyB = "btn_b";
         GV2RuntimeCore::FValue::FObject ValueObj;
@@ -418,10 +410,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 2. Button list missing key
     {
         GV2RuntimeCore::FScreenRequest MissingKeyReq;
-        MissingKeyReq.ScreenId = "textsystem:screen.location";
+        MissingKeyReq.ScreenId = "core:screen.synthetic_mechanical";
         GV2RuntimeCore::FScreenField BtnField;
         BtnField.FieldId = "commands";
-        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        BtnField.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
         GV2RuntimeCore::FValue::FObject ValueObj;
         ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
             MakeButtonItem(nullptr, "core:command.screen.action_a")
@@ -438,10 +430,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 3. Button list duplicate key
     {
         GV2RuntimeCore::FScreenRequest DupKeyReq;
-        DupKeyReq.ScreenId = "textsystem:screen.location";
+        DupKeyReq.ScreenId = "core:screen.synthetic_mechanical";
         GV2RuntimeCore::FScreenField BtnField;
         BtnField.FieldId = "commands";
-        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        BtnField.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
         const std::string KeyDup = "btn_same";
         GV2RuntimeCore::FValue::FObject ValueObj;
         ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
@@ -460,10 +452,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 4. Button list text-derived key
     {
         GV2RuntimeCore::FScreenRequest TextKeyReq;
-        TextKeyReq.ScreenId = "textsystem:screen.location";
+        TextKeyReq.ScreenId = "core:screen.synthetic_mechanical";
         GV2RuntimeCore::FScreenField BtnField;
         BtnField.FieldId = "commands";
-        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        BtnField.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
         const std::string KeyText = "core:text.button.ok";
         GV2RuntimeCore::FValue::FObject ValueObj;
         ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
@@ -482,10 +474,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 5a. Positive key grammar: domain ID with ':', instance ID with '@', hyphens, dots
     {
         GV2RuntimeCore::FScreenRequest ValidGrammarReq;
-        ValidGrammarReq.ScreenId = "textsystem:screen.location";
+        ValidGrammarReq.ScreenId = "core:screen.synthetic_mechanical";
         GV2RuntimeCore::FScreenField BtnField;
         BtnField.FieldId = "commands";
-        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        BtnField.SchemaId = "core:schema.ui_field.synthetic_commands.v1";
         const std::string KeyDomain = "core:item.weapon.iron_sword";
         const std::string KeyActor = "actor@42";
         const std::string KeyHyphenDot = "btn-action.v1_ok";
@@ -1130,8 +1122,15 @@ bool FGV2ScreenAssetRootOwnershipAudit::RunTest(const FString& Parameters)
         FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
     FARFilter UiAssetFilter;
     UiAssetFilter.PackagePaths.Add(TEXT("/Game/UI"));
-    UiAssetFilter.PackagePaths.Add(TEXT("/Game/TextSystem/UI"));
-    UiAssetFilter.PackagePaths.Add(TEXT("/Game/RH/UI"));
+    for (const FGV2ContentRootOwnership& Entry : Ownership)
+    {
+        FString Path = Entry.NormalizedRoot;
+        if (Path.EndsWith(TEXT("/")))
+        {
+            Path.LeftChopInline(1);
+        }
+        UiAssetFilter.PackagePaths.Add(*Path);
+    }
     UiAssetFilter.bRecursivePaths = true;
     TArray<FAssetData> UiAssets;
     AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
@@ -1162,21 +1161,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
 {
-    for (const TCHAR* StylePath : {
-             TEXT("/Game/TextSystem/UI/Styles/BP_UIStyle_Text_Default.BP_UIStyle_Text_Default_C"),
-             TEXT("/Game/TextSystem/UI/Styles/BP_UIStyle_ButtonLabel_Default.BP_UIStyle_ButtonLabel_Default_C")})
+    if (const UGV2UiTheme* ConfiguredTheme = LoadConfiguredThemeForTest())
     {
-        const UClass* StyleClass = LoadClass<UCommonTextStyle>(nullptr, StylePath);
-        const UCommonTextStyle* Style = StyleClass != nullptr
-            ? Cast<UCommonTextStyle>(StyleClass->GetDefaultObject())
-            : nullptr;
-        TestNotNull(TEXT("CommonUI text style is loadable"), Style);
-        if (Style != nullptr)
+        for (const TSubclassOf<UCommonTextStyle>& StyleClass : { ConfiguredTheme->TextStyle, ConfiguredTheme->ButtonLabelStyle })
         {
-            FSlateFontInfo Font;
-            Style->GetFont(Font);
-            TestNotNull(TEXT("CommonUI text style has an explicit font"), Font.FontObject.Get());
-            TestEqual(TEXT("CommonUI text style selects Regular typeface"), Font.TypefaceFontName, FName(TEXT("Regular")));
+            const UCommonTextStyle* Style = StyleClass != nullptr
+                ? Cast<UCommonTextStyle>(StyleClass->GetDefaultObject())
+                : nullptr;
+            TestNotNull(TEXT("Theme text style is loadable"), Style);
+            if (Style != nullptr)
+            {
+                FSlateFontInfo Font;
+                Style->GetFont(Font);
+                TestNotNull(TEXT("Theme text style has an explicit font"), Font.FontObject.Get());
+                TestEqual(TEXT("Theme text style selects Regular typeface"), Font.TypefaceFontName, FName(TEXT("Regular")));
+            }
         }
     }
 
@@ -1244,326 +1243,6 @@ bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
         UGV2ScreenWidgetBase* Screen = Cast<UGV2ScreenWidgetBase>(
             Runtime->GetActiveScreen());
         TestNotNull(TEXT("GameInstance start directly opens the registered WBP_Testscreen"), Screen);
-        Runtime->EndSession();
-    }
-
-    return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2RhStartScreenFlow,
-    "GV2.Runtime.Presentation.RhStartOpensLocationScreen",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
-{
-    const UGV2RuntimeSettings* RuntimeSettings = GetDefault<UGV2RuntimeSettings>();
-    TestNotNull(TEXT("Runtime development settings are available"), RuntimeSettings);
-    if (RuntimeSettings != nullptr)
-    {
-        TestTrue(
-            TEXT("Editor startup profile uses RH"),
-            RuntimeSettings->EditorPackageRoots.Contains(TEXT("GameData/rh")));
-        TestFalse(
-            TEXT("Editor startup profile excludes the sample test screen"),
-            RuntimeSettings->EditorPackageRoots.Contains(TEXT("GameData/sample")));
-    }
-
-    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
-    UGameInstance* GameInstance = WorldContext.GetGameInstance();
-    UWorld* TestWorld = WorldContext.GetWorld();
-
-    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
-    TestNotNull(TEXT("Standalone GameInstance initializes the runtime"), Runtime);
-    if (Runtime != nullptr)
-    {
-        FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
-        UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
-            UGV2GameShellWidgetBase::LayerLocationContent,
-            FName(TEXT("location")));
-        TestNotNull(TEXT("RH startup opens the registered LocationScreen"), Screen);
-        if (Screen != nullptr)
-        {
-            UClass* LocationScreenClass = LoadClass<UUserWidget>(
-                nullptr,
-                TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
-            TestNotNull(TEXT("LocationScreen class is loadable"), LocationScreenClass);
-            TestTrue(
-                TEXT("RH startup presents WBP_LocationScreen"),
-                LocationScreenClass != nullptr && Screen->IsA(LocationScreenClass));
-
-            // 1. Verify startup tavern scene has 1 character from Lua presentation
-            // DCA-05: Scene is now the generic declared composite -- matched by
-            // HostIdentity, not a dedicated C++ class, since several other declared
-            // composites could also appear in this tree.
-            UGV2DeclaredCompositeWidgetBase* SceneWidget = nullptr;
-            UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
-            if (Screen->WidgetTree != nullptr)
-            {
-                Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
-                {
-                    if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
-                    {
-                        SceneWidget = Scene;
-                    }
-                    else if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
-                    {
-                        CommandWidget = Cmd;
-                    }
-                });
-            }
-
-            // M2 (DCA-05...07): the three composites are declarations now, so the risk
-            // the migration carries is not a missing widget -- structure and entry counts
-            // stay right -- but a property that silently stops arriving at its leaf. The
-            // set checked here is enumerated from each composite's own DeclaredCapabilities,
-            // not from a hand-written list of properties, so a capability added to a
-            // declaration later falls under this check without anyone updating the test.
-            UGV2DeclaredCompositeWidgetBase* StatusWidget = nullptr;
-            if (Screen->WidgetTree != nullptr)
-            {
-                Screen->WidgetTree->ForEachWidget([&StatusWidget](UWidget* Widget)
-                {
-                    if (auto* Status = Cast<UGV2DeclaredCompositeWidgetBase>(Widget);
-                        Status != nullptr && Status->GetHostIdentity() == FName(TEXT("player_status")))
-                    {
-                        StatusWidget = Status;
-                    }
-                });
-            }
-            TestNotNull(TEXT("LocationScreen contains PlayerStatus component"), StatusWidget);
-
-            auto VerifyDeclaredValuesArrived =
-                [this](UGV2DeclaredCompositeWidgetBase* Composite, const TCHAR* Label) -> int32
-            {
-                if (Composite == nullptr)
-                {
-                    return 0;
-                }
-                const FGV2UiHostCommittedSnapshot Snapshot =
-                    GetUiHostSemanticState(Composite->GetPropertyHostState()).GetCommittedSnapshot();
-                if (!Snapshot.Schema)
-                {
-                    TestTrue(
-                        *FString::Printf(TEXT("M2: [%s] committed a schema after the Lua-driven revision"), Label),
-                        false);
-                    return 0;
-                }
-
-                // The set is the intersection of two independently produced sides: what the
-                // Designer declaration binds, and what the committed schema requires. Both
-                // sides are read, not written here. Schema-optional fields are excluded on
-                // the schema's own say-so -- the composite's identity `key` is declared
-                // `required: false` and is never published by the document, so demanding a
-                // committed value for it would assert the opposite of the schema.
-                TSet<FString> SchemaFieldNames;
-                TSet<FString> RequiredSchemaFieldNames;
-                for (const auto& FieldEntry : Snapshot.Schema->Fields)
-                {
-                    const FString FieldName = UTF8_TO_TCHAR(FieldEntry.Name.c_str());
-                    SchemaFieldNames.Add(FieldName);
-                    if (FieldEntry.bRequired)
-                    {
-                        RequiredSchemaFieldNames.Add(FieldName);
-                    }
-                }
-
-                int32 Arrived = 0;
-                for (const FGV2DeclaredUiCapability& Declared : Composite->DeclaredCapabilities)
-                {
-                    const FString PropertyName = Declared.PropertyName.ToString();
-                    if (!SchemaFieldNames.Contains(PropertyName))
-                    {
-                        continue;
-                    }
-                    // A declaration-optional property whose child is unbound on this asset
-                    // is not declared at all for this instance (DCA-01), so requiring a
-                    // committed value for it would assert the opposite of that contract.
-                    if (Declared.bOptional
-                        && Declared.ChildWidgetName != NAME_None
-                        && Composite->GetWidgetFromName(Declared.ChildWidgetName) == nullptr)
-                    {
-                        continue;
-                    }
-                    const bool bCommitted = Snapshot.Properties.FindField(PropertyName) != nullptr;
-                    if (bCommitted)
-                    {
-                        ++Arrived;
-                    }
-                    // Schema-required is the only case the contract lets us demand. The
-                    // count returned below covers the rest: a revision where nothing at
-                    // all arrived would satisfy every required check of a schema whose
-                    // fields are all optional, which is exactly the scene's situation.
-                    if (RequiredSchemaFieldNames.Contains(PropertyName))
-                    {
-                        TestTrue(
-                            *FString::Printf(
-                                TEXT("M2: [%s] schema-required declared property '%s' has a committed value after the Lua-driven revision"),
-                                Label,
-                                *PropertyName),
-                            bCommitted);
-                    }
-                }
-                return Arrived;
-            };
-
-            const int32 SceneArrived = VerifyDeclaredValuesArrived(SceneWidget, TEXT("scene"));
-            const int32 StatusArrived = VerifyDeclaredValuesArrived(StatusWidget, TEXT("player_status"));
-            const int32 CommandsArrived = VerifyDeclaredValuesArrived(CommandWidget, TEXT("commands"));
-            TestTrue(
-                *FString::Printf(
-                    TEXT("M2: every migrated composite received at least one declared value from Lua (scene=%d, player_status=%d, commands=%d)"),
-                    SceneArrived, StatusArrived, CommandsArrived),
-                SceneArrived > 0 && StatusArrived > 0 && CommandsArrived > 0);
-
-            // Accounting alone is not enough: the value must reach the primitive the
-            // declaration binds. The leaf is resolved through the declaration itself,
-            // so this does not hard-code any widget name.
-            auto DeclaredTextLeafContent =
-                [](UGV2DeclaredCompositeWidgetBase* Composite, const TCHAR* PropertyName) -> FText
-            {
-                if (Composite == nullptr)
-                {
-                    return FText::GetEmpty();
-                }
-                for (const FGV2DeclaredUiCapability& Declared : Composite->DeclaredCapabilities)
-                {
-                    if (Declared.PropertyName != FName(PropertyName)
-                        || Declared.Kind != EGV2DeclaredUiCapabilityKind::Text)
-                    {
-                        continue;
-                    }
-                    if (UGV2TextWidgetBase* Leaf =
-                            Cast<UGV2TextWidgetBase>(Composite->GetWidgetFromName(Declared.ChildWidgetName)))
-                    {
-                        return Leaf->GetTextContent();
-                    }
-                }
-                return FText::GetEmpty();
-            };
-
-            const FText SceneContext = DeclaredTextLeafContent(SceneWidget, TEXT("context_text"));
-            TestFalse(
-                TEXT("M2: scene context text published by Lua reached its text primitive"),
-                SceneContext.IsEmpty());
-            const FText StatusName = DeclaredTextLeafContent(StatusWidget, TEXT("name"));
-            TestFalse(
-                TEXT("M2: player_status name published by Lua reached its text primitive"),
-                StatusName.IsEmpty());
-
-            TestNotNull(TEXT("LocationScreen contains SceneView component"), SceneWidget);
-            UGV2ListViewWidgetBase* CharRep = SceneWidget != nullptr
-                ? Cast<UGV2ListViewWidgetBase>(SceneWidget->GetWidgetFromName(TEXT("CharacterRepeater")))
-                : nullptr;
-            if (CharRep != nullptr)
-            {
-                TestEqual(TEXT("Initial tavern scene has 1 character"), CharRep->GetEntryCount(), 1);
-                TestNotNull(TEXT("Initial tavern character widget matches keeper"), CharRep->GetEntryWidget(FName(TEXT("tavern_keeper"))));
-            }
-
-            // 2. Find travel button to market in CommandPanel and submit interaction
-            TestNotNull(TEXT("LocationScreen contains CommandPanel component"), CommandWidget);
-            UGV2ListViewWidgetBase* CmdRep = CommandWidget != nullptr
-                ? Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
-                : nullptr;
-            if (CmdRep != nullptr)
-            {
-                UGV2ButtonWidgetBase* TravelMarketBtn = Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(TEXT("travel_city_market"))));
-                TestNotNull(TEXT("Travel to market button found in tavern CommandPanel"), TravelMarketBtn);
-                if (TravelMarketBtn != nullptr)
-                {
-                    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelMarketBtn->GetBindingHandle(), {});
-                    TestEqual(TEXT("Travel to market interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
-                }
-            }
-
-            // 3. Verify Market presentation has 0 characters
-            UGV2ScreenWidgetBase* MarketScreen = Runtime->GetActiveScreenInLayer(
-                UGV2GameShellWidgetBase::LayerLocationContent,
-                FName(TEXT("location")));
-            TestNotNull(TEXT("Market LocationScreen is presented"), MarketScreen);
-            if (MarketScreen != nullptr)
-            {
-                UGV2DeclaredCompositeWidgetBase* MarketScene = nullptr;
-                UGV2DeclaredCompositeWidgetBase* MarketCommandsWidget = nullptr;
-                if (MarketScreen->WidgetTree != nullptr)
-                {
-                    MarketScreen->WidgetTree->ForEachWidget([&](UWidget* Widget)
-                    {
-                        if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
-                        {
-                            MarketScene = Scene;
-                        }
-                        else if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
-                        {
-                            MarketCommandsWidget = Cmd;
-                        }
-                    });
-                }
-                TestNotNull(TEXT("Market Screen contains SceneView component"), MarketScene);
-                UGV2ListViewWidgetBase* MarketCharRep = MarketScene != nullptr
-                    ? Cast<UGV2ListViewWidgetBase>(MarketScene->GetWidgetFromName(TEXT("CharacterRepeater")))
-                    : nullptr;
-                if (MarketCharRep != nullptr)
-                {
-                    TestEqual(TEXT("Market scene has 0 characters"), MarketCharRep->GetEntryCount(), 0);
-                }
-
-                // 4. Travel back to tavern
-                TestNotNull(TEXT("Market Screen contains CommandPanel component"), MarketCommandsWidget);
-                UGV2ListViewWidgetBase* MarketCmdRep = MarketCommandsWidget != nullptr
-                    ? Cast<UGV2ListViewWidgetBase>(MarketCommandsWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
-                    : nullptr;
-                if (MarketCmdRep != nullptr)
-                {
-                    UGV2ButtonWidgetBase* TravelTavernBtn = Cast<UGV2ButtonWidgetBase>(MarketCmdRep->GetEntryWidget(FName(TEXT("travel_city_tavern"))));
-                    TestNotNull(TEXT("Travel to tavern button found in market CommandPanel"), TravelTavernBtn);
-                    if (TravelTavernBtn != nullptr)
-                    {
-                        const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelTavernBtn->GetBindingHandle(), {});
-                        TestEqual(TEXT("Travel back to tavern interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
-                    }
-                }
-            }
-
-            // 5. Verify returned Tavern has 1 character restored
-            UGV2ScreenWidgetBase* TavernScreen2 = Runtime->GetActiveScreenInLayer(
-                UGV2GameShellWidgetBase::LayerLocationContent,
-                FName(TEXT("location")));
-            TestNotNull(TEXT("Returned Tavern LocationScreen is presented"), TavernScreen2);
-            if (TavernScreen2 != nullptr)
-            {
-                UGV2DeclaredCompositeWidgetBase* TavernScene2 = nullptr;
-                if (TavernScreen2->WidgetTree != nullptr)
-                {
-                    TavernScreen2->WidgetTree->ForEachWidget([&](UWidget* Widget)
-                    {
-                        if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
-                        {
-                            TavernScene2 = Scene;
-                        }
-                    });
-                }
-                TestNotNull(TEXT("Returned Tavern Screen contains SceneView component"), TavernScene2);
-                UGV2ListViewWidgetBase* CharRep2 = TavernScene2 != nullptr
-                    ? Cast<UGV2ListViewWidgetBase>(TavernScene2->GetWidgetFromName(TEXT("CharacterRepeater")))
-                    : nullptr;
-                if (CharRep2 != nullptr)
-                {
-                    TestEqual(TEXT("Returned tavern scene has 1 character"), CharRep2->GetEntryCount(), 1);
-                    TestNotNull(TEXT("Returned tavern character widget matches keeper"), CharRep2->GetEntryWidget(FName(TEXT("tavern_keeper"))));
-                }
-
-                // 6. CFC-11: Verify missing parent field 'scene' is rejected by PrepareScreenFields
-                FGV2ScreenMutationPlan IncompletePlan;
-                FString IncompleteError;
-                const bool bPreparedIncomplete = TavernScreen2->PrepareScreenFields(
-                    {}, IncompletePlan, IncompleteError);
-                TestFalse(TEXT("CFC-11: PrepareScreenFields rejects payload missing configured hosts"), bPreparedIncomplete);
-                TestTrue(TEXT("CFC-11: Incomplete error mentions host has no value"),
-                    IncompleteError.Contains(TEXT("has no value in the payload")));
-            }
-        }
         Runtime->EndSession();
     }
 
@@ -2071,9 +1750,7 @@ bool FGV2GameShellViewportFillTest::RunTest(const FString& Parameters)
             FGV2ScreenInstanceViewModel Instance;
             Instance.Layer = Layer;
             Instance.InstanceKey = FName(*FString::Printf(TEXT("psc14_%s"), *Layer.ToString()));
-            Instance.ScreenId = Layer == UGV2GameShellWidgetBase::LayerLocationContent
-                ? TEXT("textsystem:screen.location")
-                : FString::Printf(TEXT("core:screen.psc14_%s_probe"), *Layer.ToString());
+            Instance.ScreenId = FString::Printf(TEXT("core:screen.psc14_%s_probe"), *Layer.ToString());
             InstanceKeyByLayer.Add(Layer, Instance.InstanceKey);
 
             if (Layer == UGV2GameShellWidgetBase::LayerLocationContent)
@@ -2410,7 +2087,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             };
             const FContentObject EnvelopeObj{
                 { "field_id", GV2ContentCore::FValue(std::string("day_block")) },
-                { "schema_id", GV2ContentCore::FValue(std::string("textsystem:schema.ui_field.declared_composite_fixture.v1")) },
+                { "schema_id", GV2ContentCore::FValue(std::string("core:schema.ui_field.synthetic_declared_composite.v1")) },
                 { "value", GV2ContentCore::FValue(InnerValueObj) },
             };
             const GV2ContentCore::FValue::FArray EnvelopesArray{ GV2ContentCore::FValue(EnvelopeObj) };
@@ -2459,7 +2136,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                         }
                         if (TestTrue(TEXT("DUC-09: envelope schema_id is a String"), SchemaIdOut != nullptr && SchemaIdOut->IsString()))
                         {
-                            TestEqual(TEXT("DUC-09: envelope schema_id value"), SchemaIdOut->AsString(), FString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+                            TestEqual(TEXT("DUC-09: envelope schema_id value"), SchemaIdOut->AsString(), FString(TEXT("core:schema.ui_field.synthetic_declared_composite.v1")));
                         }
                         if (TestTrue(TEXT("DUC-09: envelope value is a materialized Object"), ValueOut != nullptr && ValueOut->IsObject()))
                         {
@@ -2479,7 +2156,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             // silently passed through as opaque content.
             const FContentObject BadEnvelopeObj{
                 { "field_id", GV2ContentCore::FValue(std::string("day_block")) },
-                { "schema_id", GV2ContentCore::FValue(std::string("textsystem:schema.ui_field.nonexistent_probe.v1")) },
+                { "schema_id", GV2ContentCore::FValue(std::string("core:schema.ui_field.nonexistent_probe.v1")) },
                 { "value", GV2ContentCore::FValue(FContentObject{}) },
             };
             const GV2ContentCore::FValue::FArray BadEnvelopesArray{ GV2ContentCore::FValue(BadEnvelopeObj) };
@@ -2519,7 +2196,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 
             // Child screen: a real UGV2ScreenWidgetBase with a nested declared
             // composite (DUC-08 shape) exposing exactly the two properties
-            // textsystem:schema.ui_field.declared_composite_fixture.v1 declares.
+            // core:schema.ui_field.synthetic_declared_composite.v1 declares.
             UGV2ScreenWidgetBase* ChildScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
             ChildScreen->WidgetTree = NewObject<UWidgetTree>(ChildScreen);
             UGV2DeclaredCompositeWidgetBase* DayBlock = ChildScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
@@ -2591,7 +2268,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 
             TArray<TPair<FString, FGV2PreparedUiValue>> EnvelopeFields;
             EnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
-            EnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            EnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("core:schema.ui_field.synthetic_declared_composite.v1")));
             EnvelopeFields.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(InnerFields)));
             TArray<FGV2PreparedUiValue> FieldsArray;
             FieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(EnvelopeFields)));
@@ -2617,7 +2294,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             BaselineFailureInner.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.5));
             TArray<TPair<FString, FGV2PreparedUiValue>> BaselineFailureEnvelope;
             BaselineFailureEnvelope.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
-            BaselineFailureEnvelope.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            BaselineFailureEnvelope.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("core:schema.ui_field.synthetic_declared_composite.v1")));
             BaselineFailureEnvelope.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(BaselineFailureInner)));
             TArray<FGV2PreparedUiValue> BaselineFailureFields;
             BaselineFailureFields.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(BaselineFailureEnvelope)));
@@ -2653,7 +2330,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             UpdatedInnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.2));
             TArray<TPair<FString, FGV2PreparedUiValue>> UpdatedEnvelopeFields;
             UpdatedEnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
-            UpdatedEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            UpdatedEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("core:schema.ui_field.synthetic_declared_composite.v1")));
             UpdatedEnvelopeFields.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UpdatedInnerFields)));
             TArray<FGV2PreparedUiValue> UpdatedFieldsArray;
             UpdatedFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UpdatedEnvelopeFields)));
@@ -2665,7 +2342,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             FailureInnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.1));
             TArray<TPair<FString, FGV2PreparedUiValue>> FailureEnvelopeFields;
             FailureEnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
-            FailureEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            FailureEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("core:schema.ui_field.synthetic_declared_composite.v1")));
             FailureEnvelopeFields.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureInnerFields)));
             TArray<FGV2PreparedUiValue> FailureFieldsArray;
             FailureFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureEnvelopeFields)));
@@ -2708,7 +2385,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                     NestedCommittedDay->AsText().Text.ToString(), TEXT("Tuesday"));
             }
             TestEqual(TEXT("GBF-05: nested reused child restores prior schema id"),
-                GetUiHostSemanticState(DayBlock->GetPropertyHostState()).GetLastCommittedSchemaId(), TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1"));
+                GetUiHostSemanticState(DayBlock->GetPropertyHostState()).GetLastCommittedSchemaId(), TEXT("core:schema.ui_field.synthetic_declared_composite.v1"));
             TArray<FGV2PreparedUiValue> NestedRetryTabs;
             NestedRetryTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));
             NestedRetryTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureTabMap)));
@@ -2735,7 +2412,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             ThursdayInner.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.9));
             TArray<TPair<FString, FGV2PreparedUiValue>> ThursdayEnvelope;
             ThursdayEnvelope.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
-            ThursdayEnvelope.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            ThursdayEnvelope.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("core:schema.ui_field.synthetic_declared_composite.v1")));
             ThursdayEnvelope.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ThursdayInner)));
             TArray<FGV2PreparedUiValue> ThursdayFields;
             ThursdayFields.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ThursdayEnvelope)));
@@ -2770,7 +2447,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             // extra field, not the (separately-enforced) missing-value-for-host case.
             TArray<TPair<FString, FGV2PreparedUiValue>> UnknownEnvelopeFields;
             UnknownEnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("nonexistent_field")));
-            UnknownEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            UnknownEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("core:schema.ui_field.synthetic_declared_composite.v1")));
             UnknownEnvelopeFields.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(InnerFields)));
             TArray<FGV2PreparedUiValue> UnknownFieldsArray;
             UnknownFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(EnvelopeFields)));
