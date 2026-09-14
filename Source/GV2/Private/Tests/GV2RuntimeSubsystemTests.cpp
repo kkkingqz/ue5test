@@ -12103,8 +12103,23 @@ bool FGV2SaveAndLoadGameplaySliceTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Session A is ready"), Runtime->GetSessionState().bIsReady);
     const int32 GenA = Runtime->GetSessionState().SessionGeneration;
 
-    // 2. Package-owned start: executed in Lua during RequestSession(FixedDesc) via M.start
-    // Initial state is established and initial desired presentation is published.
+    // 2. Explicit package-owned start: dispatch start_game via UI command interaction interface
+    const FString SamplePkg = TEXT("sample");
+    TArray<FGV2UiBindingDefinition> StartDefs;
+    FGV2UiBindingDefinition StartBtnDef;
+    StartBtnDef.NodeKeyPath = { TEXT("root"), TEXT("start_button") };
+    StartBtnDef.ElementId = TEXT("btn_start_game");
+    StartBtnDef.CommandId = FString::Printf(TEXT("%s:command.start_game"), *SamplePkg);
+    StartDefs.Add(StartBtnDef);
+
+    TArray<FGV2UiBindingHandle> StartHandles;
+    const bool bPublishedStart = Coordinator->PublishScreenBindings(StartDefs, StartHandles);
+    TestTrue(TEXT("Published screen binding for start_game command"), bPublishedStart);
+    if (TestEqual(TEXT("Got 1 start handle"), StartHandles.Num(), 1))
+    {
+        const EGV2SubmitUiInteractionResult StartRes = Runtime->SubmitUiInteraction(StartHandles[0], {});
+        TestEqual(TEXT("Start game command interaction accepted"), StartRes, EGV2SubmitUiInteractionResult::Accepted);
+    }
 
     // 3. UI presentation verification: WBP_LocationScreen is presented at Hub
     UGV2ScreenWidgetBase* ScreenA1 = Runtime->GetActiveScreenInLayer(

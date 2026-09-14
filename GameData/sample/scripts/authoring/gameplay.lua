@@ -1,8 +1,6 @@
 -- Authoring gameplay script for sample package (TSL-16, CFC-12)
 -- Implements sample travel, scout service, and binds semantic actions.
 
-local hub = location("hub")
-
 local function handle_travel(target)
     if type(target) == "table" and target.target ~= nil then
         target = target.target
@@ -18,6 +16,7 @@ actions["textsystem:action.location.travel"] = "sample:command.travel"
 
 -- CFC-12: Package-owned game start command
 local function handle_start_game()
+    local hub = location("hub")
     local hero = instances.create("actor", {
         definition = def.actor("character.hero"),
         current_location = hub,

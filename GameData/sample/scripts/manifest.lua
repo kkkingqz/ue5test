@@ -13,6 +13,7 @@ return {
             dependencies = {
                 "core:module.presentation.screen_requests",
                 "core:module.resources.text",
+                "core:module.runtime.state_validator",
             },
             replaceable = false,
         },

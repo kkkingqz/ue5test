@@ -1,5 +1,6 @@
 local screens = require("core:module.presentation.screen_requests")
 local text = require("core:module.resources.text")
+local state_validator = require("core:module.runtime.state_validator")
 
 local M = {
     id = "sample:module.debug.start",
@@ -39,6 +40,10 @@ local function create_screen()
 end
 
 function M.register(_ctx)
+    if state_validator and state_validator.register_section then
+        state_validator.register_section("sample_debug")
+    end
+
     if not game or not game.commands or not game.commands.handlers then
         return
     end
@@ -97,17 +102,7 @@ function M.register(_ctx)
 end
 
 function M.start(_ctx)
-    if game and game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player() ~= nil then
-        return
-    end
-
-    if game and game.runtime and game.runtime.seed_hex and #game.runtime.seed_hex > 0 and game.commands and game.commands.handlers and game.commands.handlers.get("sample:command.start_game") then
-        game.runtime.dispatch_command({
-            command_id = "sample:command.start_game",
-            args = {},
-            source = "session_start",
-        })
-    elseif game and game.runtime and game.runtime.dispatch_command then
+    if game and game.runtime and game.runtime.dispatch_command then
         game.runtime.dispatch_command({
             command_id = "sample:command.debug.start",
             args = {},
