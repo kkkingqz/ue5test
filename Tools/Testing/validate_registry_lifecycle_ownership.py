@@ -7,6 +7,7 @@ Validates that:
 3. Every DESCRIPTOR participant defines seal and is_frozen.
 4. No file outside registry_lifecycle.lua publishes or overwrites registry facade slots or creates ad hoc slots on game.
 5. All registry factories (create_registry) in Scripts/runtime/ are registered in registry_lifecycle.lua.
+6. The native lifecycle consumes the single SealRegistries result in a fail-closed guard.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPTS_ROOT = REPO_ROOT / "Scripts"
 GAMEDATA_ROOT = REPO_ROOT / "GameData"
+RUNTIME_SESSION_PATH = REPO_ROOT / "Source" / "GV2RuntimeCore" / "Private" / "GV2RuntimeSession.cpp"
 
 CONTRACT_SEQUENCE = [
     "authoring",
@@ -64,6 +66,46 @@ def strip_lua_comments(content: str) -> str:
     # Single-line comments
     content = re.sub(r"--[^\n]*", "", content)
     return content
+
+
+def strip_cpp_comments(content: str) -> str:
+    """Remove comments while preserving executable call syntax."""
+    content = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
+    return re.sub(r"//[^\n]*", "", content)
+
+
+def validate_native_seal_result_source(content: str, label: str) -> list[str]:
+    """Inventory the definition and sole call, then require fail-closed consumption."""
+    stripped = strip_cpp_comments(content)
+    sites = list(re.finditer(r"\bSealRegistries\s*\(", stripped))
+    guard_sites = list(
+        re.finditer(
+            r"\bif\s*\(\s*!\s*SealRegistries\s*\(\s*OutFault\s*\)\s*\)",
+            stripped,
+        )
+    )
+
+    errors: list[str] = []
+    if len(sites) != 2:
+        errors.append(
+            f"{label}: SealRegistries inventory must contain exactly its definition and one production call; "
+            f"found {len(sites)} token sites"
+        )
+    if len(guard_sites) != 1:
+        errors.append(
+            f"{label}: SealRegistries return value must be consumed exactly once by "
+            "if (!SealRegistries(OutFault)); ignored or duplicated sealing is forbidden"
+        )
+    return errors
+
+
+def validate_native_seal_result(path: Path = RUNTIME_SESSION_PATH) -> list[str]:
+    if not path.exists():
+        return [f"Missing native runtime session source: {path}"]
+    return validate_native_seal_result_source(
+        path.read_text(encoding="utf-8"),
+        str(path.relative_to(REPO_ROOT)) if path.is_relative_to(REPO_ROOT) else str(path),
+    )
 
 
 ALLOWED_INSTALL_NON_REGISTRY_SLOTS = {
@@ -300,6 +342,7 @@ def validate_repository(scripts_root: Path | None = None, gamedata_root: Path | 
     data_root = gamedata_root if gamedata_root is not None else GAMEDATA_ROOT
     if data_root.exists():
         errors.extend(validate_package_ownership(data_root))
+    errors.extend(validate_native_seal_result())
     return errors
 
 
@@ -311,6 +354,20 @@ def run_self_test() -> bool:
         print("FAILED: Clean repository has registry lifecycle errors:")
         for err in clean_errors:
             print(f"  {err}")
+        return False
+
+    runtime_session_source = RUNTIME_SESSION_PATH.read_text(encoding="utf-8")
+    ignored_seal_result = runtime_session_source.replace(
+        "if (!SealRegistries(OutFault))",
+        "SealRegistries(OutFault);\n        if (false)",
+        1,
+    )
+    seal_errors = validate_native_seal_result_source(
+        ignored_seal_result,
+        "Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp",
+    )
+    if not any("return value must be consumed" in error for error in seal_errors):
+        print("FAILED Native Negative 1: failed to catch ignored SealRegistries result")
         return False
 
     with tempfile.TemporaryDirectory() as tmpdir:
