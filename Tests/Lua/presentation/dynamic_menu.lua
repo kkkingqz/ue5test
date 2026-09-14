@@ -104,7 +104,7 @@ return {
         assert(req.instance_key == "location", "location route identity must be stable")
 
         local scene = req.fields.scene
-        assert(scene ~= nil and scene.schema_id == "textsystem:schema.ui_field.location_scene.v1")
+        assert(scene ~= nil and scene.schema_id == "textsystem:schema.ui_field.location_scene.v2")
         assert(scene.value.context_text.text_id == "rh:text.screen.market.description")
 
         local buttons = req.fields.commands

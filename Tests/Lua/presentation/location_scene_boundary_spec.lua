@@ -1,5 +1,5 @@
 -- SVC-04: Location Scene Boundary Spec
--- Tests schema shape, character collections, fallbacks, and validation for textsystem:schema.ui_field.location_scene.v1.
+-- Tests schema shape, character collections, fallbacks, and validation for textsystem:schema.ui_field.location_scene.v2.
 
 local location_presenter = require("textsystem:module.presentation.location_presenter")
 local screens = require("core:module.presentation.screen_requests")
@@ -10,7 +10,7 @@ return {
         assert(req ~= nil, "screen request must be generated for tavern")
         local scene_field = req.fields.scene
         assert(scene_field ~= nil, "scene field must exist")
-        assert(scene_field.schema_id == "textsystem:schema.ui_field.location_scene.v1")
+        assert(scene_field.schema_id == "textsystem:schema.ui_field.location_scene.v2")
         assert(scene_field.value.background_resource_id == "rh:resource.location.tavern")
         assert(type(scene_field.value.characters) == "table")
         assert(#scene_field.value.characters == 1)

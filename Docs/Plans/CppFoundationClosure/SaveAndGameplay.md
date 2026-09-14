@@ -112,7 +112,7 @@ depends_on:
 
 ## CFC-11 — Сделать присутствие сцены проверяемым контрактом данных
 
-- [ ] CFC-11 — Сделать присутствие сцены проверяемым контрактом данных
+- [x] CFC-11 — Сделать присутствие сцены проверяемым контрактом данных
 
 **Файлы:** создать `GameData/textsystem/schemas/ui_field_location_scene_v2.schema.json5`, заменить references прежней версии из actual schema-ID inventory; publisher — `GameData/textsystem/scripts/presentation/location_presenter.lua`; `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`; Lua presentation specs; `Docs/UI/ScreenTemplates.md`, `Docs/Authoring/PresentationAuthoringReference.md`. Затронутые Widget Blueprint найти через Screen Registry → фактический WidgetTree → schema references, а не рукописный список ассетов.
 

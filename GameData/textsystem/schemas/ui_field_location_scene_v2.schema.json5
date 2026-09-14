@@ -1,0 +1,47 @@
+{
+  id: "textsystem:schema.ui_field.location_scene.v2",
+  schema_domain: "ui_field",
+  schema_version: 2,
+  root: {
+    kind: "object",
+    fields: {
+      background_tile_resource_id: {
+        kind: "ref",
+        target_kind: "resource",
+        required: false,
+      },
+      background_resource_id: {
+        kind: "ref",
+        target_kind: "resource",
+        required: false,
+      },
+      context_text: {
+        kind: "text",
+        required: false,
+      },
+      characters: {
+        kind: "array",
+        required: true,
+        keyed_by: "key",
+        items: {
+          kind: "object",
+          fields: {
+            key: {
+              kind: "key",
+              required: true,
+            },
+            resource_id: {
+              kind: "ref",
+              target_kind: "resource",
+              required: true,
+            },
+          },
+        },
+      },
+      key: {
+        kind: "key",
+        required: false,
+      },
+    },
+  },
+}

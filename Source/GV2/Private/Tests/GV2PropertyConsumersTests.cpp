@@ -2314,7 +2314,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 CharsArraySpec->Kind = GV2ContentCore::EUiFieldKind::Array;
                 CharsArraySpec->Items = CharEntrySpec;
                 CharsArraySpec->KeyedBy = "key";
-                SceneSchema.Fields.push_back({ "characters", false, CharsArraySpec });
+                SceneSchema.Fields.push_back({ "characters", true, CharsArraySpec });
                 SceneSchema.Fields.push_back({ "key", false, MakeKeySpec() });
 
                 // Values
@@ -2341,7 +2341,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 SceneValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("scene_inst")));
 
                 FString SceneErr;
-                TestTrue(TEXT("Scene ApplyHostProps succeeds"), ApplyHostProps(SceneWidget, SceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v1"), SceneErr));
+                TestTrue(TEXT("Scene ApplyHostProps succeeds"), ApplyHostProps(SceneWidget, SceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"), SceneErr));
                 TestEqual(TEXT("Scene Context text committed"), ContextText->GetTextContent().ToString(), TEXT("Market Square"));
                 TestEqual(TEXT("Scene Key committed"), SceneWidget->GetKey(), FName(TEXT("scene_inst")));
                 TestEqual(TEXT("Scene Character count is 2"), CharRep->GetEntryCount(), 2);
@@ -2350,6 +2350,28 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 UWidget* C2Widget = CharRep->GetEntryWidget(FName(TEXT("c2")));
                 TestNotNull(TEXT("C1 widget exists"), C1Widget);
                 TestNotNull(TEXT("C2 widget exists"), C2Widget);
+
+                // CFC-11: ValidateUiFieldValue rejects empty object (missing required characters)
+                {
+                    GV2ContentCore::FValue EmptyObjVal = GV2ContentCore::FValue::MakeObject({});
+                    GV2ContentCore::FValue MatVal;
+                    std::vector<GV2ContentCore::FDiagnostic> Diags;
+                    GV2ContentCore::FValidationDiagnosticContext ValCtx;
+                    ValCtx.SchemaId = "textsystem:schema.ui_field.location_scene.v2";
+                    const bool bEmptyValid = GV2ContentCore::ValidateUiFieldValue(
+                        EmptyObjVal, SceneSchema, MatVal, nullptr, "", ValCtx, Diags);
+                    TestFalse(TEXT("CFC-11: ValidateUiFieldValue rejects empty scene object {} missing required characters"), bEmptyValid);
+                    TestTrue(TEXT("CFC-11: Diagnostic emitted for missing required field"),
+                        !Diags.empty() && Diags[0].Code == "core:diagnostic.ui_schema.value.missing_field");
+
+                    // Valid empty characters array passes ValidateUiFieldValue
+                    GV2ContentCore::FValue::FObject ValidEmptyObj;
+                    ValidEmptyObj.push_back({ "characters", GV2ContentCore::FValue::MakeArray({}) });
+                    Diags.clear();
+                    const bool bEmptyArrayValid = GV2ContentCore::ValidateUiFieldValue(
+                        GV2ContentCore::FValue::MakeObject(ValidEmptyObj), SceneSchema, MatVal, nullptr, "", ValCtx, Diags);
+                    TestTrue(TEXT("CFC-11: ValidateUiFieldValue accepts scene with valid empty characters array"), bEmptyArrayValid);
+                }
 
                 // Reorder characters
                 TArray<TPair<FString, FGV2PreparedUiValue>> Char3Map;
@@ -2373,7 +2395,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 ReorderSceneValues.Emplace(TEXT("context_text"), FGV2PreparedUiValue::MakeText(ContextVM));
                 ReorderSceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(ReorderedChars))));
 
-                TestTrue(TEXT("Scene Reorder Apply succeeds"), ApplyHostProps(SceneWidget, ReorderSceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v1"), SceneErr));
+                TestTrue(TEXT("Scene Reorder Apply succeeds"), ApplyHostProps(SceneWidget, ReorderSceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"), SceneErr));
                 TestEqual(TEXT("Scene Character count is 3 after reorder"), CharRep->GetEntryCount(), 3);
                 TestEqual(TEXT("C1 widget preserved across reorder"), CharRep->GetEntryWidget(FName(TEXT("c1"))), C1Widget);
                 TestEqual(TEXT("C2 widget preserved across reorder"), CharRep->GetEntryWidget(FName(TEXT("c2"))), C2Widget);
@@ -2389,11 +2411,18 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TArray<TPair<FString, FGV2PreparedUiValue>> FailingSceneValues;
                 FailingSceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(FailingChars))));
 
-                TestFalse(TEXT("Scene Prepare fails on invalid char resource_id"), ApplyHostProps(SceneWidget, FailingSceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v1"), SceneErr));
+                TestFalse(TEXT("Scene Prepare fails on invalid char resource_id"), ApplyHostProps(SceneWidget, FailingSceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"), SceneErr));
                 TestEqual(TEXT("Scene Character count remains 3 after failed prepare"), CharRep->GetEntryCount(), 3);
 
+                // CFC-11: Valid empty scene (characters = []) applied to widget
+                TArray<TPair<FString, FGV2PreparedUiValue>> EmptySceneValues;
+                EmptySceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create({})));
+                TestTrue(TEXT("CFC-11: Scene ApplyHostProps succeeds with valid empty characters array"),
+                    ApplyHostProps(SceneWidget, EmptySceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"), SceneErr));
+                TestEqual(TEXT("CFC-11: Scene Character count is 0 for empty array"), CharRep->GetEntryCount(), 0);
+
                 // Reset
-                ResetHostProps(SceneWidget, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v1"));
+                ResetHostProps(SceneWidget, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"));
                 TestTrue(TEXT("Scene Context text cleared on reset"), ContextText->GetTextContent().IsEmpty());
                 TestEqual(TEXT("Scene Characters cleared on reset"), CharRep->GetEntryCount(), 0);
                 TestEqual(TEXT("Scene Key cleared on reset"), SceneWidget->GetKey(), NAME_None);

@@ -66,7 +66,7 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Registry строится до первого использования, не хранит session state и запрещает duplicate `schema_id`. Unknown schema отклоняет весь candidate Screen request.
 - Равномерное масштабирование кадра (uniform frame scale) запрещено: раскладка отзывчивая (responsive) и распределяет фактический viewport.
 - Текст масштабируется нелинейной кривой темы и никогда не опускается ниже `MinReadableFontSize` (10 pt).
-- Нормативная schema сцены LocationScreen — `textsystem:schema.ui_field.location_scene.v2`: поле `characters` обязательно, но пустой массив допустим. Само поле `scene` обязательно из-за строгой bijection configured hosts ↔ incoming fields. Optional background/context не превращают отсутствующую публикацию сцены в корректную пустую сцену. Реализация v1 остаётся отмеченным `STATUS-011` до CFC-11.
+- Нормативная schema сцены LocationScreen — `textsystem:schema.ui_field.location_scene.v2`: поле `characters` обязательно, но пустой массив допустим. Само поле `scene` обязательно из-за строгой bijection configured hosts ↔ incoming fields. Optional background/context не превращают отсутствующую публикацию сцены в корректную пустую сцену.
 
 ## Responsive Layout and Scaling Model (ADR-0035)
 
@@ -325,7 +325,7 @@ Value-only Screen Field имеет форму:
 | `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | `default_tab_key` (Key), `tabs` (CollectionHost) | Нет — nested property host only |
 | `textsystem:schema.ui_field.location_top_bar.v1` | `WBP_LocationTopBar` / `UGV2DeclaredCompositeWidgetBase` (DUC-08) | `day` (Text), `location` (Text), `primary_resource` (Text) | **Да** |
 | `textsystem:schema.ui_field.location_player_status.v1` | `WBP_PlayerStatusPanel` / `UGV2DeclaredCompositeWidgetBase` (DCA-06) | `name` (Text), `portrait_resource_id` (Ref), `meters` (CollectionHost), `items` (CollectionHost), `effects` (CollectionHost) | **Да** |
-| `textsystem:schema.ui_field.location_scene.v1` | `WBP_SceneView` / `UGV2DeclaredCompositeWidgetBase` (DCA-05) | `background_tile_resource_id` (Ref), `background_resource_id` (Ref), `context_text` (Text), `characters` (CollectionHost) | **Да** |
+| `textsystem:schema.ui_field.location_scene.v2` | `WBP_SceneView` / `UGV2DeclaredCompositeWidgetBase` (DCA-05) | `background_tile_resource_id` (Ref), `background_resource_id` (Ref), `context_text` (Text), `characters` (CollectionHost) | **Да** |
 | `textsystem:schema.ui_field.location_commands.v1` | `WBP_CommandPanel` / `UGV2DeclaredCompositeWidgetBase` (DCA-07) | `items` (CollectionHost) | **Да** |
 
 Первые десять строк — валидируемые, протестированные на уровне `PrepareUiHostProperties`/`CommitUiHostProperties` schema/capability пары; их Native Widget Class реализует `IGV2UiPropertyHost`, но не `IGV2ScreenFieldHost`, поэтому ни одна из них не может быть настроена как самостоятельный top-level Screen Field сейчас — только как nested property (вложенное свойство composite'а, например `CollectionHost` entry) либо материал для будущего host. Только последние четыре строки — реально используемый, production Screen Field pipeline (`textsystem:screen.location`, см. [Current vertical slice](#current-vertical-slice)).
@@ -391,14 +391,14 @@ fields: [
 
 Схема поля и элементы `meters` являются замкнутыми: любые лишние ключи на любом уровне вложенности приводят к типизированному отказу построения и применения поля.
 
-### LocationScene Field Contract (`textsystem:schema.ui_field.location_scene.v1`)
+### LocationScene Field Contract (`textsystem:schema.ui_field.location_scene.v2`)
 
 Схема поля сцены экрана локации описывает визуальное окружение и расположенных на сцене персонажей:
 
 - `background_tile_resource_id` (optional string): Stable ID ресурса бесшовной фоновой текстуры/плитки (например, `"core:resource.ui.old_paper_tile_256"`).
 - `background_resource_id` (optional string): Stable ID ресурса основного фонового арта сцены (`PreserveAspect`). При отсутствии ресурса подставляется fallback-заглушка `"textsystem:resource.ui.missing_background"`.
 - `context_text` (optional `TextSpec`): контекстное художественное описание текущей обстановки локации.
-- `characters` (optional array of objects): упорядоченная коллекция персонажей сцены, отрисовываемая через host динамической коллекции (`CharacterRepeater` / `CharacterContainer`) с масштабированием `PreserveAspect` и вертикальной привязкой к нижнему краю (`VAlign_Bottom`).
+- `characters` (required array of objects): упорядоченная коллекция персонажей сцены, отрисовываемая через host динамической коллекции (`CharacterRepeater` / `CharacterContainer`) с масштабированием `PreserveAspect` и вертикальной привязкой к нижнему краю (`VAlign_Bottom`). Пустой массив допустим.
   Каждый элемент массива `characters` обязан быть объектом со структурой:
   - `key` (required non-empty string / `FName`): идентичность персонажа, а не его спрайта. Ключ обязан удовлетворять [грамматике ключа повторяемого элемента](UIDocumentAndReconciliation.md#reconciliation) и быть уникальным в пределах массива; нарушение грамматики, пустая строка и дубликаты отклоняются на фазах `PrepareLocationScene` / `BuildLocationScene`. Вывод ключа из `resource_id` запрещён: смена спрайта того же персонажа не является сменой персонажа;
   - `resource_id` (optional string): Stable ID ресурса портрета/спрайта персонажа (например, `"rh:resource.character.tavern_keeper"`). Если ресурс не задан, используется системная заглушка `"textsystem:resource.ui.missing_character"`.
@@ -456,7 +456,7 @@ fields: [
 |---|---|---|
 | `top_bar` | `WBP_LocationTopBar` (`UGV2DeclaredCompositeWidgetBase`, DUC-08) | `textsystem:schema.ui_field.location_top_bar.v1` |
 | `player_status` | `WBP_PlayerStatusPanel` (`UGV2DeclaredCompositeWidgetBase`, DCA-06) | `textsystem:schema.ui_field.location_player_status.v1` |
-| `scene` | `WBP_SceneView` (`UGV2DeclaredCompositeWidgetBase`, DCA-05) | Сейчас `textsystem:schema.ui_field.location_scene.v1`; normative target v2 — `STATUS-011` / CFC-11 |
+| `scene` | `WBP_SceneView` (`UGV2DeclaredCompositeWidgetBase`, DCA-05) | `textsystem:schema.ui_field.location_scene.v2` |
 | `commands` | `WBP_CommandPanel` (`UGV2DeclaredCompositeWidgetBase`, DCA-07) | `textsystem:schema.ui_field.location_commands.v1` |
 
 Lua presenter (`GameData/textsystem/scripts/presentation/location_presenter.lua`, `M.build_screen_request`) публикует все четыре поля через `game.presentation.register_source` при каждой успешно закоммиченной команде (см. [Источник презентации](#источник-презентации-и-автоматическая-инвалидация-sas-1416-adr-0028)). `GV2ScreenFieldMaterializer` генерически материализует значения полей и биндинги по скомпилированным схемам; Runtime разрешает class только через `DA_ScreenRegistry`. Идентичность route зафиксирована ([UI Document § Устойчивая идентичность LocationScreen](UIDocumentAndReconciliation.md)): `screen_id`/`instance_key` не меняются между локациями, переход обновляет поля существующего widget.

@@ -138,7 +138,7 @@ function M.build_screen_request(location_id)
                 items = item_icons,
                 effects = {},
             } },
-            scene = { schema_id = "textsystem:schema.ui_field.location_scene.v1", value = {
+            scene = { schema_id = "textsystem:schema.ui_field.location_scene.v2", value = {
                 background_tile_resource_id = "core:resource.ui.old_paper_tile_256",
                 background_resource_id = scene_data.background_resource_id or "textsystem:resource.ui.missing_background",
                 characters = characters,

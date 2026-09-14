@@ -435,6 +435,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         // used to, and FGV2ScreenFieldAdapterRegistry itself no longer exists.
         const TCHAR* FieldSchemas[] = {
             TEXT("textsystem:schema.ui_field.location_scene.v1"),
+            TEXT("textsystem:schema.ui_field.location_scene.v2"),
             TEXT("textsystem:schema.ui_field.location_commands.v1")
         };
         for (const TCHAR* SchemaId : FieldSchemas)
@@ -2874,6 +2875,15 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     TestEqual(TEXT("Returned tavern scene has 1 character"), CharRep2->GetEntryCount(), 1);
                     TestNotNull(TEXT("Returned tavern character widget matches keeper"), CharRep2->GetEntryWidget(FName(TEXT("tavern_keeper"))));
                 }
+
+                // 6. CFC-11: Verify missing parent field 'scene' is rejected by PrepareScreenFields
+                FGV2ScreenMutationPlan IncompletePlan;
+                FString IncompleteError;
+                const bool bPreparedIncomplete = TavernScreen2->PrepareScreenFields(
+                    {}, IncompletePlan, IncompleteError);
+                TestFalse(TEXT("CFC-11: PrepareScreenFields rejects payload missing configured hosts"), bPreparedIncomplete);
+                TestTrue(TEXT("CFC-11: Incomplete error mentions host has no value"),
+                    IncompleteError.Contains(TEXT("has no value in the payload")));
             }
         }
         Runtime->EndSession();
@@ -9825,6 +9835,30 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
 
         TestFalse(TEXT("PCC-04: Percent 1.5 above max 1.0 rejected by BuildFields"),
             RunBuildFields("textsystem:schema.ui_field.location_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
+    }
+
+    // 3. CFC-11: Location scene v2 schema requires characters array; empty object rejected, valid empty array accepted, populated scene accepted
+    {
+        // 3a. Empty object {} lacks required 'characters' -> rejected by BuildFields
+        FObject EmptySceneObj;
+        TestFalse(TEXT("CFC-11: Empty scene object {} missing required 'characters' rejected by BuildFields"),
+            RunBuildFields("textsystem:schema.ui_field.location_scene.v2", "scene", GV2RuntimeCore::FValue(EmptySceneObj)));
+
+        // 3b. Scene with valid empty characters [] -> passes BuildFields
+        FObject ValidEmptySceneObj;
+        ValidEmptySceneObj["characters"] = GV2RuntimeCore::FValue(FArray{});
+        TestTrue(TEXT("CFC-11: Scene with valid empty characters array passes BuildFields"),
+            RunBuildFields("textsystem:schema.ui_field.location_scene.v2", "scene", GV2RuntimeCore::FValue(ValidEmptySceneObj)));
+
+        // 3c. Populated scene with character -> passes BuildFields
+        FObject PopulatedSceneObj;
+        FObject CharObj;
+        CharObj["key"] = GV2RuntimeCore::FValue(std::string("innkeeper"));
+        CharObj["resource_id"] = GV2RuntimeCore::FValue(std::string("textsystem:resource.ui.missing_character"));
+        PopulatedSceneObj["characters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(CharObj)});
+        PopulatedSceneObj["background_resource_id"] = GV2RuntimeCore::FValue(std::string("textsystem:resource.ui.missing_background"));
+        TestTrue(TEXT("CFC-11: Populated scene with characters passes BuildFields"),
+            RunBuildFields("textsystem:schema.ui_field.location_scene.v2", "scene", GV2RuntimeCore::FValue(PopulatedSceneObj)));
     }
 
     return true;

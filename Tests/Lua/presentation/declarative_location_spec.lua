@@ -25,7 +25,7 @@ return {
         assert(req.instance_key == "location")
 
         assert(req.fields.top_bar.schema_id == "textsystem:schema.ui_field.location_top_bar.v1")
-        assert(req.fields.scene.schema_id == "textsystem:schema.ui_field.location_scene.v1")
+        assert(req.fields.scene.schema_id == "textsystem:schema.ui_field.location_scene.v2")
         assert(req.fields.scene.value.context_text.text_id == "rh:text.screen.market.description")
         assert(type(req.fields.scene.value.characters) == "table")
         assert(#req.fields.scene.value.characters == 0)
@@ -60,7 +60,7 @@ return {
         assert(req.screen_id == "textsystem:screen.location")
         assert(req.instance_key == "location")
 
-        assert(req.fields.scene.schema_id == "textsystem:schema.ui_field.location_scene.v1")
+        assert(req.fields.scene.schema_id == "textsystem:schema.ui_field.location_scene.v2")
         assert(req.fields.scene.value.background_resource_id == "rh:resource.location.tavern")
         assert(type(req.fields.scene.value.characters) == "table")
         assert(#req.fields.scene.value.characters == 1)
