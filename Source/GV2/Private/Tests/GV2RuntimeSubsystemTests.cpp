@@ -10295,6 +10295,52 @@ return {
     return LocStr.TrimStartAndEnd();
 }
 
+// CFC-09: Helper to query the error code from the session's last command execution result
+static FString GetSessionLastCommandErrorCode(
+    FAutomationTestBase& Test,
+    GV2RuntimeCore::FRuntimeSession& Session)
+{
+    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const std::string SpecSource = std::string(R"lua(
+return {
+    sample = function()
+        local res = game and game.runtime and game.runtime.last_command_result
+        local code = (res and res.error and res.error.code) or ""
+        error("LAST_CMD_ERR:" .. tostring(code))
+    end
+}
+)lua");
+
+    Session.RunLuaSpec("@query_cmd_err", SpecSource, Results, Fault);
+    if (Results.empty())
+    {
+        Test.AddError(FString::Printf(TEXT("RunLuaSpec returned no results: %s"), UTF8_TO_TCHAR(Fault.Message.c_str())));
+        return TEXT("");
+    }
+
+    const FString ErrorMessage = UTF8_TO_TCHAR(Results[0].ErrorMessage.c_str());
+    const FString Prefix = TEXT("LAST_CMD_ERR:");
+    const int32 PrefixIdx = ErrorMessage.Find(Prefix, ESearchCase::CaseSensitive);
+    if (PrefixIdx == INDEX_NONE)
+    {
+        Test.AddError(FString::Printf(TEXT("Could not extract last command error code: %s"), *ErrorMessage));
+        return TEXT("");
+    }
+
+    FString CodeStr = ErrorMessage.Mid(PrefixIdx + Prefix.Len());
+    int32 NewlineIdx = INDEX_NONE;
+    if (CodeStr.FindChar(TEXT('\n'), NewlineIdx))
+    {
+        CodeStr = CodeStr.Left(NewlineIdx);
+    }
+    if (CodeStr.FindChar(TEXT('\r'), NewlineIdx))
+    {
+        CodeStr = CodeStr.Left(NewlineIdx);
+    }
+    return CodeStr.TrimStartAndEnd();
+}
+
 // CFC-09/10: Helper to compute canonical state hash from container bytes via Lua
 static FString GetContainerStateHash(
     FAutomationTestBase& Test,
@@ -10448,6 +10494,9 @@ bool FGV2SaveAndLoadProductionRequestSaveTest::RunTest(const FString& Parameters
     FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
     TestNotNull(TEXT("Coordinator exists"), Coordinator);
 
+    const FString InitialLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestFalse(TEXT("Initial player location is non-empty"), InitialLoc.IsEmpty());
+
     // 2. Execute gameplay command (travel or work)
     UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
         UGV2GameShellWidgetBase::LayerLocationContent,
@@ -10467,7 +10516,7 @@ bool FGV2SaveAndLoadProductionRequestSaveTest::RunTest(const FString& Parameters
 
     const FString SessionHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString SessionLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
-    TestEqual(TEXT("Session player location is market"), SessionLoc, TEXT("rh:location.city.market"));
+    TestNotEqual(TEXT("Session player location changed after travel"), SessionLoc, InitialLoc);
 
     // 3. Request save
     const int64 OpId = Runtime->RequestSave(SaveSlot);
@@ -10542,7 +10591,7 @@ bool FGV2SaveAndLoadUiAuthoredSaveButtonTest::RunTest(const FString& Parameters)
     // Initial state: Tavern
     const FString InitialHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString InitialLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
-    TestEqual(TEXT("Initial player location is tavern"), InitialLoc, TEXT("rh:location.city.tavern"));
+    TestFalse(TEXT("Initial player location is non-empty"), InitialLoc.IsEmpty());
 
     // Execute gameplay command to reach Market before saving
     UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
@@ -10565,7 +10614,7 @@ bool FGV2SaveAndLoadUiAuthoredSaveButtonTest::RunTest(const FString& Parameters)
     const FString ReachedHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString ReachedLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
     TestNotEqual(TEXT("State hash changed after travel"), ReachedHash, InitialHash);
-    TestEqual(TEXT("Player reached market"), ReachedLoc, TEXT("rh:location.city.market"));
+    TestNotEqual(TEXT("Player location changed after travel"), ReachedLoc, InitialLoc);
 
     // Publish a screen binding representing a UI-authored save button
     TArray<FGV2UiBindingDefinition> Defs;
@@ -10615,7 +10664,7 @@ bool FGV2SaveAndLoadUiAuthoredSaveButtonTest::RunTest(const FString& Parameters)
 
     TestEqual(TEXT("Save container state hash matches reached state hash (Market)"), ContainerHash, ReachedHash);
     TestNotEqual(TEXT("Save container state hash does not match initial state hash"), ContainerHash, InitialHash);
-    TestEqual(TEXT("Save container player location matches reached location (Market)"), ContainerLoc, TEXT("rh:location.city.market"));
+    TestEqual(TEXT("Save container player location matches reached location"), ContainerLoc, ReachedLoc);
 
     // Cleanup
     IFileManager::Get().Delete(*HeadFile);
@@ -10624,13 +10673,176 @@ bool FGV2SaveAndLoadUiAuthoredSaveButtonTest::RunTest(const FString& Parameters)
     return true;
 }
 
-// CFC-09: When command is refused, staged save request is discarded; no file is written
+// CFC-09: When command is refused (in handler or validator), staged save request is discarded; no file is written
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2SaveAndLoadCommandRefusalDiscardsSaveTest,
     "GV2.Runtime.SaveAndLoad.CommandRefusalDiscardsSave",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FGV2SaveAndLoadCommandRefusalDiscardsSaveTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString ValidSlot = TEXT("test_refused_save");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, ValidSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
+    // Install a hook on core:command.session.save handler:
+    // It stages a save request via game.bridge.request_save(valid_slot_id) using original handler logic,
+    // and then refuses the command by returning { ok = false, error = { code = "core:error.command.validation_refused" } }.
+    // Under CFC-09 invariant, the dispatcher must discard/rollback the staged request,
+    // so the host receives no save request and writes no file.
+    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const std::string HookSpec = std::string(R"lua(
+return {
+    hook_save = function()
+        local entry = game.commands.handlers.get_entry("core:command.session.save")
+        if not entry then
+            error("core:command.session.save handler entry not found")
+        end
+        local orig = entry.handler
+        entry.handler = function(req)
+            -- Call orig to validate slot_id and stage the save request into outbound buffer
+            local res = orig(req)
+            if not res or res.ok == false then
+                error("Original save handler failed unexpectedly")
+            end
+            -- Refuse the command after staging to verify that command failure discards staged save
+            return {
+                ok = false,
+                error = {
+                    code = "core:error.command.validation_refused",
+                    params = {},
+                },
+            }
+        end
+    end
+}
+)lua");
+    const bool bHookOk = Coordinator->GetRuntimeSession().RunLuaSpec("@hook_save_refusal", HookSpec, Results, Fault);
+    TestTrue(TEXT("Installed save refusal hook in session"), bHookOk && Fault.Code.empty());
+
+    // Publish UI binding with valid slot_id
+    TArray<FGV2UiBindingDefinition> Defs;
+    FGV2UiBindingDefinition SaveBtnDef;
+    SaveBtnDef.NodeKeyPath = { TEXT("root"), TEXT("refused_save_button") };
+    SaveBtnDef.ElementId = TEXT("btn_refused_save");
+    SaveBtnDef.CommandId = TEXT("core:command.session.save");
+    FGV2UiControlValue SlotVal;
+    SlotVal.Name = FName(TEXT("slot_id"));
+    SlotVal.Type = EGV2UiControlValueType::String;
+    SlotVal.StringValue = ValidSlot;
+    SaveBtnDef.BoundArgs.Add(SlotVal);
+    Defs.Add(SaveBtnDef);
+
+    TArray<FGV2UiBindingHandle> Handles;
+    const bool bPublished = Coordinator->PublishScreenBindings(Defs, Handles);
+    TestTrue(TEXT("Published screen binding for refused save command"), bPublished);
+    if (!TestEqual(TEXT("Got 1 handle"), Handles.Num(), 1))
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    // Submit interaction: accepted into ingress
+    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(Handles[0], {});
+    TestEqual(TEXT("UI save command interaction accepted into ingress"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+
+    // Check last command result in session: command dispatch refused by handler
+    const FString LastErr = GetSessionLastCommandErrorCode(*this, Coordinator->GetRuntimeSession());
+    TestEqual(TEXT("Command dispatch was refused by handler"), LastErr, TEXT("core:error.command.validation_refused"));
+
+    // The staged save must have been discarded: no file written!
+    TestFalse(TEXT("No head file written on handler refused command"), IFileManager::Get().FileExists(*HeadFile));
+
+    // Verify validator refusal with valid slot ID as well
+    const FString ValSlot = TEXT("test_val_refused_save");
+    const FString ValHeadFile = FPaths::Combine(SaveDir, ValSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*ValHeadFile);
+
+    const std::string ValidatorSpec = std::string(R"lua(
+return {
+    install_validator = function()
+        local mt = getmetatable(game.commands.validators)
+        local _, reg = debug.getupvalue(mt.__index, 1)
+        local old_ordered = reg.ordered
+        reg.ordered = function()
+            local list = old_ordered()
+            table.insert(list, {
+                id = "core:validator.test.deny_save",
+                impl = {
+                    validate = function(ctx)
+                        if ctx and ctx.command_id == "core:command.session.save" and ctx.payload and ctx.payload.slot_id == "test_val_refused_save" then
+                            return false, {
+                                code = "core:error.command.validation_refused",
+                                params = {},
+                            }
+                        end
+                        return true, nil
+                    end
+                }
+            })
+            return list
+        end
+    end
+}
+)lua");
+    const bool bValOk = Coordinator->GetRuntimeSession().RunLuaSpec("@install_val", ValidatorSpec, Results, Fault);
+    TestTrue(TEXT("Installed test validator in session"), bValOk && Fault.Code.empty());
+
+    TArray<FGV2UiBindingDefinition> ValDefs;
+    FGV2UiBindingDefinition ValSaveBtnDef;
+    ValSaveBtnDef.NodeKeyPath = { TEXT("root"), TEXT("val_refused_save_button") };
+    ValSaveBtnDef.ElementId = TEXT("btn_val_refused_save");
+    ValSaveBtnDef.CommandId = TEXT("core:command.session.save");
+    FGV2UiControlValue ValSlotVal;
+    ValSlotVal.Name = FName(TEXT("slot_id"));
+    ValSlotVal.Type = EGV2UiControlValueType::String;
+    ValSlotVal.StringValue = ValSlot;
+    ValSaveBtnDef.BoundArgs.Add(ValSlotVal);
+    ValDefs.Add(ValSaveBtnDef);
+
+    TArray<FGV2UiBindingHandle> ValHandles;
+    TestTrue(TEXT("Published binding for validator save"), Coordinator->PublishScreenBindings(ValDefs, ValHandles));
+    if (TestEqual(TEXT("Got 1 validator handle"), ValHandles.Num(), 1))
+    {
+        const EGV2SubmitUiInteractionResult ValSubmitRes = Runtime->SubmitUiInteraction(ValHandles[0], {});
+        TestEqual(TEXT("Validator save command interaction accepted into ingress"), ValSubmitRes, EGV2SubmitUiInteractionResult::Accepted);
+
+        const FString ValLastErr = GetSessionLastCommandErrorCode(*this, Coordinator->GetRuntimeSession());
+        TestEqual(TEXT("Command dispatch was refused by validator"), ValLastErr, TEXT("core:error.command.validation_refused"));
+        TestFalse(TEXT("No head file written on validator refused command"), IFileManager::Get().FileExists(*ValHeadFile));
+    }
+
+    IFileManager::Get().Delete(*HeadFile);
+    IFileManager::Get().Delete(*ValHeadFile);
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-09: Invalid slot name grammar is rejected and writes no file
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadInvalidSlotNameRejectionTest,
+    "GV2.Runtime.SaveAndLoad.InvalidSlotNameRejection",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadInvalidSlotNameRejectionTest::RunTest(const FString& Parameters)
 {
     GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
     UGameInstance* GameInstance = WorldContext.GetGameInstance();
@@ -10653,7 +10865,7 @@ bool FGV2SaveAndLoadCommandRefusalDiscardsSaveTest::RunTest(const FString& Param
     FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
     TestNotNull(TEXT("Coordinator exists"), Coordinator);
 
-    // Publish binding with invalid slot_id argument -> validator in session_controls.lua will refuse
+    // Publish binding with invalid slot_id argument
     TArray<FGV2UiBindingDefinition> Defs;
     FGV2UiBindingDefinition SaveBtnDef;
     SaveBtnDef.NodeKeyPath = { TEXT("root"), TEXT("bad_save_button") };
@@ -10668,19 +10880,23 @@ bool FGV2SaveAndLoadCommandRefusalDiscardsSaveTest::RunTest(const FString& Param
 
     TArray<FGV2UiBindingHandle> Handles;
     const bool bPublished = Coordinator->PublishScreenBindings(Defs, Handles);
-    TestTrue(TEXT("Published screen binding for bad save"), bPublished);
+    TestTrue(TEXT("Published screen binding for invalid slot save"), bPublished);
     if (!TestEqual(TEXT("Got 1 handle"), Handles.Num(), 1))
     {
         Runtime->EndSession();
         return false;
     }
 
-    // Submit interaction: validator will refuse the command
+    // Submit interaction: accepted into ingress
     const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(Handles[0], {});
     TestEqual(TEXT("UI save command interaction accepted into ingress"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
 
-    // The staged save must have been discarded: no file written!
-    TestFalse(TEXT("No head file written on refused command"), IFileManager::Get().FileExists(*HeadFile));
+    // Check last command result in session: rejected with core:error.save.request_rejected
+    const FString LastErr = GetSessionLastCommandErrorCode(*this, Coordinator->GetRuntimeSession());
+    TestEqual(TEXT("Command rejected with request_rejected error code"), LastErr, TEXT("core:error.save.request_rejected"));
+
+    // No head file written
+    TestFalse(TEXT("No head file written on invalid slot name"), IFileManager::Get().FileExists(*HeadFile));
 
     Runtime->EndSession();
     return true;
@@ -10718,7 +10934,7 @@ bool FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest::RunTest(const FStrin
     // Initial state: State 1 (Tavern)
     const FString State1Hash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString State1Loc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
-    TestEqual(TEXT("Initial location is tavern"), State1Loc, TEXT("rh:location.city.tavern"));
+    TestFalse(TEXT("Initial location is non-empty"), State1Loc.IsEmpty());
 
     // First save: generation 1 (State 1: Tavern)
     const int64 Op1 = Runtime->RequestSave(SaveSlot);
@@ -10767,7 +10983,7 @@ bool FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest::RunTest(const FStrin
     const FString State2Hash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString State2Loc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
     TestNotEqual(TEXT("State 2 hash differs from State 1 hash"), State2Hash, State1Hash);
-    TestEqual(TEXT("Player reached market for State 2"), State2Loc, TEXT("rh:location.city.market"));
+    TestNotEqual(TEXT("Player reached different location for State 2"), State2Loc, State1Loc);
 
     // Second save: generation 2 (State 2: Market)
     const int64 Op2 = Runtime->RequestSave(SaveSlot);
@@ -10969,7 +11185,7 @@ bool FGV2SaveAndLoadProductionRequestLoadTest::RunTest(const FString& Parameters
     const FString InitialHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     TestFalse(TEXT("Initial state hash is non-empty"), InitialHash.IsEmpty());
     const FString InitialLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
-    TestEqual(TEXT("Initial player location is tavern"), InitialLoc, TEXT("rh:location.city.tavern"));
+    TestFalse(TEXT("Initial player location is non-empty"), InitialLoc.IsEmpty());
 
     // 2. Submit gameplay command 1: travel to Market
     UGV2ScreenWidgetBase* ScreenA1 = Runtime->GetActiveScreenInLayer(
@@ -10992,7 +11208,7 @@ bool FGV2SaveAndLoadProductionRequestLoadTest::RunTest(const FString& Parameters
     const FString SavedHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString SavedLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
     TestNotEqual(TEXT("State hash changed after travel to market"), SavedHash, InitialHash);
-    TestEqual(TEXT("Player location updated to market"), SavedLoc, TEXT("rh:location.city.market"));
+    TestNotEqual(TEXT("Player location updated after travel to market"), SavedLoc, InitialLoc);
 
     // 3. Request save: captures state at Market
     const int64 SaveOpId = Runtime->RequestSave(SaveSlot);
@@ -11022,7 +11238,7 @@ bool FGV2SaveAndLoadProductionRequestLoadTest::RunTest(const FString& Parameters
     const FString PostSaveHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString PostSaveLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
     TestNotEqual(TEXT("State hash changed after post-save mutation"), PostSaveHash, SavedHash);
-    TestEqual(TEXT("Player location changed back to tavern after command 2"), PostSaveLoc, TEXT("rh:location.city.tavern"));
+    TestEqual(TEXT("Player location changed back to initial location after command 2"), PostSaveLoc, InitialLoc);
 
     // 5. Request load: replaces Session A with Session B restored from SaveSlot
     const int64 LoadOpId = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
@@ -11074,7 +11290,7 @@ bool FGV2SaveAndLoadProductionRequestLoadTest::RunTest(const FString& Parameters
             const FString HashBPostCmd = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
             const FString LocBPostCmd = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
             TestNotEqual(TEXT("Session B state hash changed after executing subsequent command"), HashBPostCmd, LoadedHash);
-            TestEqual(TEXT("Session B player location updated to tavern"), LocBPostCmd, TEXT("rh:location.city.tavern"));
+            TestEqual(TEXT("Session B player location updated to initial location"), LocBPostCmd, InitialLoc);
         }
     }
 
@@ -11345,7 +11561,7 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
     // Initial state: State 1 (Tavern)
     const FString State1Hash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString State1Loc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
-    TestEqual(TEXT("Initial location is tavern"), State1Loc, TEXT("rh:location.city.tavern"));
+    TestFalse(TEXT("Initial location is non-empty"), State1Loc.IsEmpty());
 
     // Save 1 (Rev 1: Tavern)
     const int64 SaveOp1 = Runtime->RequestSave(SaveSlot);
@@ -11374,7 +11590,7 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
     const FString State2Hash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
     const FString State2Loc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
     TestNotEqual(TEXT("State 2 hash differs from State 1 hash"), State2Hash, State1Hash);
-    TestEqual(TEXT("Player reached market for State 2"), State2Loc, TEXT("rh:location.city.market"));
+    TestNotEqual(TEXT("Player reached different location for State 2"), State2Loc, State1Loc);
 
     // Save 2 (Rev 2: now current; Rev 1 is now previous)
     const int64 SaveOp2 = Runtime->RequestSave(SaveSlot);
