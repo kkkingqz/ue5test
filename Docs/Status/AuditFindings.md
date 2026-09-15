@@ -1,8 +1,8 @@
 ---
 title: C++ Foundation Re-Review Findings
 status: informative
-version: 1.2
-updated: 2026-09-14
+version: 1.3
+updated: 2026-09-15
 depends_on:
   - ImplementationStatus.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
@@ -14,7 +14,7 @@ depends_on:
 
 > **Показывает:** внешнее повторное ревью session/presentation boundaries после закрытия плана C++ Foundation Closure и результат проверки каждого его утверждения по коду.
 > **Не является нормативным:** правила задают owner contracts и accepted ADR. Формулировки ревью не являются нормой; нормой является contract, на который они ссылаются.
-> **Исход:** раунд открыт. Пять заявленных находок подтверждены, две из них с существенным уточнением; сверх ревью найдены три сопутствующие проблемы. CFC-AF-19, CFC-AF-24 и CFC-AF-26 разрешены; CFC-AF-20…23 и CFC-AF-25 возвращены в неразрешённое состояние (открыт).
+> **Исход:** раунд открыт. Исходные `CFC-AF-19…26` сохраняют записанные ниже исходы; повторная приёмка плана `SessionAuthorityCorrection` обнаружила четыре новых открытых finding `CFC-AF-27…30`.
 
 ## Состояние и метод
 
@@ -34,6 +34,7 @@ depends_on:
 | Подтверждено по коду | 5 |
 | Из них с уточнением severity или механизма | 2 |
 | Найдено сверх ревью | 3 |
+| Найдено повторной приёмкой плана | 4 |
 
 Ни одно утверждение ревью не оказалось ложным. Два утверждения оказались точнее или шире, чем заявлено, и одно предложенное исправление не принимается в предложенном виде — см. `CFC-AF-19`.
 
@@ -153,6 +154,32 @@ depends_on:
 Таблица открытых gaps в ревью (`STATUS-002`, `STATUS-003`, `STATUS-026`, `STATUS-027`) совпадала с [Confirmed Contract Gaps](ImplementationStatus.md) по составу и смыслу на момент ревью. Позднее `STATUS-027` снят: ручной запуск UE-приёмки принят как нормативный режим гейта, поэтому расхождения между contract и реализацией в этом месте больше нет — см. [Build and Tooling § Integration gate](../Architecture/BuildAndTooling.md#integration-gate).
 
 Вывод ревью «переоткрывать C++ Foundation Closure целиком не требуется» не оспаривается: ни одна из находок не отменяет принятую поверхность, все пять лежат внутри неё и являются дефектами реализации либо незавершённой частью уже принятого решения.
+
+## Повторная приёмка Session Authority Correction
+
+#### CFC-AF-27 — single-pass manifest parser принимает невалидный `ue_content_roots`
+
+После объединения чтения и разбора `package.json5` ветка извлечения `ue_content_roots` обрабатывает только корректный массив. Поле другого типа молча становится пустым списком, а элементы нестрокового типа пропускаются. Оба случая воспроизводятся через публичный `gv2-content validate` с exit code `0`; до `SAC-02` они возвращали `core:diagnostic.package.manifest.invalid_ue_content_roots`.
+
+**Исход:** открыт.
+
+#### CFC-AF-28 — effective fallback Theme не входит в presentation identity
+
+`FGV2ResolvedUiTheme::Compile` добавляет `CoreMinimalFallbackTextCatalog` из `InFallbackTheme`, и `FindText` читает этот каталог, но `CanonicalThemeValue` вычисляется только из `InTheme`. Два effective resolved Theme могут выдавать различный runtime text при одинаковом `PresentationHash`.
+
+**Исход:** открыт.
+
+#### CFC-AF-29 — пустой typed fault остаётся представимым
+
+Публичный `FGV2OperationFault` имеет default constructor, поэтому `RecordFailure(OpId, FGV2OperationFault{})` компилируется и отклоняется только `checkf`. Перегрузка для `GV2RuntimeCore::FRuntimeFault` принимает произвольный непустой строковый code, поэтому X-macro session-каталога не перечисляет фактическое множество достижимых runtime fault codes.
+
+**Исход:** открыт.
+
+#### CFC-AF-30 — retention limit обоснован моделью вместо измерения
+
+`measure_session_operation_profile.py` назначает autosave interval, manual saves, transitions, polling window и размеры контейнеров константами, затем проверяет арифметику над теми же значениями. Production trace или instrumentation отсутствуют. Дополнительно contract утверждает расход `<= 10 KB`, тогда как сохранённый отчёт вычисляет `11.5 KB`, а CTest запускает генератор в режиме записи вместо `--check`.
+
+**Исход:** открыт.
 
 ## Пределы проверки
 

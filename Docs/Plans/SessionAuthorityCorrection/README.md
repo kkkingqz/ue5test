@@ -2,7 +2,7 @@
 title: Session Authority Correction Implementation Plan
 status: active
 version: 0.1
-updated: 2026-09-14
+updated: 2026-09-15
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
   - ../../Architecture/RuntimeFacadeAndRegistries.md
@@ -83,9 +83,9 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 > **Нарушение процесса:** коммит `e8218e3` (`SAC-03`) сделан до `4576aef` (`SAC-01`), несмотря на явное требование плана о неизменном порядке. Нарушение зафиксировано; исполнение плана выровнено.
 
-- [x] M0 — SAC-01…03 приняты по Done/Evidence.
-- [x] M1 — SAC-04 принят по Done/Evidence.
-- [x] M2 — SAC-05…06 приняты по Done/Evidence.
+- [ ] M0 — SAC-01…03 приняты по Done/Evidence.
+- [ ] M1 — SAC-04 принят по Done/Evidence.
+- [ ] M2 — SAC-05…06 приняты по Done/Evidence.
 
 ---
 
@@ -152,7 +152,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-02 — Захватить `ue_content_roots` в resolved package set
 
-- [x] SAC-02 — Захватить `ue_content_roots` в resolved package set
+- [ ] SAC-02 — Захватить `ue_content_roots` в resolved package set
 
 **Зависимость:** SAC-03. **Файлы:** `Source/GV2ContentHostSupport/Public/GV2ContentHostSupport/PackageDiscovery.h`, `Source/GV2ContentHostSupport/Private/PackageDiscovery.cpp`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp/.h`, portable conformance в `Source/GV2ContentHostSupport/Private/`.
 
@@ -183,7 +183,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-04 — Компилировать Theme в значение и внести её в идентичность
 
-- [x] SAC-04 — Компилировать Theme в значение и внести её в идентичность
+- [ ] SAC-04 — Компилировать Theme в значение и внести её в идентичность
 
 **Зависимость:** SAC-02. **Файлы:** `Source/GV2/Private/Application/GV2SessionContentSnapshot.h/.cpp`, потребители `PrepareContext.GetTheme()` (`GV2TextPipeline.cpp`, `GV2CentralStylePreparer.cpp`, `GV2PropertyConsumers.cpp`), `Tools/Testing/validate_session_snapshot_ownership.py`.
 
@@ -218,7 +218,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-05 — Связать typed fault с terminal outcome
 
-- [x] SAC-05 — Связать typed fault с terminal outcome
+- [ ] SAC-05 — Связать typed fault с terminal outcome
 
 **Зависимость:** SAC-04. **Файлы:** `Source/GV2/Private/Application/GV2SessionTransition.h/.cpp`, `Source/GV2/Private/Application/GV2SessionCoordinator.cpp`, `Source/GV2/Public/Runtime/GV2RuntimeSubsystem.h` и его `.cpp`, `Source/GV2/Public/Bridge/GV2BridgeTypes.h`.
 
@@ -246,7 +246,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-06 — Ограничить историю операций и убрать мёртвую очистку
 
-- [x] SAC-06 — Ограничить историю операций и убрать мёртвую очистку
+- [ ] SAC-06 — Ограничить историю операций и убрать мёртвую очистку
 
 **Зависимость:** SAC-05. **Файлы:** `Source/GV2/Private/Application/GV2SessionTransition.h/.cpp`, `Docs/Architecture/BootstrapAndSessionLifecycle.md`, тест в `Source/GV2/Private/Tests/`.
 
