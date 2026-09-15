@@ -7,6 +7,7 @@
 #include "GV2ContentCore/StableId.h"
 
 #include <algorithm>
+#include <atomic>
 #include <fstream>
 #include <map>
 #include <set>
@@ -63,125 +64,24 @@ GV2ContentCore::FDiagnostic MakeManifestDiagnostic(
     return Diagnostic;
 }
 
-// PSC-02: computes FResolvedPackageSource::CanonicalManifestHash and extracts
-// UeContentRoots from the complete parsed package.json5 root -- independent of
-// DiscoverPackageFromDirectory's own projection into FPackageDescriptor's known fields,
-// so an unknown/future semantic field still changes CanonicalManifestHash.
-// SAC-02: UeContentRoots is captured here into FResolvedPackageSource so downstream
-// consumers (Screen Registry) never perform a second read of package.json5.
-struct FExtractedManifestData
+std::atomic<std::size_t> GManifestReadCount{0};
+
+std::optional<std::string> ReadManifestFileToString(const std::filesystem::path& FilePath)
 {
+    GManifestReadCount.fetch_add(1);
+    return ReadFileToString(FilePath);
+}
+
+// SAC-02: internal artifact produced by single-pass manifest reading. Captures
+// root, descriptor, CanonicalManifestHash, and UeContentRoots in one pass from the
+// already-parsed manifest root, preventing any duplicate manifest I/O.
+struct FDiscoveredPackageArtifact
+{
+    std::filesystem::path Root;
+    GV2ContentCore::FPackageDescriptor Descriptor;
     std::string CanonicalManifestHash;
     std::vector<std::string> UeContentRoots;
 };
-
-std::optional<FExtractedManifestData> ExtractManifestData(
-    const std::filesystem::path& PackageRoot,
-    const std::string& PackageId,
-    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
-{
-    const std::optional<std::string> ManifestContent = ReadFileToString(PackageRoot / "package.json5");
-    if (!ManifestContent)
-    {
-        OutDiagnostics.push_back(MakeManifestDiagnostic(
-            "core:diagnostic.package.manifest.unreadable",
-            "package.json5 could not be re-read for canonical manifest hash and ue_content_roots",
-            PackageId));
-        return std::nullopt;
-    }
-    const GV2ContentCore::FParseLimits Limits;
-    std::vector<GV2ContentCore::FDiagnostic> ParseDiagnostics;
-    const std::optional<GV2ContentCore::FValue> ParsedManifest = GV2ContentCore::ParseJson5(
-        *ManifestContent, Limits, ParseDiagnostics, std::nullopt, 0u, "package.json5");
-    if (!ParsedManifest)
-    {
-        OutDiagnostics.push_back(MakeManifestDiagnostic(
-            "core:diagnostic.package.manifest.unreadable",
-            "package.json5 could not be parsed for canonical manifest hash and ue_content_roots",
-            PackageId));
-        return std::nullopt;
-    }
-    if (!ParsedManifest->IsObject())
-    {
-        OutDiagnostics.push_back(MakeManifestDiagnostic(
-            "core:diagnostic.package.manifest.invalid",
-            "package.json5 must be a JSON5 object",
-            PackageId));
-        return std::nullopt;
-    }
-
-    FExtractedManifestData Data;
-    Data.CanonicalManifestHash = GV2ContentCore::ComputeCanonicalHash(*ParsedManifest);
-
-    const GV2ContentCore::FValue* RootsField = ParsedManifest->FindField("ue_content_roots");
-    if (RootsField != nullptr)
-    {
-        if (!RootsField->IsArray())
-        {
-            OutDiagnostics.push_back(MakeManifestDiagnostic(
-                "core:diagnostic.package.manifest.invalid_ue_content_roots",
-                "ue_content_roots must be an array of strings",
-                PackageId));
-            return std::nullopt;
-        }
-        for (const GV2ContentCore::FValue& Item : RootsField->AsArray())
-        {
-            if (!Item.IsString())
-            {
-                OutDiagnostics.push_back(MakeManifestDiagnostic(
-                    "core:diagnostic.package.manifest.invalid_ue_content_roots",
-                    "ue_content_roots entries must be strings",
-                    PackageId));
-                return std::nullopt;
-            }
-            Data.UeContentRoots.push_back(Item.AsString());
-        }
-    }
-
-    return Data;
-}
-
-// PSC-02: shared by both FResolvedPackageSet factories -- pairs each already-discovered
-// descriptor with its root (by LoadIndex, matching the input roots array index exactly),
-// its canonical manifest hash, and its captured ue_content_roots (SAC-02).
-std::optional<FResolvedPackageSet> BuildResolvedPackageSet(
-    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors,
-    const std::vector<std::filesystem::path>& OrderedRoots,
-    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
-{
-    if (!Descriptors)
-    {
-        return std::nullopt;
-    }
-
-    FResolvedPackageSet Set;
-    Set.OrderedSources.reserve(Descriptors->size());
-    for (GV2ContentCore::FPackageDescriptor& Descriptor : *Descriptors)
-    {
-        const std::size_t LoadIndex = static_cast<std::size_t>(Descriptor.GetLoadIndex());
-        if (LoadIndex >= OrderedRoots.size())
-        {
-            GV2ContentCore::FDiagnostic Diagnostic;
-            Diagnostic.Code = "core:diagnostic.package.discovery.resolved_set_index_mismatch";
-            Diagnostic.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
-            Diagnostic.Message = "descriptor LoadIndex has no corresponding root -- internal discovery invariant violated";
-            Diagnostic.PackageId = Descriptor.GetPackageId();
-            OutDiagnostics.push_back(std::move(Diagnostic));
-            return std::nullopt;
-        }
-
-        const std::filesystem::path& Root = OrderedRoots[LoadIndex];
-        std::optional<FExtractedManifestData> Extracted = ExtractManifestData(Root, Descriptor.GetPackageId(), OutDiagnostics);
-        if (!Extracted)
-        {
-            return std::nullopt;
-        }
-
-        Set.OrderedSources.push_back(FResolvedPackageSource{
-            Root, std::move(Descriptor), std::move(Extracted->CanonicalManifestHash), std::move(Extracted->UeContentRoots)});
-    }
-    return Set;
-}
 
 // PKG-02: one axis of the manifest's optional "compatibility" object.
 // Absent axis is compatible by construction (Done: "отсутствие диапазона
@@ -230,9 +130,7 @@ bool CheckCompatibilityAxis(
     }
     return true;
 }
-} // namespace
-
-std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
+std::optional<FDiscoveredPackageArtifact> DiscoverPackageArtifactFromDirectory(
     const std::filesystem::path& PackageRoot,
     std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
 {
@@ -261,7 +159,7 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
         return std::nullopt;
     }
 
-    const std::optional<std::string> ManifestContent = ReadFileToString(PackageDescriptorPath);
+    const std::optional<std::string> ManifestContent = ReadManifestFileToString(PackageDescriptorPath);
     if (!ManifestContent)
     {
         OutDiagnostics.push_back(MakeManifestDiagnostic(
@@ -578,7 +476,21 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
         return std::nullopt;
     }
 
-    return FPackageDescriptor(
+    std::vector<std::string> UeContentRoots;
+    const FValue* UeContentRootsField = ParsedManifest->FindField("ue_content_roots");
+    if (UeContentRootsField != nullptr && UeContentRootsField->IsArray())
+    {
+        for (const FValue& RootVal : UeContentRootsField->AsArray())
+        {
+            if (RootVal.IsString())
+            {
+                UeContentRoots.push_back(RootVal.AsString());
+            }
+        }
+    }
+    std::string CanonicalManifestHash = ComputeCanonicalHash(*ParsedManifest);
+
+    FPackageDescriptor Descriptor(
         ResolvedPackageId,
         ResolvedPackageId,
         0u,
@@ -589,14 +501,23 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
         std::move(Tombstones),
         VersionField->AsString(),
         std::move(Dependencies));
+
+    return FDiscoveredPackageArtifact{
+        PackageRoot,
+        std::move(Descriptor),
+        std::move(CanonicalManifestHash),
+        std::move(UeContentRoots)};
 }
 
-std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesFromDirectories(
+
+std::optional<std::vector<FDiscoveredPackageArtifact>> DiscoverPackageArtifactsFromDirectories(
     const std::vector<std::filesystem::path>& PackageRoots,
     std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
 {
     using namespace GV2ContentCore;
     std::vector<FDiagnostic> LocalDiagnostics;
+    std::vector<FDiscoveredPackageArtifact> Artifacts;
+    Artifacts.reserve(PackageRoots.size());
     std::vector<FPackageDescriptor> Descriptors;
     Descriptors.reserve(PackageRoots.size());
 
@@ -606,14 +527,15 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
     {
         const std::filesystem::path& Root = PackageRoots[Index];
         std::vector<FDiagnostic> SingleDiagnostics;
-        std::optional<FPackageDescriptor> Discovered = DiscoverPackageFromDirectory(Root, SingleDiagnostics);
+        std::optional<FDiscoveredPackageArtifact> Discovered =
+            DiscoverPackageArtifactFromDirectory(Root, SingleDiagnostics);
         if (!Discovered)
         {
             LocalDiagnostics.insert(LocalDiagnostics.end(), SingleDiagnostics.begin(), SingleDiagnostics.end());
             continue;
         }
 
-        const std::string& PackageId = Discovered->GetPackageId();
+        const std::string& PackageId = Discovered->Descriptor.GetPackageId();
         const auto PrevIt = SeenPackageRoots.find(PackageId);
         if (PrevIt != SeenPackageRoots.end())
         {
@@ -630,7 +552,14 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
             SeenPackageRoots.emplace(PackageId, Root);
         }
 
-        Descriptors.push_back(Discovered->WithLoadIndex(static_cast<std::uint32_t>(Index)));
+        FPackageDescriptor DescriptorWithIndex =
+            Discovered->Descriptor.WithLoadIndex(static_cast<std::uint32_t>(Index));
+        Descriptors.push_back(DescriptorWithIndex);
+        Artifacts.push_back(FDiscoveredPackageArtifact{
+            std::move(Discovered->Root),
+            std::move(DescriptorWithIndex),
+            std::move(Discovered->CanonicalManifestHash),
+            std::move(Discovered->UeContentRoots)});
     }
 
     if (!LocalDiagnostics.empty())
@@ -648,32 +577,11 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
         return std::nullopt;
     }
 
-    return Descriptors;
+    return Artifacts;
 }
 
-bool IsContainerDirectory(const std::filesystem::path& Directory)
-{
-    std::error_code Ec;
-    if (!std::filesystem::is_directory(Directory, Ec) || Ec)
-    {
-        return false;
-    }
-    if (std::filesystem::exists(Directory / "package.json5", Ec))
-    {
-        return false;
-    }
-    for (const auto& Entry : std::filesystem::directory_iterator(Directory, Ec))
-    {
-        if (Ec) break;
-        if (Entry.is_directory(Ec) && std::filesystem::exists(Entry.path() / "package.json5", Ec))
-        {
-            return true;
-        }
-    }
-    return false;
-}
 
-std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesFromContainer(
+std::optional<std::vector<FDiscoveredPackageArtifact>> DiscoverPackageArtifactsFromContainer(
     const std::filesystem::path& ContainerDir,
     std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics,
     std::vector<std::filesystem::path>* OutOrderedRoots)
@@ -688,6 +596,75 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
         Diagnostic.Message = "Container directory not found: " + ContainerDir.string();
         OutDiagnostics.push_back(std::move(Diagnostic));
         return std::nullopt;
+    }
+
+    struct FCandidatePackage
+    {
+        std::string PackageId;
+        std::filesystem::path Root;
+        FDiscoveredPackageArtifact Artifact;
+    };
+    std::vector<FCandidatePackage> DiscoveredCandidates;
+    std::vector<FDiagnostic> LocalDiagnostics;
+
+    for (const auto& Entry : std::filesystem::directory_iterator(ContainerDir, Ec))
+    {
+        if (Ec) break;
+        if (Entry.is_directory(Ec) && std::filesystem::exists(Entry.path() / "package.json5", Ec))
+        {
+            std::vector<FDiagnostic> SingleDiags;
+            std::optional<FDiscoveredPackageArtifact> Art =
+                DiscoverPackageArtifactFromDirectory(Entry.path(), SingleDiags);
+            if (!Art)
+            {
+                LocalDiagnostics.insert(LocalDiagnostics.end(), SingleDiags.begin(), SingleDiags.end());
+            }
+            else
+            {
+                DiscoveredCandidates.push_back({Art->Descriptor.GetPackageId(), Entry.path(), std::move(*Art)});
+            }
+        }
+    }
+
+    if (!LocalDiagnostics.empty())
+    {
+        std::sort(LocalDiagnostics.begin(), LocalDiagnostics.end());
+        OutDiagnostics.insert(OutDiagnostics.end(), LocalDiagnostics.begin(), LocalDiagnostics.end());
+        return std::nullopt;
+    }
+
+    if (DiscoveredCandidates.empty())
+    {
+        FDiagnostic Diagnostic;
+        Diagnostic.Code = "core:diagnostic.package.discovery.no_packages_found";
+        Diagnostic.Severity = EDiagnosticSeverity::Error;
+        Diagnostic.Message = "No package roots found in container directory: " + ContainerDir.string();
+        OutDiagnostics.push_back(std::move(Diagnostic));
+        return std::nullopt;
+    }
+
+    std::map<std::string, std::filesystem::path> SeenPackageIds;
+    for (const auto& Cand : DiscoveredCandidates)
+    {
+        const auto PrevIt = SeenPackageIds.find(Cand.PackageId);
+        if (PrevIt != SeenPackageIds.end())
+        {
+            FDiagnostic Diagnostic;
+            Diagnostic.Code = "core:diagnostic.package.discovery.duplicate_package_id";
+            Diagnostic.Severity = EDiagnosticSeverity::Error;
+            Diagnostic.Message = "Duplicate package_id '" + Cand.PackageId + "' discovered in '"
+                + PrevIt->second.string() + "' and '" + Cand.Root.string() + "'";
+            Diagnostic.PackageId = Cand.PackageId;
+            OutDiagnostics.push_back(std::move(Diagnostic));
+            return std::nullopt;
+        }
+        SeenPackageIds.emplace(Cand.PackageId, Cand.Root);
+    }
+
+    std::map<std::string, FCandidatePackage*> CandidateMap;
+    for (auto& Cand : DiscoveredCandidates)
+    {
+        CandidateMap[Cand.PackageId] = &Cand;
     }
 
     const std::filesystem::path LockFilePath = ContainerDir / "mods.lock.json5";
@@ -742,7 +719,7 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
         {
             std::string PackageId;
             std::int64_t LoadIndex = 0;
-            std::filesystem::path Root;
+            FCandidatePackage* Cand = nullptr;
         };
         std::vector<FLockedPkg> LockedPkgs;
         const auto& LockArray = PackagesVal->AsArray();
@@ -759,6 +736,7 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
                 OutDiagnostics.push_back(std::move(Diagnostic));
                 return std::nullopt;
             }
+
             const FValue* PkgIdVal = Item.FindField("package_id");
             const FValue* LoadIndexVal = Item.FindField("load_index");
             if (!PkgIdVal || !PkgIdVal->IsString() || !LoadIndexVal || !LoadIndexVal->IsInteger())
@@ -773,30 +751,8 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
             }
 
             const std::string PkgId = PkgIdVal->AsString();
-            std::filesystem::path PkgPath;
-            const std::filesystem::path DirectPath = ContainerDir / PkgId;
-            if (std::filesystem::is_directory(DirectPath, Ec) && std::filesystem::exists(DirectPath / "package.json5", Ec))
-            {
-                PkgPath = DirectPath;
-            }
-            else
-            {
-                for (const auto& Entry : std::filesystem::directory_iterator(ContainerDir, Ec))
-                {
-                    if (Entry.is_directory(Ec) && std::filesystem::exists(Entry.path() / "package.json5", Ec))
-                    {
-                        std::vector<FDiagnostic> TempDiags;
-                        auto Desc = DiscoverPackageFromDirectory(Entry.path(), TempDiags);
-                        if (Desc && Desc->GetPackageId() == PkgId)
-                        {
-                            PkgPath = Entry.path();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (PkgPath.empty())
+            const auto CandIt = CandidateMap.find(PkgId);
+            if (CandIt == CandidateMap.end())
             {
                 FDiagnostic Diagnostic;
                 Diagnostic.Code = "core:diagnostic.package.lock.mismatch";
@@ -808,7 +764,7 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
                 return std::nullopt;
             }
 
-            LockedPkgs.push_back({PkgId, LoadIndexVal->AsInteger(), std::move(PkgPath)});
+            LockedPkgs.push_back({PkgId, LoadIndexVal->AsInteger(), CandIt->second});
         }
 
         std::sort(LockedPkgs.begin(), LockedPkgs.end(), [](const FLockedPkg& A, const FLockedPkg& B) {
@@ -817,111 +773,53 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
 
         std::vector<std::filesystem::path> OrderedRoots;
         OrderedRoots.reserve(LockedPkgs.size());
-        for (const auto& Locked : LockedPkgs)
+        std::vector<FDiscoveredPackageArtifact> OrderedArtifacts;
+        OrderedArtifacts.reserve(LockedPkgs.size());
+        std::vector<FPackageDescriptor> OrderedDescriptorsForValidation;
+        OrderedDescriptorsForValidation.reserve(LockedPkgs.size());
+        std::vector<FResolvedPackageSource> ResolvedSourcesForVerify;
+        ResolvedSourcesForVerify.reserve(LockedPkgs.size());
+
+        for (std::size_t Index = 0; Index < LockedPkgs.size(); ++Index)
         {
-            OrderedRoots.push_back(Locked.Root);
+            FCandidatePackage* Cand = LockedPkgs[Index].Cand;
+            FPackageDescriptor DescriptorWithIndex =
+                Cand->Artifact.Descriptor.WithLoadIndex(static_cast<std::uint32_t>(Index));
+            OrderedRoots.push_back(Cand->Root);
+            OrderedDescriptorsForValidation.push_back(DescriptorWithIndex);
+            ResolvedSourcesForVerify.push_back(FResolvedPackageSource{
+                Cand->Root,
+                DescriptorWithIndex,
+                Cand->Artifact.CanonicalManifestHash,
+                Cand->Artifact.UeContentRoots});
+            OrderedArtifacts.push_back(FDiscoveredPackageArtifact{
+                Cand->Root,
+                std::move(DescriptorWithIndex),
+                std::move(Cand->Artifact.CanonicalManifestHash),
+                std::move(Cand->Artifact.UeContentRoots)});
         }
 
-        std::optional<std::vector<FPackageDescriptor>> Descriptors =
-            DiscoverPackagesFromDirectories(OrderedRoots, OutDiagnostics);
-        if (!Descriptors)
+        std::vector<FDiagnostic> ValidationDiagnostics = ValidatePackageDescriptors(OrderedDescriptorsForValidation);
+        if (!ValidationDiagnostics.empty())
         {
+            std::sort(ValidationDiagnostics.begin(), ValidationDiagnostics.end());
+            OutDiagnostics.insert(OutDiagnostics.end(), ValidationDiagnostics.begin(), ValidationDiagnostics.end());
             return std::nullopt;
         }
 
-        // PSC-03: VerifyModsLock checks fingerprints, which need each source's
-        // CanonicalManifestHash -- built from a COPY of Descriptors (BuildResolvedPackageSet
-        // takes its descriptors by value and moves them) so the original, returned below,
-        // is left untouched.
-        std::optional<FResolvedPackageSet> ResolvedForVerify =
-            BuildResolvedPackageSet(Descriptors, OrderedRoots, OutDiagnostics);
-        if (!ResolvedForVerify)
-        {
-            return std::nullopt;
-        }
-
-        if (!VerifyModsLock(*LockContent, ResolvedForVerify->OrderedSources, OutDiagnostics))
+        if (!VerifyModsLock(*LockContent, ResolvedSourcesForVerify, OutDiagnostics))
         {
             return std::nullopt;
         }
 
         if (OutOrderedRoots)
         {
-            *OutOrderedRoots = OrderedRoots;
+            *OutOrderedRoots = std::move(OrderedRoots);
         }
-        return Descriptors;
+        return OrderedArtifacts;
     }
 
-    struct FCandidatePackage
-    {
-        std::string PackageId;
-        std::filesystem::path Root;
-        FPackageDescriptor Descriptor;
-    };
-    std::vector<FCandidatePackage> DiscoveredCandidates;
-    std::vector<FDiagnostic> LocalDiagnostics;
-
-    for (const auto& Entry : std::filesystem::directory_iterator(ContainerDir, Ec))
-    {
-        if (Ec) break;
-        if (Entry.is_directory(Ec) && std::filesystem::exists(Entry.path() / "package.json5", Ec))
-        {
-            std::vector<FDiagnostic> SingleDiags;
-            std::optional<FPackageDescriptor> Desc = DiscoverPackageFromDirectory(Entry.path(), SingleDiags);
-            if (!Desc)
-            {
-                LocalDiagnostics.insert(LocalDiagnostics.end(), SingleDiags.begin(), SingleDiags.end());
-            }
-            else
-            {
-                DiscoveredCandidates.push_back({Desc->GetPackageId(), Entry.path(), std::move(*Desc)});
-            }
-        }
-    }
-
-    if (!LocalDiagnostics.empty())
-    {
-        std::sort(LocalDiagnostics.begin(), LocalDiagnostics.end());
-        OutDiagnostics.insert(OutDiagnostics.end(), LocalDiagnostics.begin(), LocalDiagnostics.end());
-        return std::nullopt;
-    }
-
-    if (DiscoveredCandidates.empty())
-    {
-        FDiagnostic Diagnostic;
-        Diagnostic.Code = "core:diagnostic.package.discovery.no_packages_found";
-        Diagnostic.Severity = EDiagnosticSeverity::Error;
-        Diagnostic.Message = "No package roots found in container directory: " + ContainerDir.string();
-        OutDiagnostics.push_back(std::move(Diagnostic));
-        return std::nullopt;
-    }
-
-    std::map<std::string, std::filesystem::path> SeenPackageIds;
-    for (const auto& Cand : DiscoveredCandidates)
-    {
-        auto It = SeenPackageIds.find(Cand.PackageId);
-        if (It != SeenPackageIds.end())
-        {
-            FDiagnostic Diagnostic;
-            Diagnostic.Code = "core:diagnostic.package.discovery.duplicate_package_id";
-            Diagnostic.Severity = EDiagnosticSeverity::Error;
-            Diagnostic.Message = "Duplicate package_id '" + Cand.PackageId + "' discovered in '"
-                + It->second.string() + "' and '" + Cand.Root.string() + "'";
-            Diagnostic.PackageId = Cand.PackageId;
-            LocalDiagnostics.push_back(std::move(Diagnostic));
-        }
-        else
-        {
-            SeenPackageIds.emplace(Cand.PackageId, Cand.Root);
-        }
-    }
-    if (!LocalDiagnostics.empty())
-    {
-        std::sort(LocalDiagnostics.begin(), LocalDiagnostics.end());
-        OutDiagnostics.insert(OutDiagnostics.end(), LocalDiagnostics.begin(), LocalDiagnostics.end());
-        return std::nullopt;
-    }
-
+    // Topological sorting when mods.lock.json5 is absent
     if (SeenPackageIds.find("core") == SeenPackageIds.end())
     {
         FDiagnostic Diagnostic;
@@ -932,10 +830,10 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
         return std::nullopt;
     }
 
-    std::map<std::string, const FCandidatePackage*> CandidateMap;
+    std::map<std::string, const FCandidatePackage*> CandidateMapTopo;
     for (const auto& Cand : DiscoveredCandidates)
     {
-        CandidateMap[Cand.PackageId] = &Cand;
+        CandidateMapTopo[Cand.PackageId] = &Cand;
     }
 
     std::map<std::string, std::set<std::string>> Dependants;
@@ -947,10 +845,10 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
 
     for (const auto& Cand : DiscoveredCandidates)
     {
-        for (const auto& Dep : Cand.Descriptor.GetDependencies())
+        for (const auto& Dep : Cand.Artifact.Descriptor.GetDependencies())
         {
-            const auto TargetIt = CandidateMap.find(Dep.GetPackageId());
-            if (TargetIt == CandidateMap.end())
+            const auto TargetIt = CandidateMapTopo.find(Dep.GetPackageId());
+            if (TargetIt == CandidateMapTopo.end())
             {
                 FDiagnostic Diagnostic;
                 Diagnostic.Code = "core:diagnostic.package.order.missing_dependency";
@@ -977,6 +875,7 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
     }
 
     std::vector<std::filesystem::path> OrderedRoots;
+    std::vector<const FCandidatePackage*> OrderedCandidates;
     std::set<std::string> Ready;
     for (const auto& [PkgId, Deg] : InDegree)
     {
@@ -986,7 +885,8 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
         }
     }
 
-    OrderedRoots.push_back(CandidateMap["core"]->Root);
+    OrderedRoots.push_back(CandidateMapTopo["core"]->Root);
+    OrderedCandidates.push_back(CandidateMapTopo["core"]);
     for (const std::string& DepOfCore : Dependants["core"])
     {
         if (--InDegree[DepOfCore] == 0)
@@ -999,7 +899,9 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
     {
         const std::string NextPkgId = *Ready.begin();
         Ready.erase(Ready.begin());
-        OrderedRoots.push_back(CandidateMap[NextPkgId]->Root);
+        const FCandidatePackage* Cand = CandidateMapTopo[NextPkgId];
+        OrderedRoots.push_back(Cand->Root);
+        OrderedCandidates.push_back(Cand);
 
         for (const std::string& DepTarget : Dependants[NextPkgId])
         {
@@ -1020,16 +922,144 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
         return std::nullopt;
     }
 
-    std::optional<std::vector<FPackageDescriptor>> Descriptors =
-        DiscoverPackagesFromDirectories(OrderedRoots, OutDiagnostics);
-    if (!Descriptors)
+    std::vector<FDiscoveredPackageArtifact> OrderedArtifacts;
+    OrderedArtifacts.reserve(OrderedCandidates.size());
+    std::vector<FPackageDescriptor> OrderedDescriptorsForValidation;
+    OrderedDescriptorsForValidation.reserve(OrderedCandidates.size());
+
+    for (std::size_t Index = 0; Index < OrderedCandidates.size(); ++Index)
     {
+        const FCandidatePackage* Cand = OrderedCandidates[Index];
+        FPackageDescriptor DescriptorWithIndex =
+            Cand->Artifact.Descriptor.WithLoadIndex(static_cast<std::uint32_t>(Index));
+        OrderedDescriptorsForValidation.push_back(DescriptorWithIndex);
+        OrderedArtifacts.push_back(FDiscoveredPackageArtifact{
+            Cand->Artifact.Root,
+            std::move(DescriptorWithIndex),
+            Cand->Artifact.CanonicalManifestHash,
+            Cand->Artifact.UeContentRoots});
+    }
+
+    std::vector<FDiagnostic> ValidationDiagnostics = ValidatePackageDescriptors(OrderedDescriptorsForValidation);
+    if (!ValidationDiagnostics.empty())
+    {
+        std::sort(ValidationDiagnostics.begin(), ValidationDiagnostics.end());
+        OutDiagnostics.insert(OutDiagnostics.end(), ValidationDiagnostics.begin(), ValidationDiagnostics.end());
         return std::nullopt;
     }
 
     if (OutOrderedRoots)
     {
-        *OutOrderedRoots = OrderedRoots;
+        *OutOrderedRoots = std::move(OrderedRoots);
+    }
+    return OrderedArtifacts;
+}
+} // namespace
+
+
+namespace TestHooks
+{
+std::size_t GetManifestReadCount()
+{
+    return GManifestReadCount.load();
+}
+
+void ResetManifestReadCount()
+{
+    GManifestReadCount.store(0);
+}
+} // namespace TestHooks
+
+bool IsContainerDirectory(const std::filesystem::path& Directory)
+{
+    std::error_code Ec;
+    if (!std::filesystem::is_directory(Directory, Ec) || Ec)
+    {
+        return false;
+    }
+    if (std::filesystem::exists(Directory / "package.json5", Ec))
+    {
+        return false;
+    }
+    for (const auto& Entry : std::filesystem::directory_iterator(Directory, Ec))
+    {
+        if (Ec) break;
+        if (Entry.is_directory(Ec) && std::filesystem::exists(Entry.path() / "package.json5", Ec))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
+    const std::filesystem::path& PackageRoot,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
+{
+    auto Artifact = DiscoverPackageArtifactFromDirectory(PackageRoot, OutDiagnostics);
+    if (!Artifact)
+    {
+        return std::nullopt;
+    }
+    return std::move(Artifact->Descriptor);
+}
+
+std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesFromDirectories(
+    const std::vector<std::filesystem::path>& PackageRoots,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
+{
+    auto Artifacts = DiscoverPackageArtifactsFromDirectories(PackageRoots, OutDiagnostics);
+    if (!Artifacts)
+    {
+        return std::nullopt;
+    }
+    std::vector<GV2ContentCore::FPackageDescriptor> Descriptors;
+    Descriptors.reserve(Artifacts->size());
+    for (auto& Art : *Artifacts)
+    {
+        Descriptors.push_back(std::move(Art.Descriptor));
+    }
+    return Descriptors;
+}
+
+std::optional<FResolvedPackageSet> ResolvePackageSetFromDirectories(
+    const std::vector<std::filesystem::path>& PackageRoots,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
+{
+    auto Artifacts = DiscoverPackageArtifactsFromDirectories(PackageRoots, OutDiagnostics);
+    if (!Artifacts)
+    {
+        return std::nullopt;
+    }
+    FResolvedPackageSet Set;
+    Set.OrderedSources.reserve(Artifacts->size());
+    for (auto& Art : *Artifacts)
+    {
+        Set.OrderedSources.push_back(FResolvedPackageSource{
+            std::move(Art.Root),
+            std::move(Art.Descriptor),
+            std::move(Art.CanonicalManifestHash),
+            std::move(Art.UeContentRoots)});
+    }
+    return Set;
+}
+
+std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesFromContainer(
+    const std::filesystem::path& ContainerDir,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics,
+    std::vector<std::filesystem::path>* OutOrderedRoots)
+{
+    auto Artifacts = DiscoverPackageArtifactsFromContainer(ContainerDir, OutDiagnostics, OutOrderedRoots);
+    if (!Artifacts)
+    {
+        return std::nullopt;
+    }
+    std::vector<GV2ContentCore::FPackageDescriptor> Descriptors;
+    Descriptors.reserve(Artifacts->size());
+    for (auto& Art : *Artifacts)
+    {
+        Descriptors.push_back(std::move(Art.Descriptor));
     }
     return Descriptors;
 }
@@ -1038,19 +1068,22 @@ std::optional<FResolvedPackageSet> ResolvePackageSetFromContainer(
     const std::filesystem::path& ContainerDir,
     std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
 {
-    std::vector<std::filesystem::path> OrderedRoots;
-    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors =
-        DiscoverPackagesFromContainer(ContainerDir, OutDiagnostics, &OrderedRoots);
-    return BuildResolvedPackageSet(std::move(Descriptors), OrderedRoots, OutDiagnostics);
-}
-
-std::optional<FResolvedPackageSet> ResolvePackageSetFromDirectories(
-    const std::vector<std::filesystem::path>& PackageRoots,
-    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
-{
-    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors =
-        DiscoverPackagesFromDirectories(PackageRoots, OutDiagnostics);
-    return BuildResolvedPackageSet(std::move(Descriptors), PackageRoots, OutDiagnostics);
+    auto Artifacts = DiscoverPackageArtifactsFromContainer(ContainerDir, OutDiagnostics, nullptr);
+    if (!Artifacts)
+    {
+        return std::nullopt;
+    }
+    FResolvedPackageSet Set;
+    Set.OrderedSources.reserve(Artifacts->size());
+    for (auto& Art : *Artifacts)
+    {
+        Set.OrderedSources.push_back(FResolvedPackageSource{
+            std::move(Art.Root),
+            std::move(Art.Descriptor),
+            std::move(Art.CanonicalManifestHash),
+            std::move(Art.UeContentRoots)});
+    }
+    return Set;
 }
 
 std::vector<FDiscoveredScriptSource> DiscoverPackageScripts(

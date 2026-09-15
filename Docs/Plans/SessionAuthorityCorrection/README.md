@@ -83,7 +83,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 > **Нарушение процесса:** коммит `e8218e3` (`SAC-03`) сделан до `4576aef` (`SAC-01`), несмотря на явное требование плана о неизменном порядке. Нарушение зафиксировано; исполнение плана выровнено.
 
-- [ ] M0 — SAC-01…03 приняты по Done/Evidence.
+- [x] M0 — SAC-01…03 приняты по Done/Evidence.
 - [ ] M1 — SAC-04 принят по Done/Evidence.
 - [ ] M2 — SAC-05…06 приняты по Done/Evidence.
 
@@ -152,7 +152,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-02 — Захватить `ue_content_roots` в resolved package set
 
-- [ ] SAC-02 — Захватить `ue_content_roots` в resolved package set
+- [x] SAC-02 — Захватить `ue_content_roots` в resolved package set
 
 **Зависимость:** SAC-03. **Файлы:** `Source/GV2ContentHostSupport/Public/GV2ContentHostSupport/PackageDiscovery.h`, `Source/GV2ContentHostSupport/Private/PackageDiscovery.cpp`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp/.h`, portable conformance в `Source/GV2ContentHostSupport/Private/`.
 

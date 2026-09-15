@@ -175,5 +175,11 @@ public:
 private:
     std::map<std::string, std::filesystem::path, std::less<>> PackageRoots;
 };
+
+namespace TestHooks
+{
+    GV2_CONTENT_HOST_SUPPORT_API std::size_t GetManifestReadCount();
+    GV2_CONTENT_HOST_SUPPORT_API void ResetManifestReadCount();
+}
 }
 

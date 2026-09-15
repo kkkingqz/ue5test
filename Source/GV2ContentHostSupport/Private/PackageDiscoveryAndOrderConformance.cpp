@@ -1072,6 +1072,105 @@ std::string RunPackageDiscoveryAndOrderConformance()
         }
     }
 
+    // 16. SAC-02: Manifest single-read conformance: verify that both ResolvePackageSetFromDirectories
+    // and ResolvePackageSetFromContainer perform exactly 1 read per package manifest, eliminating any
+    // double I/O or race windows.
+    {
+        const std::filesystem::path SingleReadDir = TempDir.Dir / "case16_single_read";
+        const std::filesystem::path RootCore = SingleReadDir / "core";
+        const std::filesystem::path RootModA = SingleReadDir / "moda";
+        const std::filesystem::path RootModB = SingleReadDir / "modb";
+
+        WritePackage(RootCore, R"json5({
+            package_id: "core",
+            namespace: "core",
+            version: "1.0.0",
+            ue_content_roots: ["/Game/Core"],
+        })json5");
+        WritePackage(RootModA, R"json5({
+            package_id: "moda",
+            namespace: "moda",
+            version: "1.0.0",
+            dependencies: [
+                { package_id: "core", load_after: true },
+            ],
+            ue_content_roots: ["/Game/ModA"],
+        })json5");
+        WritePackage(RootModB, R"json5({
+            package_id: "modb",
+            namespace: "modb",
+            version: "1.0.0",
+            dependencies: [
+                { package_id: "moda", load_after: true },
+            ],
+            ue_content_roots: ["/Game/ModB"],
+        })json5");
+
+        // Test 1: ResolvePackageSetFromDirectories on 2 packages must perform exactly 2 manifest reads.
+        GV2ContentHostSupport::TestHooks::ResetManifestReadCount();
+        std::vector<FDiagnostic> DiagsDirs;
+        std::optional<FResolvedPackageSet> SetDirs =
+            ResolvePackageSetFromDirectories({RootCore, RootModA}, DiagsDirs);
+        if (!SetDirs.has_value() || SetDirs->OrderedSources.size() != 2)
+        {
+            return "discovery_order.case16_directories_resolve_failed";
+        }
+        if (GV2ContentHostSupport::TestHooks::GetManifestReadCount() != 2)
+        {
+            return "discovery_order.case16_directories_manifest_not_single_read";
+        }
+        if (SetDirs->OrderedSources[0].UeContentRoots != std::vector<std::string>{"/Game/Core"}
+            || SetDirs->OrderedSources[1].UeContentRoots != std::vector<std::string>{"/Game/ModA"})
+        {
+            return "discovery_order.case16_directories_roots_mismatch";
+        }
+        if (SetDirs->OrderedSources[0].CanonicalManifestHash.empty()
+            || SetDirs->OrderedSources[1].CanonicalManifestHash.empty())
+        {
+            return "discovery_order.case16_directories_hash_empty";
+        }
+
+        // Test 2: ResolvePackageSetFromContainer (topological sort, 3 packages) must perform exactly 3 manifest reads.
+        GV2ContentHostSupport::TestHooks::ResetManifestReadCount();
+        std::vector<FDiagnostic> DiagsCont;
+        std::optional<FResolvedPackageSet> SetCont =
+            ResolvePackageSetFromContainer(SingleReadDir, DiagsCont);
+        if (!SetCont.has_value() || SetCont->OrderedSources.size() != 3)
+        {
+            return "discovery_order.case16_container_resolve_failed";
+        }
+        if (GV2ContentHostSupport::TestHooks::GetManifestReadCount() != 3)
+        {
+            return "discovery_order.case16_container_manifest_not_single_read";
+        }
+        if (SetCont->OrderedSources[0].Descriptor.GetPackageId() != "core"
+            || SetCont->OrderedSources[1].Descriptor.GetPackageId() != "moda"
+            || SetCont->OrderedSources[2].Descriptor.GetPackageId() != "modb")
+        {
+            return "discovery_order.case16_container_ordering_mismatch";
+        }
+
+        // Test 3: ResolvePackageSetFromContainer with mods.lock.json5 must perform exactly 3 manifest reads.
+        const std::string LockContent = GenerateModsLockContent(SetCont->OrderedSources);
+        {
+            std::ofstream LockStream(SingleReadDir / "mods.lock.json5", std::ios::binary);
+            LockStream << LockContent;
+        }
+
+        GV2ContentHostSupport::TestHooks::ResetManifestReadCount();
+        std::vector<FDiagnostic> DiagsLocked;
+        std::optional<FResolvedPackageSet> SetLocked =
+            ResolvePackageSetFromContainer(SingleReadDir, DiagsLocked);
+        if (!SetLocked.has_value() || SetLocked->OrderedSources.size() != 3)
+        {
+            return "discovery_order.case16_locked_container_resolve_failed";
+        }
+        if (GV2ContentHostSupport::TestHooks::GetManifestReadCount() != 3)
+        {
+            return "discovery_order.case16_locked_container_manifest_not_single_read";
+        }
+    }
+
     return "";
 }
 } // namespace GV2ContentHostSupport::Testing
