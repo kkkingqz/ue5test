@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.9
-updated: 2026-09-12
+version: 2.10
+updated: 2026-09-15
 ---
 
 # Architecture Decision Records
@@ -58,6 +58,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0044](0044-session-replacement-and-registry-sealing.md) | accepted | Session Replacement and Registry Sealing: две границы replacement, один lifecycle owner, явный candidate context и descriptor-driven sealing Lua registries |
 | [0045](0045-atomic-save-slot-generation-publication.md) | accepted | Atomic Save Slot Generation Publication: immutable generations, atomic head `Current`/`Previous`, single writer и явный выбор revision |
 | [0046](0046-test-content-coupling-boundary.md) | accepted | Граница привязки тестов к контенту: две категории тестов (contract vs smoke), отмена исключения Tests, baseline ratchet и потолок размера файлов |
+| [0047](0047-one-shot-effect-pipeline-and-origins.md) | accepted | Единый pipeline одноразовых эффектов: источник не входит в identity эффекта, один `sequence` и apply path для Lua-published и host-local, проверяемый критерий допустимости host-local |
 
 ## Template
 

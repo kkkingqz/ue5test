@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 0.1
+version: 0.2
 updated: 2026-09-15
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -14,6 +14,7 @@ decisions:
   - ../../ADR/0041-ui-commit-rollback-model.md
   - ../../ADR/0043-presentation-apply-boundary.md
   - ../../ADR/0044-session-replacement-and-registry-sealing.md
+  - ../../ADR/0047-one-shot-effect-pipeline-and-origins.md
 ---
 
 # Presentation Effect Pipeline: план реализации
@@ -117,9 +118,9 @@ decisions:
 
 ### PEP-01 — Зафиксировать единый pipeline эффектов с двумя источниками
 
-- [ ] PEP-01 — Зафиксировать единый pipeline эффектов с двумя источниками
+- [x] PEP-01 — Зафиксировать единый pipeline эффектов с двумя источниками
 
-**Зависимость:** нет. **Файлы:** `Docs/ADR/0047-*.md` — следующий свободный номер на момент записи, проверенный по каталогу, а не зарезервированный заранее; `Docs/UI/PresentationSnapshotAndEffects.md`.
+**Зависимость:** нет. **Файлы:** [`ADR-0047`](../../ADR/0047-one-shot-effect-pipeline-and-origins.md); `Docs/UI/PresentationSnapshotAndEffects.md`.
 
 **Инвариант:** [INV-014](../../Architecture/Invariants.md) — presentation восстановима и не является источником gameplay-истины. Host-local источник эффекта — новый путь, по которому в презентацию попадает сообщение, не пришедшее из Lua. Если такому эффекту разрешить нести gameplay-значимое состояние, он станет каналом авторитета мимо canonical state, и нарушение будет наблюдаемым: значение, пережившее reload, которого нет в сохранении.
 

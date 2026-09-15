@@ -1,8 +1,8 @@
 ---
 title: Presentation Snapshot and Effects
 status: draft
-version: 0.7
-updated: 2026-08-15
+version: 0.8
+updated: 2026-09-15
 depends_on:
   - UIDocumentAndReconciliation.md
   - ImageResources.md
@@ -11,6 +11,7 @@ decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0011-blueprint-screen-templates.md
   - ../ADR/0013-unified-text-pipeline.md
+  - ../ADR/0047-one-shot-effect-pipeline-and-origins.md
 ---
 
 # Presentation Snapshot and Effects
@@ -21,7 +22,9 @@ decisions:
 > **Реализация:** частично — snapshot применяется, эффекты не реализованы.
 > **Проверки:** `GV2.Runtime.Presentation.*`.
 
-Lua → UE сообщения разделены на durable desired snapshot и one-shot effects. Snapshot достаточен для полного восстановления presentation; effect никогда не является единственным носителем важного состояния.
+Сообщения презентации разделены на durable desired snapshot и one-shot effects. Snapshot достаточен для полного восстановления presentation; effect никогда не является единственным носителем важного состояния.
+
+Разделение проходит по одноразовости и отбрасываемости, а не по источнику: источник эффекта не входит в его identity ([ADR-0047](../ADR/0047-one-shot-effect-pipeline-and-origins.md)). Snapshot публикует только Lua.
 
 ## Presentation snapshot
 
@@ -63,6 +66,22 @@ Lua публикует snapshot только через fixed binding `game.ui.p
 
 Examples: play sound, semantic animation, short transition, transient toast. Effect может быть discarded после stale target/session. Save/load его не replays.
 
+### Источники эффекта
+
+Поля источника в DTO нет. Источники различаются только точкой входа и во всём остальном равноправны: одна очередь, один счётчик `sequence`, один apply path.
+
+- **Lua-published.** Фиксированный binding рядом с `publish_snapshot`. Binding schema-validates и deep-copies DTO в outbound queue; reconciler не запускается внутри Lua call.
+- **Host-local.** Презентационное событие без gameplay-смысла: наведение и уход курсора, завершение показа по таймеру. Границу Lua не пересекает.
+
+**Критерий допустимости host-local эффекта.** Host-local источник разрешён эффекту тогда и только тогда, когда выполнены оба условия:
+
+1. Canonical state до порождения эффекта и после его полного исполнения побайтово равны.
+2. После rebuild presentation эффект не воспроизводится сам и не требуется для корректного состояния: presentation полностью строится из latest complete snapshot.
+
+Оба условия проверяются прогоном. Эффект, не удовлетворяющий любому из них, идёт через Lua и command path.
+
+Hover/unhover остаются UE-local и Semantic Input не создают — см. [Semantic Input](SemanticInput.md) и [Widget Registry](WidgetRegistry.md); host-local источник это правило не ослабляет.
+
 ## TextSpec and locale resolution
 
 Lua публикует только `TextSpec { text_id, args, style? }`. Concatenation локализованных fragments в gameplay Lua запрещена. Host localization adapter выбирает locale, применяет plural/gender/number rules и создаёт UE `FGV2TextViewModel` либо portable report string. `style` и markup token values разрешаются только host theme-ом.
@@ -93,9 +112,11 @@ Gameplay state не меняется в результате rebuild.
 - Snapshot revision monotonically increases.
 - Same/older revision ignored.
 - Effects have sequence and optional target identity.
+- `sequence` монотонно возрастает по всей очереди независимо от источника; второго счётчика не существует.
+- Отбрасывание эффекта несёт типизированную причину: stale target, чужое поколение сессии, устаревшая ревизия. Общий булев отказ не допускается — он делает неотличимой доставку в чужую сессию от штатного отбрасывания.
 - Snapshot application is atomic at logical presentation level; partial apply cannot become interactive.
 - Failed effect does not invalidate snapshot or gameplay state.
 
 ## Tests
 
-Tests cover rebuild from snapshot, stale revision/effect, missing optional/required resources, prefetch non-authority, input gate during apply, effect non-persistence и actor/widget reconstruction.
+Tests cover rebuild from snapshot, stale revision/effect, missing optional/required resources, prefetch non-authority, input gate during apply, effect non-persistence и actor/widget reconstruction. Non-persistence проверяется поведением после реальной загрузки, а не отсутствием поля в файле сохранения. Монотонность `sequence` проверяется потоком, в котором эффекты обоих источников чередуются.
