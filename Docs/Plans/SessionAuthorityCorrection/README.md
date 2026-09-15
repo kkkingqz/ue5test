@@ -150,7 +150,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-02 — Захватить `ue_content_roots` в resolved package set
 
-- [ ] SAC-02 — Захватить `ue_content_roots` в resolved package set
+- [x] SAC-02 — Захватить `ue_content_roots` в resolved package set
 
 **Зависимость:** SAC-03. **Файлы:** `Source/GV2ContentHostSupport/Public/GV2ContentHostSupport/PackageDiscovery.h`, `Source/GV2ContentHostSupport/Private/PackageDiscovery.cpp`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp/.h`, portable conformance в `Source/GV2ContentHostSupport/Private/`.
 

@@ -67,7 +67,7 @@ depends_on:
 
 Расхождение наблюдаемо без гонки: достаточно отредактировать `ue_content_roots` в работающем приложении и запустить новую сессию — `package_set_fingerprint` останется прежним, а ownership контентных корней будет построен по новому содержимому файла. При этом `ue_content_roots` входит в `CanonicalManifestHash` (`PackageDiscovery.h:95-100`, negative case `case13_ue_content_roots_did_not_change_fingerprint` в `PackageDiscoveryAndOrderConformance.cpp:826-851`) — то есть поле признано семантическим, но проверка его неизменности на втором чтении отсутствует.
 
-**Исход:** открыт.
+**Исход:** *(Закрыто задачей SAC-02)* `ue_content_roots` захватывается в `FResolvedPackageSource` при `ResolvePackageSet*`, `ReadUeContentRootsForPackage` удалён, Screen Registry получает корни из памяти без повторного чтения manifest с диска.
 
 #### CFC-AF-21 — SNAP-R2 — P1 — Theme в snapshot остаётся mutable authoring `UObject`
 

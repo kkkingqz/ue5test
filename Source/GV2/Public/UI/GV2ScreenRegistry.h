@@ -198,19 +198,15 @@ public:
     // package set at all, not "scan GameData/ instead".
     static TArray<FString> GetPackageLoadOrderFromGameData(const TArray<GV2PackageClosure::FEntry>& ClosureEntries);
 
-    // PAH-05 (ADR-0042, INV-P2): reads every closure package's own GameData/<id>/
-    // package.json5 "ue_content_roots" array -- a UE-only field the portable host never
-    // parses into FPackageDescriptor, so it can't affect ComputePackageFingerprint (0F).
+    // PAH-05 (ADR-0042, INV-P2), SAC-02: resolves each package's "ue_content_roots" from
+    // ClosureEntries (already captured into FResolvedPackageSource during package set
+    // resolution) -- performs no disk access or manifest re-reading.
     // Absence of the field means the package declares zero UE content roots (valid, e.g.
     // a package with no widget/resource assets of its own). Every declared root is
     // normalized (FGV2ContentRootOwnership::NormalizedRoot) before comparison. Two
     // packages whose roots are equal, or where one is a prefix of the other, is a build
     // error -- overlap is rejected outright, never resolved by a longest-prefix-wins rule.
-    // Delegates the actual validation to BuildContentRootOwnership below (no filesystem
-    // access in that function -- only here, gathering PackageDeclaredRoots to feed it).
-    // PSC-02: ClosureEntries is the caller's single already-resolved package set -- this
-    // function no longer discovers it itself, only reads each entry's own
-    // "ue_content_roots" field (not package-set discovery -- see .cpp comment).
+    // Delegates the actual validation to BuildContentRootOwnership below (no filesystem access).
     static bool ResolveContentRootOwnershipFromGameData(
         const TArray<GV2PackageClosure::FEntry>& ClosureEntries,
         TArray<FGV2ContentRootOwnership>& OutOwnership,

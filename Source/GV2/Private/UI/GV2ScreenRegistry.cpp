@@ -3,9 +3,6 @@
 
 #include "Application/GV2PackageClosure.h"
 #include "Bridge/GV2StableIdUE.h"
-#include "GV2ContentCore/Json5Parser.h"
-#include "GV2ContentCore/ParseLimits.h"
-#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ScreenWidgetBase.h"
@@ -27,59 +24,6 @@ FString NormalizeContentRoot(const FString& RawRoot)
         Root += TEXT("/");
     }
     return Root;
-}
-
-// PAH-05: reads one package's own GameData/<id>/package.json5 "ue_content_roots" array.
-// UE-only field -- GV2ContentHostSupport::DiscoverPackageFromDirectory (the portable
-// parser) never looks for it, so it can't reach FPackageDescriptor or
-// ComputePackageFingerprint (0F). Absence of the field is valid: zero declared roots,
-// not an error -- a package can own no UE-side widget/resource content at all (e.g.
-// "sample" today).
-// PAH-04: pre_ready_discovery callers=UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData
-// Reads package.json5 "ue_content_roots" during screen registry compilation.
-// Called from ResolveContentRootOwnershipFromGameData -> CompileResolvedRegistry -> FGV2SessionContentCandidate::Build.
-// Under ADR-0044, candidate preparation executes while a prior Ready session may remain active;
-// this candidate-scoped read is permitted before commit-to-replace.
-bool ReadUeContentRootsForPackage(const FString& PackageGameDataDir, TArray<FString>& OutRoots, FString& OutError)
-{
-    OutRoots.Reset();
-    const FString ManifestPath = FPaths::Combine(PackageGameDataDir, TEXT("package.json5"));
-    FString Content;
-    if (!FFileHelper::LoadFileToString(Content, *ManifestPath))
-    {
-        OutError = FString::Printf(TEXT("could not read '%s'"), *ManifestPath);
-        return false;
-    }
-
-    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    const std::optional<GV2ContentCore::FParsedDocument> Parsed = GV2ContentCore::ParseJson5Document(
-        TCHAR_TO_UTF8(*Content), GV2ContentCore::FParseLimits{}, Diagnostics);
-    if (!Parsed.has_value() || !Diagnostics.empty() || !Parsed->GetRootValue().IsObject())
-    {
-        OutError = FString::Printf(TEXT("'%s' could not be parsed as a JSON5 object"), *ManifestPath);
-        return false;
-    }
-
-    const GV2ContentCore::FValue* RootsField = Parsed->GetRootValue().FindField("ue_content_roots");
-    if (RootsField == nullptr)
-    {
-        return true;
-    }
-    if (!RootsField->IsArray())
-    {
-        OutError = FString::Printf(TEXT("'%s': 'ue_content_roots' must be an array of strings"), *ManifestPath);
-        return false;
-    }
-    for (const GV2ContentCore::FValue& Item : RootsField->AsArray())
-    {
-        if (!Item.IsString())
-        {
-            OutError = FString::Printf(TEXT("'%s': 'ue_content_roots' entries must be strings"), *ManifestPath);
-            return false;
-        }
-        OutRoots.Add(UTF8_TO_TCHAR(Item.AsString().c_str()));
-    }
-    return true;
 }
 }
 
@@ -149,14 +93,9 @@ bool UGV2ScreenRegistry::BuildContentRootOwnership(
     return true;
 }
 
-// PSC-02 (ADR-0043 D1/D5): ClosureEntries is supplied by the caller's ALREADY-resolved
-// package set (UGV2RuntimeSubsystem::Initialize, from GV2ContentHostSupport::
-// ResolvePackageSet{FromContainer,FromDirectories}) -- this function no longer discovers
-// the package set itself (PAH-R3: a second, independent discovery of the same closure is
-// a second authority, even when it returns the same order today). It still reads each
-// entry's own "ue_content_roots" field directly, which is not package-set discovery: the
-// portable descriptor parser deliberately never looks at that field (0F), so it cannot be
-// obtained any other way once the package set is already resolved.
+// PSC-02 (ADR-0043 D1/D5), SAC-02: ClosureEntries is supplied by the caller's ALREADY-resolved
+// package set (from GV2ContentHostSupport::FResolvedPackageSet) and carries each package's
+// declared UeContentRoots in memory -- no disk access or manifest re-reading occurs here.
 // PAH-04: pre_ready_discovery callers=UGV2ScreenRegistry::CompileResolvedRegistry
 // Called from CompileResolvedRegistry during FGV2SessionContentCandidate::Build.
 // Under ADR-0044, candidate preparation executes while a prior Ready session may remain active;
@@ -168,16 +107,10 @@ bool UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(
 {
     OutOwnership.Reset();
     TArray<FGV2DeclaredPackageRoots> PackageDeclaredRoots;
+    PackageDeclaredRoots.Reserve(ClosureEntries.Num());
     for (const GV2PackageClosure::FEntry& PackageEntry : ClosureEntries)
     {
-        TArray<FString> DeclaredRoots;
-        FString ReadError;
-        if (!ReadUeContentRootsForPackage(PackageEntry.RootDirectory, DeclaredRoots, ReadError))
-        {
-            OutError = FString::Printf(TEXT("package '%s': %s"), *PackageEntry.PackageId, *ReadError);
-            return false;
-        }
-        PackageDeclaredRoots.Add(FGV2DeclaredPackageRoots{PackageEntry.PackageId, MoveTemp(DeclaredRoots)});
+        PackageDeclaredRoots.Add(FGV2DeclaredPackageRoots{PackageEntry.PackageId, PackageEntry.UeContentRoots});
     }
     return BuildContentRootOwnership(PackageDeclaredRoots, OutOwnership, OutError);
 }

@@ -986,6 +986,92 @@ std::string RunPackageDiscoveryAndOrderConformance()
         }
     }
 
+    // 15. SAC-02: ue_content_roots is captured in FResolvedPackageSource during package set resolution.
+    // A package without ue_content_roots has empty UeContentRoots (not an error).
+    // When a package manifest is resolved with ue_content_roots ["/Game/A"], and the file on disk is
+    // subsequently changed to ["/Game/B"], the already-captured FResolvedPackageSource retains ["/Game/A"],
+    // and only a newly resolved package set sees ["/Game/B"].
+    {
+        const std::filesystem::path RootsTestRoot = TempDir.Dir / "case15_roots";
+        // Subcase 4: package without ue_content_roots has empty roots
+        WritePackage(
+            RootsTestRoot,
+            R"json5({
+                package_id: "core",
+                namespace: "core",
+                version: "1.0.0",
+            })json5");
+
+        std::vector<FDiagnostic> DiagsNoField;
+        std::optional<FResolvedPackageSet> SetNoField =
+            ResolvePackageSetFromDirectories({RootsTestRoot}, DiagsNoField);
+        if (!SetNoField.has_value() || SetNoField->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case15_no_field_resolve_failed";
+        }
+        if (!SetNoField->OrderedSources[0].UeContentRoots.empty())
+        {
+            return "discovery_order.case15_absent_field_expected_empty_roots";
+        }
+
+        // Subcase 3: manifest A with /Game/A is resolved
+        WritePackage(
+            RootsTestRoot,
+            R"json5({
+                package_id: "core",
+                namespace: "core",
+                version: "1.0.0",
+                ue_content_roots: ["/Game/A"],
+            })json5");
+
+        std::vector<FDiagnostic> DiagsA;
+        std::optional<FResolvedPackageSet> SetA =
+            ResolvePackageSetFromDirectories({RootsTestRoot}, DiagsA);
+        if (!SetA.has_value() || SetA->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case15_set_a_resolve_failed";
+        }
+        const std::vector<std::string> ExpectedRootsA = {"/Game/A"};
+        if (SetA->OrderedSources[0].UeContentRoots != ExpectedRootsA)
+        {
+            return "discovery_order.case15_set_a_roots_mismatch";
+        }
+
+        // Now overwrite package.json5 on disk with /Game/B
+        WritePackage(
+            RootsTestRoot,
+            R"json5({
+                package_id: "core",
+                namespace: "core",
+                version: "1.0.0",
+                ue_content_roots: ["/Game/B"],
+            })json5");
+
+        // Already-captured SetA must still hold /Game/A
+        if (SetA->OrderedSources[0].UeContentRoots != ExpectedRootsA)
+        {
+            return "discovery_order.case15_captured_set_mutated";
+        }
+
+        // A new ResolvePackageSet sees /Game/B
+        std::vector<FDiagnostic> DiagsB;
+        std::optional<FResolvedPackageSet> SetB =
+            ResolvePackageSetFromDirectories({RootsTestRoot}, DiagsB);
+        if (!SetB.has_value() || SetB->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case15_set_b_resolve_failed";
+        }
+        const std::vector<std::string> ExpectedRootsB = {"/Game/B"};
+        if (SetB->OrderedSources[0].UeContentRoots != ExpectedRootsB)
+        {
+            return "discovery_order.case15_set_b_roots_mismatch";
+        }
+        if (SetA->OrderedSources[0].CanonicalManifestHash == SetB->OrderedSources[0].CanonicalManifestHash)
+        {
+            return "discovery_order.case15_manifest_hash_did_not_change";
+        }
+    }
+
     return "";
 }
 } // namespace GV2ContentHostSupport::Testing

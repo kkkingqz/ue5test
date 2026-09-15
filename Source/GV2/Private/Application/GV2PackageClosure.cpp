@@ -19,34 +19,15 @@ TArray<FEntry> DiscoverFromGameData()
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
     const std::string GameDataDirUtf8 = TCHAR_TO_UTF8(*GameDataDir);
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    std::vector<std::filesystem::path> OrderedRoots;
-    const std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors =
-        GV2ContentHostSupport::DiscoverPackagesFromContainer(
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> ResolvedSet =
+        GV2ContentHostSupport::ResolvePackageSetFromContainer(
             std::filesystem::path(GameDataDirUtf8),
-            Diagnostics,
-            &OrderedRoots);
-    if (!Descriptors.has_value())
+            Diagnostics);
+    if (!ResolvedSet.has_value())
     {
         return {};
     }
-
-    TArray<FEntry> Result;
-    Result.SetNum(Descriptors->size());
-    for (std::size_t Index = 0; Index < Descriptors->size(); ++Index)
-    {
-        const GV2ContentCore::FPackageDescriptor& Descriptor = (*Descriptors)[Index];
-        const int32 LoadIndex = static_cast<int32>(Descriptor.GetLoadIndex());
-        if (!Result.IsValidIndex(LoadIndex))
-        {
-            continue;
-        }
-        Result[LoadIndex].PackageId = UTF8_TO_TCHAR(Descriptor.GetPackageId().c_str());
-        if (Index < OrderedRoots.size())
-        {
-            Result[LoadIndex].RootDirectory = UTF8_TO_TCHAR(OrderedRoots[Index].string().c_str());
-        }
-    }
-    return Result;
+    return FromResolvedPackageSet(*ResolvedSet);
 }
 #endif
 
@@ -59,6 +40,11 @@ TArray<FEntry> FromResolvedPackageSet(const GV2ContentHostSupport::FResolvedPack
         FEntry Entry;
         Entry.PackageId = UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str());
         Entry.RootDirectory = UTF8_TO_TCHAR(Source.Root.string().c_str());
+        Entry.UeContentRoots.Reserve(static_cast<int32>(Source.UeContentRoots.size()));
+        for (const std::string& Root : Source.UeContentRoots)
+        {
+            Entry.UeContentRoots.Add(UTF8_TO_TCHAR(Root.c_str()));
+        }
         Result.Add(MoveTemp(Entry));
     }
     return Result;

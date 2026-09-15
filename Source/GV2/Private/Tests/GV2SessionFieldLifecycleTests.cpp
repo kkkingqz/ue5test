@@ -20,6 +20,7 @@
 #include "Engine/World.h"
 
 #include "Bridge/GV2BridgeTypes.h"
+#include "Application/GV2PackageClosure.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
@@ -1388,6 +1389,140 @@ bool FGV2SessionPreservesReadySessionOnUnreadyRepositoryRequestTest::RunTest(con
 
     // Clean up
     Runtime->EndSession();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ScreenRegistryContentRootsCapturedInResolvedPackageSetTest,
+    "GV2.Runtime.ScreenRegistry.ContentRootsCapturedInResolvedPackageSet",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ScreenRegistryContentRootsCapturedInResolvedPackageSetTest::RunTest(const FString& Parameters)
+{
+    // SAC-02: ue_content_roots is captured into FResolvedPackageSource during ResolvePackageSet*,
+    // and passed to UGV2ScreenRegistry through ClosureEntries without reading package.json5 from disk.
+    // Modifying package.json5 after ResolvePackageSet* does not affect the captured roots or ownership;
+    // only a newly resolved package set sees disk changes.
+    const FString TempPackageDir = FPaths::Combine(
+        FPaths::ProjectSavedDir(),
+        TEXT("Automation"),
+        TEXT("SAC02_ContentRootsCapture_") + FGuid::NewGuid().ToString());
+
+    IFileManager& FileManager = IFileManager::Get();
+    FileManager.MakeDirectory(*TempPackageDir, true);
+
+    const FString ManifestPath = FPaths::Combine(TempPackageDir, TEXT("package.json5"));
+    const FString ManifestA = TEXT("{\n")
+        TEXT("  package_id: \"core\",\n")
+        TEXT("  namespace: \"core\",\n")
+        TEXT("  version: \"1.0.0\",\n")
+        TEXT("  ue_content_roots: [\"/Game/TestA\"]\n")
+        TEXT("}\n");
+
+    TestTrue(TEXT("Write manifest A"), FFileHelper::SaveStringToFile(ManifestA, *ManifestPath));
+
+    std::vector<GV2ContentCore::FDiagnostic> DiagsA;
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> SetA =
+        GV2ContentHostSupport::ResolvePackageSetFromDirectories(
+            {std::filesystem::path(TCHAR_TO_UTF8(*TempPackageDir))},
+            DiagsA);
+
+    TestTrue(TEXT("SetA resolved successfully"), SetA.has_value() && SetA->OrderedSources.size() == 1);
+    if (!SetA.has_value() || SetA->OrderedSources.size() != 1)
+    {
+        FileManager.DeleteDirectory(*TempPackageDir, false, true);
+        return false;
+    }
+
+    const TArray<GV2PackageClosure::FEntry> ClosureEntriesA =
+        GV2PackageClosure::FromResolvedPackageSet(*SetA);
+    TestEqual(TEXT("ClosureEntriesA has 1 entry"), ClosureEntriesA.Num(), 1);
+    TestEqual(TEXT("ClosureEntriesA captured 1 root"), ClosureEntriesA[0].UeContentRoots.Num(), 1);
+    if (ClosureEntriesA[0].UeContentRoots.Num() > 0)
+    {
+        TestEqual(TEXT("Captured root is /Game/TestA"), ClosureEntriesA[0].UeContentRoots[0], TEXT("/Game/TestA"));
+    }
+
+    // Now overwrite package.json5 on disk with /Game/TestB
+    const FString ManifestB = TEXT("{\n")
+        TEXT("  package_id: \"core\",\n")
+        TEXT("  namespace: \"core\",\n")
+        TEXT("  version: \"1.0.0\",\n")
+        TEXT("  ue_content_roots: [\"/Game/TestB\"]\n")
+        TEXT("}\n");
+    TestTrue(TEXT("Overwrite manifest on disk with /Game/TestB"), FFileHelper::SaveStringToFile(ManifestB, *ManifestPath));
+
+    // ResolveContentRootOwnershipFromGameData using captured ClosureEntriesA must STILL yield /game/testa/
+    TArray<FGV2ContentRootOwnership> OwnershipA;
+    FString ErrorA;
+    TestTrue(
+        TEXT("Resolve ownership from captured ClosureEntriesA succeeds"),
+        UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(ClosureEntriesA, OwnershipA, ErrorA));
+    TestEqual(TEXT("OwnershipA has 1 root"), OwnershipA.Num(), 1);
+    if (OwnershipA.Num() > 0)
+    {
+        TestEqual(
+            TEXT("OwnershipA normalized root is /game/testa/ (not mutated by disk file change)"),
+            OwnershipA[0].NormalizedRoot,
+            TEXT("/game/testa/"));
+        TestEqual(TEXT("OwnershipA package_id is core"), OwnershipA[0].PackageId, TEXT("core"));
+    }
+
+    // Only a freshly resolved package set sees /Game/TestB
+    std::vector<GV2ContentCore::FDiagnostic> DiagsB;
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> SetB =
+        GV2ContentHostSupport::ResolvePackageSetFromDirectories(
+            {std::filesystem::path(TCHAR_TO_UTF8(*TempPackageDir))},
+            DiagsB);
+    TestTrue(TEXT("SetB resolved successfully"), SetB.has_value() && SetB->OrderedSources.size() == 1);
+    if (SetB.has_value() && SetB->OrderedSources.size() == 1)
+    {
+        const TArray<GV2PackageClosure::FEntry> ClosureEntriesB =
+            GV2PackageClosure::FromResolvedPackageSet(*SetB);
+        TArray<FGV2ContentRootOwnership> OwnershipB;
+        FString ErrorB;
+        TestTrue(
+            TEXT("Resolve ownership from newly resolved ClosureEntriesB succeeds"),
+            UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(ClosureEntriesB, OwnershipB, ErrorB));
+        TestEqual(TEXT("OwnershipB has 1 root"), OwnershipB.Num(), 1);
+        if (OwnershipB.Num() > 0)
+        {
+            TestEqual(
+                TEXT("OwnershipB normalized root is /game/testb/"),
+                OwnershipB[0].NormalizedRoot,
+                TEXT("/game/testb/"));
+        }
+    }
+
+    // Check package without ue_content_roots: produces empty roots without error
+    const FString ManifestNoRoots = TEXT("{\n")
+        TEXT("  package_id: \"core\",\n")
+        TEXT("  namespace: \"core\",\n")
+        TEXT("  version: \"1.0.0\"\n")
+        TEXT("}\n");
+    TestTrue(TEXT("Write manifest without roots"), FFileHelper::SaveStringToFile(ManifestNoRoots, *ManifestPath));
+
+    std::vector<GV2ContentCore::FDiagnostic> DiagsNoRoots;
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> SetNoRoots =
+        GV2ContentHostSupport::ResolvePackageSetFromDirectories(
+            {std::filesystem::path(TCHAR_TO_UTF8(*TempPackageDir))},
+            DiagsNoRoots);
+    TestTrue(TEXT("SetNoRoots resolved successfully"), SetNoRoots.has_value() && SetNoRoots->OrderedSources.size() == 1);
+    if (SetNoRoots.has_value() && SetNoRoots->OrderedSources.size() == 1)
+    {
+        const TArray<GV2PackageClosure::FEntry> ClosureEntriesNoRoots =
+            GV2PackageClosure::FromResolvedPackageSet(*SetNoRoots);
+        TestEqual(TEXT("ClosureEntriesNoRoots has 0 roots"), ClosureEntriesNoRoots[0].UeContentRoots.Num(), 0);
+        TArray<FGV2ContentRootOwnership> OwnershipNoRoots;
+        FString ErrorNoRoots;
+        TestTrue(
+            TEXT("Resolve ownership from ClosureEntriesNoRoots succeeds"),
+            UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(ClosureEntriesNoRoots, OwnershipNoRoots, ErrorNoRoots));
+        TestEqual(TEXT("OwnershipNoRoots has 0 roots"), OwnershipNoRoots.Num(), 0);
+    }
+
+    // Clean up
+    FileManager.DeleteDirectory(*TempPackageDir, false, true);
     return true;
 }
 

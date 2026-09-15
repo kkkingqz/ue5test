@@ -18,6 +18,7 @@ struct FEntry
 {
     FString PackageId;
     FString RootDirectory;
+    TArray<FString> UeContentRoots;
 };
 
 // Ordered by load_index. Empty on discovery failure (missing/invalid

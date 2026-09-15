@@ -98,11 +98,14 @@ GV2_CONTENT_HOST_SUPPORT_API std::optional<std::vector<GV2ContentCore::FPackageD
 // FPackageDescriptor doesn't itself parse (e.g. a future host-extension field, or
 // PSC-03's `ue_content_roots`) still changes it. Formatting/comments do not change it --
 // it hashes the parsed value tree, not raw bytes.
+// SAC-02: UeContentRoots is captured here during package set resolution, ensuring
+// downstream consumers (e.g. Screen Registry) do not perform a second read of package.json5.
 struct GV2_CONTENT_HOST_SUPPORT_API FResolvedPackageSource
 {
     std::filesystem::path Root;
     GV2ContentCore::FPackageDescriptor Descriptor;
     std::string CanonicalManifestHash;
+    std::vector<std::string> UeContentRoots;
 };
 
 // PSC-02 (ADR-0043 D1/D5): the ordered, immutable package set for one host bootstrap.

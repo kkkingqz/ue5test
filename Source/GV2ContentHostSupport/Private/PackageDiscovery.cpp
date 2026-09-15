@@ -48,17 +48,45 @@ std::optional<std::string> ReadFileToString(const std::filesystem::path& FilePat
         std::istreambuf_iterator<char>());
 }
 
-// PSC-02: computes FResolvedPackageSource::CanonicalManifestHash from the complete parsed
-// package.json5 root -- independent of, and read separately from, DiscoverPackageFromDirectory's
-// own projection into FPackageDescriptor's known fields, so an unknown/future semantic field
-// still changes it. A package root that already passed DiscoverPackageFromDirectory always has
-// a readable, parseable manifest, so failure here would indicate the file changed on disk
-// between the two reads -- reported as nullopt rather than assumed impossible.
-std::optional<std::string> ComputeCanonicalManifestHash(const std::filesystem::path& PackageRoot)
+GV2ContentCore::FDiagnostic MakeManifestDiagnostic(
+    const std::string& Code,
+    std::string Message,
+    const std::optional<std::string>& PackageId = std::nullopt)
+{
+    using namespace GV2ContentCore;
+    FDiagnostic Diagnostic;
+    Diagnostic.Code = Code;
+    Diagnostic.Severity = EDiagnosticSeverity::Error;
+    Diagnostic.Message = std::move(Message);
+    Diagnostic.PackageId = PackageId;
+    Diagnostic.RelativeSource = "package.json5";
+    return Diagnostic;
+}
+
+// PSC-02: computes FResolvedPackageSource::CanonicalManifestHash and extracts
+// UeContentRoots from the complete parsed package.json5 root -- independent of
+// DiscoverPackageFromDirectory's own projection into FPackageDescriptor's known fields,
+// so an unknown/future semantic field still changes CanonicalManifestHash.
+// SAC-02: UeContentRoots is captured here into FResolvedPackageSource so downstream
+// consumers (Screen Registry) never perform a second read of package.json5.
+struct FExtractedManifestData
+{
+    std::string CanonicalManifestHash;
+    std::vector<std::string> UeContentRoots;
+};
+
+std::optional<FExtractedManifestData> ExtractManifestData(
+    const std::filesystem::path& PackageRoot,
+    const std::string& PackageId,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
 {
     const std::optional<std::string> ManifestContent = ReadFileToString(PackageRoot / "package.json5");
     if (!ManifestContent)
     {
+        OutDiagnostics.push_back(MakeManifestDiagnostic(
+            "core:diagnostic.package.manifest.unreadable",
+            "package.json5 could not be re-read for canonical manifest hash and ue_content_roots",
+            PackageId));
         return std::nullopt;
     }
     const GV2ContentCore::FParseLimits Limits;
@@ -67,14 +95,55 @@ std::optional<std::string> ComputeCanonicalManifestHash(const std::filesystem::p
         *ManifestContent, Limits, ParseDiagnostics, std::nullopt, 0u, "package.json5");
     if (!ParsedManifest)
     {
+        OutDiagnostics.push_back(MakeManifestDiagnostic(
+            "core:diagnostic.package.manifest.unreadable",
+            "package.json5 could not be parsed for canonical manifest hash and ue_content_roots",
+            PackageId));
         return std::nullopt;
     }
-    return GV2ContentCore::ComputeCanonicalHash(*ParsedManifest);
+    if (!ParsedManifest->IsObject())
+    {
+        OutDiagnostics.push_back(MakeManifestDiagnostic(
+            "core:diagnostic.package.manifest.invalid",
+            "package.json5 must be a JSON5 object",
+            PackageId));
+        return std::nullopt;
+    }
+
+    FExtractedManifestData Data;
+    Data.CanonicalManifestHash = GV2ContentCore::ComputeCanonicalHash(*ParsedManifest);
+
+    const GV2ContentCore::FValue* RootsField = ParsedManifest->FindField("ue_content_roots");
+    if (RootsField != nullptr)
+    {
+        if (!RootsField->IsArray())
+        {
+            OutDiagnostics.push_back(MakeManifestDiagnostic(
+                "core:diagnostic.package.manifest.invalid_ue_content_roots",
+                "ue_content_roots must be an array of strings",
+                PackageId));
+            return std::nullopt;
+        }
+        for (const GV2ContentCore::FValue& Item : RootsField->AsArray())
+        {
+            if (!Item.IsString())
+            {
+                OutDiagnostics.push_back(MakeManifestDiagnostic(
+                    "core:diagnostic.package.manifest.invalid_ue_content_roots",
+                    "ue_content_roots entries must be strings",
+                    PackageId));
+                return std::nullopt;
+            }
+            Data.UeContentRoots.push_back(Item.AsString());
+        }
+    }
+
+    return Data;
 }
 
 // PSC-02: shared by both FResolvedPackageSet factories -- pairs each already-discovered
-// descriptor with its root (by LoadIndex, matching the input roots array index exactly)
-// and its canonical manifest hash.
+// descriptor with its root (by LoadIndex, matching the input roots array index exactly),
+// its canonical manifest hash, and its captured ue_content_roots (SAC-02).
 std::optional<FResolvedPackageSet> BuildResolvedPackageSet(
     std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors,
     const std::vector<std::filesystem::path>& OrderedRoots,
@@ -102,37 +171,16 @@ std::optional<FResolvedPackageSet> BuildResolvedPackageSet(
         }
 
         const std::filesystem::path& Root = OrderedRoots[LoadIndex];
-        std::optional<std::string> ManifestHash = ComputeCanonicalManifestHash(Root);
-        if (!ManifestHash)
+        std::optional<FExtractedManifestData> Extracted = ExtractManifestData(Root, Descriptor.GetPackageId(), OutDiagnostics);
+        if (!Extracted)
         {
-            GV2ContentCore::FDiagnostic Diagnostic;
-            Diagnostic.Code = "core:diagnostic.package.manifest.unreadable";
-            Diagnostic.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
-            Diagnostic.Message = "package.json5 could not be re-read for canonical manifest hash";
-            Diagnostic.PackageId = Descriptor.GetPackageId();
-            OutDiagnostics.push_back(std::move(Diagnostic));
             return std::nullopt;
         }
 
         Set.OrderedSources.push_back(FResolvedPackageSource{
-            Root, std::move(Descriptor), std::move(*ManifestHash)});
+            Root, std::move(Descriptor), std::move(Extracted->CanonicalManifestHash), std::move(Extracted->UeContentRoots)});
     }
     return Set;
-}
-
-GV2ContentCore::FDiagnostic MakeManifestDiagnostic(
-    const std::string& Code,
-    std::string Message,
-    const std::optional<std::string>& PackageId = std::nullopt)
-{
-    using namespace GV2ContentCore;
-    FDiagnostic Diagnostic;
-    Diagnostic.Code = Code;
-    Diagnostic.Severity = EDiagnosticSeverity::Error;
-    Diagnostic.Message = std::move(Message);
-    Diagnostic.PackageId = PackageId;
-    Diagnostic.RelativeSource = "package.json5";
-    return Diagnostic;
 }
 
 // PKG-02: one axis of the manifest's optional "compatibility" object.
