@@ -150,7 +150,7 @@ depends_on:
 | Candidate передаётся явно, без ambient выбора A/B | Подтверждается: `GetContentSnapshotForPrepare` в дереве отсутствует; см. исход `PSC-AF-04` |
 | Save/load подключён к production lifecycle | Подтверждается: см. `CFC-09`/`CFC-10` и записи приёмки M2 |
 
-Таблица открытых gaps в ревью (`STATUS-002`, `STATUS-003`, `STATUS-026`, `STATUS-027`) совпадает с [Confirmed Contract Gaps](ImplementationStatus.md) по составу и смыслу.
+Таблица открытых gaps в ревью (`STATUS-002`, `STATUS-003`, `STATUS-026`, `STATUS-027`) совпадала с [Confirmed Contract Gaps](ImplementationStatus.md) по составу и смыслу на момент ревью. Позднее `STATUS-027` снят: ручной запуск UE-приёмки принят как нормативный режим гейта, поэтому расхождения между contract и реализацией в этом месте больше нет — см. [Build and Tooling § Integration gate](../Architecture/BuildAndTooling.md#integration-gate).
 
 Вывод ревью «переоткрывать C++ Foundation Closure целиком не требуется» не оспаривается: ни одна из находок не отменяет принятую поверхность, все пять лежат внутри неё и являются дефектами реализации либо незавершённой частью уже принятого решения.
 

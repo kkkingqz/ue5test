@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 4.3
+version: 4.4
 updated: 2026-09-15
 depends_on:
   - SystemContextAndComponents.md
@@ -386,9 +386,13 @@ Cold-start использует только core-minimal values (`ImageCatalogF
 | Documentation contracts | hosted Ubuntu | `Tools/Documentation/validate_docs.py`: UTF-8, front matter, relative links/anchors, targets `depends_on`/`decisions`, отсутствие cycles |
 | Unreal `GV2` Acceptance | self-hosted linux x64, **только `workflow_dispatch`** | Build `GV2Editor` и полный automation filter `GV2` через `Tools/Testing/run_ue_acceptance.py` с fail-closed валидацией машинного отчёта `index.json` модулем `ue_test_report.py` |
 
-**Почему третий job ручной.** Self-hosted runner с установленным UE не зарегистрирован ни разу. При автозапуске GitHub не считает отсутствие runner'а ошибкой: job уходит в очередь ожидания на предельные 24 часа, а `timeout-minutes` начинает тикать только со старта job'а и потому не срабатывает. Автозапуск давал не сигнал, а суточное ожидание и красную запись в истории на каждый push. Ручной запуск возвращает честное состояние: отсутствие прогона видно как отсутствие прогона.
+**Ручной режим третьего job нормативен.** Автоматический прогон UE-приёмки на каждый push не требуется и не подразумевается. Прогон требует установленного движка (десятки гигабайт) и собранного `GV2Editor`; hosted runner этого не даёт, а при незарегистрированном self-hosted runner'е GitHub не считает его отсутствие ошибкой — job уходит в очередь на предельные 24 часа, причём `timeout-minutes` начинает тикать только со старта. Автозапуск в таких условиях выдаёт ожидание за проверку, поэтому его отсутствие — выбранное устройство гейта, а не расхождение.
 
-**Следствие для приёмки.** UE acceptance evidence получают локальными fresh-process прогонами `run_ue_acceptance.py`, и это evidence одного исполнителя без независимого подтверждения. Расхождение с требованием обязательного третьего job открыто как [`STATUS-027`](../Status/ImplementationStatus.md); оно закрывается регистрацией runner'а и возвратом автозапуска, а не переписыванием требования.
+**Обязательность самого прогона ручной режим не отменяет.** UE acceptance обязателен при приёмке этапа или плана и при изменении `Source/GV2**`; меняется только исполнитель. Ответственность за прогон лежит на авторе change set, а не на CI: он запускает `Tools/Testing/run_ue_acceptance.py` локально в fresh-process либо через `workflow_dispatch` на поднятом runner'е.
+
+**Форма evidence от режима не зависит.** Засчитывается только машинный отчёт с фиксированными числами: ревизия, `Source Diff`, build fingerprint, discovered/passed/failed/skipped и прошедшая identity-валидация `ue_test_report.py::validate_run`. Зелёный лог без этих полей evidence не является.
+
+**Принятое свойство процесса.** UE acceptance evidence — свидетельство одного исполнителя без независимого подтверждения: его достоверность держится на fail-closed валидации отчёта и на сверке `Source Diff`/fingerprint, а не на втором исполнителе. Это осознанный размен, а не незакрытый gap. Регистрация self-hosted runner'а и возврат автозапуска остаются допустимым усилением гейта и потребуют правки этого раздела.
 
 `Tools/Content/validate_host_conformance_parity.py` (CTest `host_conformance_parity_contract`) проверяет:
 1. Отсутствие host-локальных self-тестов в `Headless/Source/main.cpp`.
