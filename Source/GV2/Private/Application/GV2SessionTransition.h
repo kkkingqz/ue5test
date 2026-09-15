@@ -132,8 +132,8 @@ public:
 
     void RecordOutcome(uint64 OperationId, ESessionNonFailureOutcome Outcome);
     void RecordOutcome(uint64 OperationId, ESessionOperationOutcome Outcome) = delete;
-    void RecordFailure(uint64 OperationId, const FGV2OperationFault& Fault);
-    void RecordFailure(uint64 OperationId, const GV2RuntimeCore::FRuntimeFault& Fault);
+    void RecordFailure(uint64 OperationId, const FGV2RequiredOperationFault& Fault);
+    void RecordRuntimeFailure(uint64 OperationId, const GV2RuntimeCore::FRuntimeFault& Fault);
 
     uint64 AllocateOperationId();
 

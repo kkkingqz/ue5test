@@ -71,6 +71,91 @@ enum class ESessionOperationOutcome : uint8
 };
 using EGV2SessionOperationOutcome = ESessionOperationOutcome;
 
+#define GV2_SESSION_FAULT_CODES(OP) \
+    OP(RepositoryNotReady) \
+    OP(InvalidSessionDescriptor) \
+    OP(SessionNotReady) \
+    OP(InvalidSaveSlotId) \
+    OP(SaveSlotStorageUnavailable) \
+    OP(SaveSlotNotFound) \
+    OP(SaveSlotUnreadable) \
+    OP(RepositoryVersionChanged) \
+    OP(LuaRuntimeSourceMissing) \
+    OP(LuaRuntimeSourceInvalid) \
+    OP(UiSchemaNotReady) \
+    OP(ScreenRegistryNotReady) \
+    OP(ImageCatalogNotReady) \
+    OP(ThemeNotReady) \
+    OP(SessionCandidateBuildFailed) \
+    OP(InitialPresentationMissing) \
+    OP(InitialPresentationInvalid) \
+    OP(InitialPresentationApplyFailed) \
+    OP(InitialPresentationCommitFailed) \
+    OP(PublishReadyFailed) \
+    OP(SessionShutdown) \
+    OP(NoPendingStartContext) \
+    OP(LuaExecutionFailed) \
+    OP(RuntimeFault)
+
+enum class EGV2SessionFaultCode : uint8
+{
+#define GV2_EXPAND_FAULT_CODE_ENUM(Name) Name,
+    GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_CODE_ENUM)
+#undef GV2_EXPAND_FAULT_CODE_ENUM
+};
+
+struct GV2_API FGV2SessionFaultCodes
+{
+#define GV2_EXPAND_FAULT_CODE_MEMBER(Name) inline static const FString Name = TEXT(#Name);
+    GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_CODE_MEMBER)
+#undef GV2_EXPAND_FAULT_CODE_MEMBER
+
+    static FString ToString(EGV2SessionFaultCode Code)
+    {
+        switch (Code)
+        {
+#define GV2_EXPAND_FAULT_CODE_CASE(Name) case EGV2SessionFaultCode::Name: return Name;
+            GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_CODE_CASE)
+#undef GV2_EXPAND_FAULT_CODE_CASE
+        }
+        checkNoEntry();
+        return RuntimeFault;
+    }
+
+    static TArray<EGV2SessionFaultCode> GetAllDeclaredFaultKinds()
+    {
+        return {
+#define GV2_EXPAND_FAULT_KIND_ARRAY(Name) EGV2SessionFaultCode::Name,
+            GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_KIND_ARRAY)
+#undef GV2_EXPAND_FAULT_KIND_ARRAY
+        };
+    }
+
+    static TArray<FString> GetAllDeclaredFaultCodes()
+    {
+        TArray<FString> Codes;
+        for (const EGV2SessionFaultCode Kind : GetAllDeclaredFaultKinds())
+        {
+            Codes.Add(ToString(Kind));
+        }
+        return Codes;
+    }
+
+    static bool TryParse(const FString& Code, EGV2SessionFaultCode& OutCode)
+    {
+#define GV2_EXPAND_FAULT_CODE_PARSE(Name) if (Code == Name) { OutCode = EGV2SessionFaultCode::Name; return true; }
+        GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_CODE_PARSE)
+#undef GV2_EXPAND_FAULT_CODE_PARSE
+        return false;
+    }
+
+    static bool IsDeclared(const FString& Code)
+    {
+        EGV2SessionFaultCode Ignored = EGV2SessionFaultCode::RuntimeFault;
+        return TryParse(Code, Ignored);
+    }
+};
+
 USTRUCT(BlueprintType)
 struct GV2_API FGV2OperationFault
 {
@@ -82,23 +167,9 @@ struct GV2_API FGV2OperationFault
     UPROPERTY(BlueprintReadOnly, Category = "GV2|Runtime")
     FString Message;
 
-    FGV2OperationFault() = default;
-
-    template <size_t N>
-    FGV2OperationFault(const TCHAR (&InCode)[N], FString InMessage)
-        : Code(InCode)
-        , Message(MoveTemp(InMessage))
-    {
-        static_assert(N > 1, "Fault Code literal must not be empty");
-        checkf(!Code.IsEmpty(), TEXT("FGV2OperationFault Code cannot be empty"));
-    }
-
-    FGV2OperationFault(FString InCode, FString InMessage)
-        : Code(MoveTemp(InCode))
-        , Message(MoveTemp(InMessage))
-    {
-        checkf(!Code.IsEmpty(), TEXT("FGV2OperationFault Code cannot be empty"));
-    }
+    // Original subsystem/Lua diagnostic code when Code == RuntimeFault.
+    UPROPERTY(BlueprintReadOnly, Category = "GV2|Runtime")
+    FString CauseCode;
 
     bool IsSet() const { return !Code.IsEmpty(); }
 
@@ -108,6 +179,28 @@ struct GV2_API FGV2OperationFault
     }
 };
 using FOperationFault = FGV2OperationFault;
+
+// Non-optional construction token for the Failed branch. Unlike the public DTO,
+// this type cannot be default-constructed and its top-level code comes only from
+// the declared enum catalog.
+class GV2_API FGV2RequiredOperationFault final
+{
+public:
+    explicit FGV2RequiredOperationFault(
+        EGV2SessionFaultCode InCode,
+        FString InMessage,
+        FString InCauseCode = FString())
+    {
+        Fault.Code = FGV2SessionFaultCodes::ToString(InCode);
+        Fault.Message = MoveTemp(InMessage);
+        Fault.CauseCode = MoveTemp(InCauseCode);
+    }
+
+    const FGV2OperationFault& ToDto() const { return Fault; }
+
+private:
+    FGV2OperationFault Fault;
+};
 
 USTRUCT(BlueprintType)
 struct GV2_API FGV2SessionOperationResult
@@ -143,12 +236,11 @@ struct GV2_API FGV2SessionOperationResult
         return Result;
     }
 
-    static FGV2SessionOperationResult MakeFailure(const FGV2OperationFault& InFault)
+    static FGV2SessionOperationResult MakeFailure(const FGV2RequiredOperationFault& InFault)
     {
-        checkf(InFault.IsSet(), TEXT("MakeFailure requires an initialized fault with non-empty Code"));
         FGV2SessionOperationResult Result;
         Result.Outcome = ESessionOperationOutcome::Failed;
-        Result.Fault = InFault;
+        Result.Fault = InFault.ToDto();
         return Result;
     }
 
@@ -156,7 +248,9 @@ struct GV2_API FGV2SessionOperationResult
     bool operator!=(ESessionOperationOutcome InOutcome) const { return Outcome != InOutcome; }
     bool operator==(const FGV2SessionOperationResult& Other) const
     {
-        return Outcome == Other.Outcome && Fault.Code == Other.Fault.Code;
+        return Outcome == Other.Outcome
+            && Fault.Code == Other.Fault.Code
+            && Fault.CauseCode == Other.Fault.CauseCode;
     }
     bool operator!=(const FGV2SessionOperationResult& Other) const
     {
@@ -176,15 +270,20 @@ inline bool operator!=(ESessionOperationOutcome Lhs, const FGV2SessionOperationR
 
 inline FString LexToString(const FGV2SessionOperationResult& Res)
 {
-    return FString::Printf(TEXT("%s (Fault: %s: %s)"),
+    const FString FaultText = Res.Fault.CauseCode.IsEmpty()
+        ? FString::Printf(TEXT("%s: %s"), *Res.Fault.Code, *Res.Fault.Message)
+        : FString::Printf(TEXT("%s[%s]: %s"), *Res.Fault.Code, *Res.Fault.CauseCode, *Res.Fault.Message);
+    return FString::Printf(
+        TEXT("%s (Fault: %s)"),
         *UEnum::GetValueAsString(Res.Outcome),
-        *Res.Fault.Code,
-        *Res.Fault.Message);
+        *FaultText);
 }
 
 inline FString LexToString(const FGV2OperationFault& Fault)
 {
-    return FString::Printf(TEXT("%s: %s"), *Fault.Code, *Fault.Message);
+    return Fault.CauseCode.IsEmpty()
+        ? FString::Printf(TEXT("%s: %s"), *Fault.Code, *Fault.Message)
+        : FString::Printf(TEXT("%s[%s]: %s"), *Fault.Code, *Fault.CauseCode, *Fault.Message);
 }
 
 UENUM(BlueprintType)
@@ -212,54 +311,6 @@ inline FString LexToString(ESessionOperationQueryStatus Status)
     }
     return TEXT("Unknown");
 }
-
-#define GV2_SESSION_FAULT_CODES(OP) \
-    OP(RepositoryNotReady) \
-    OP(InvalidSessionDescriptor) \
-    OP(SessionNotReady) \
-    OP(InvalidSaveSlotId) \
-    OP(SaveSlotStorageUnavailable) \
-    OP(SaveSlotNotFound) \
-    OP(SaveSlotUnreadable) \
-    OP(RepositoryVersionChanged) \
-    OP(LuaRuntimeSourceMissing) \
-    OP(LuaRuntimeSourceInvalid) \
-    OP(UiSchemaNotReady) \
-    OP(ScreenRegistryNotReady) \
-    OP(ImageCatalogNotReady) \
-    OP(ThemeNotReady) \
-    OP(SessionCandidateBuildFailed) \
-    OP(InitialPresentationMissing) \
-    OP(InitialPresentationInvalid) \
-    OP(InitialPresentationApplyFailed) \
-    OP(InitialPresentationCommitFailed) \
-    OP(PublishReadyFailed) \
-    OP(SessionShutdown) \
-    OP(NoPendingStartContext) \
-    OP(LuaExecutionFailed) \
-    OP(RuntimeFault)
-
-struct GV2_API FGV2SessionFaultCodes
-{
-#define GV2_EXPAND_FAULT_CODE_MEMBER(Name) inline static const FString Name = TEXT(#Name);
-    GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_CODE_MEMBER)
-#undef GV2_EXPAND_FAULT_CODE_MEMBER
-
-    static TArray<FString> GetAllDeclaredFaultCodes()
-    {
-        return {
-#define GV2_EXPAND_FAULT_CODE_ARRAY(Name) Name,
-            GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_CODE_ARRAY)
-#undef GV2_EXPAND_FAULT_CODE_ARRAY
-        };
-    }
-
-    static bool IsDeclared(const FString& Code)
-    {
-        const TArray<FString> Declared = GetAllDeclaredFaultCodes();
-        return Declared.Contains(Code);
-    }
-};
 
 UENUM(BlueprintType)
 enum class ESessionCancellationResult : uint8

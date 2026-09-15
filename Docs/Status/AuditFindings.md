@@ -14,7 +14,7 @@ depends_on:
 
 > **Показывает:** внешнее повторное ревью session/presentation boundaries после закрытия плана C++ Foundation Closure и результат проверки каждого его утверждения по коду.
 > **Не является нормативным:** правила задают owner contracts и accepted ADR. Формулировки ревью не являются нормой; нормой является contract, на который они ссылаются.
-> **Исход:** раунд открыт. Исходные `CFC-AF-19…26` сохраняют записанные ниже исходы; повторная приёмка плана `SessionAuthorityCorrection` обнаружила четыре finding `CFC-AF-27…30`, из которых `CFC-AF-29…30` остаются открыты.
+> **Исход:** раунд открыт. Исходные `CFC-AF-19…26` сохраняют записанные ниже исходы; повторная приёмка плана `SessionAuthorityCorrection` обнаружила четыре finding `CFC-AF-27…30`, из которых только `CFC-AF-30` остаётся открытым.
 
 ## Состояние и метод
 
@@ -173,7 +173,7 @@ depends_on:
 
 Публичный `FGV2OperationFault` имеет default constructor, поэтому `RecordFailure(OpId, FGV2OperationFault{})` компилируется и отклоняется только `checkf`. Перегрузка для `GV2RuntimeCore::FRuntimeFault` принимает произвольный непустой строковый code, поэтому X-macro session-каталога не перечисляет фактическое множество достижимых runtime fault codes.
 
-**Исход:** открыт.
+**Исход:** *(Закрыто задачей SAC-05)* Failure writer принимает только non-default-constructible `FGV2RequiredOperationFault` с `EGV2SessionFaultCode`; compiler assertions запрещают пустой token и строковый обход каталога. Runtime/Lua diagnostics проходят отдельный adapter: declared code сохраняется, неизвестный публикуется как `RuntimeFault` с исходным `CauseCode`; enum-derived тест и публичный subsystem test подтверждают наблюдаемость результата.
 
 #### CFC-AF-30 — retention limit обоснован моделью вместо измерения
 

@@ -1,7 +1,7 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 4.1
+version: 4.2
 updated: 2026-09-15
 depends_on:
   - SystemContextAndComponents.md
@@ -111,7 +111,7 @@ reason: diagnostic string
 
 `seed_hex` — gameplay input uint64, а session generation — lifetime token; они не взаимозаменяемы. `Restart` повторяет committed descriptor. `LoadSave` восстанавливает сохранённые PRNG streams и не reseed-ит их значением descriptor.
 
-Terminal operation outcome имеет закрытое множество `Completed | Failed | Cancelled | Superseded`. `Failed` несёт typed fault (`FGV2OperationFault`); остальные outcomes (`Completed`, `Cancelled`, `Superseded`) не маскируются как success и никогда не несут fault. Запись `Failed` без типизированного fault запрещена сигнатурой compile-time (`RecordFailure(...)`, перегрузка `RecordOutcome(..., ESessionOperationOutcome)` удалена). Создание пустого fault запрещено на этапе компиляции (для строковых литералов через `static_assert`) и конструирования (через проверку `!Code.IsEmpty()`), а `MakeFailure` и `RecordFailure` структурно отклоняют неинициализированный fault. Публичное чтение исхода через `UGV2RuntimeSubsystem::GetSessionOperationOutcome` возвращает `ESessionOperationOutcome` и `FGV2OperationFault` (для Blueprint) либо `TOptional<FGV2SessionOperationResult>` (в C++). Каталог канонических кодов ошибок сессии объявляется структурным X-macro `GV2_SESSION_FAULT_CODES` в `FGV2SessionFaultCodes` с программным перечислителем `GetAllDeclaredFaultCodes()` и предикатом `IsDeclared(Code)`.
+Terminal operation outcome имеет закрытое множество `Completed | Failed | Cancelled | Superseded`. `Failed` несёт typed fault (`FGV2OperationFault`); остальные outcomes (`Completed`, `Cancelled`, `Superseded`) не маскируются как success и никогда не несут fault. Запись `Failed` без типизированного fault запрещена сигнатурой compile-time: `RecordFailure(...)` принимает только не default-constructible `FGV2RequiredOperationFault`, а перегрузка `RecordOutcome(..., ESessionOperationOutcome)` удалена. Публичный `FGV2OperationFault` остаётся default-constructible DTO для non-failure результата и Blueprint output, но передать его в failure writer невозможно. Top-level `Code` создаётся только из `EGV2SessionFaultCode`; произвольный runtime/Lua code обязан пройти `RecordRuntimeFailure`: известный код сохраняет соответствующий enum, неизвестный становится `RuntimeFault`, а исходная различимая причина сохраняется в `CauseCode`. Публичное чтение через `UGV2RuntimeSubsystem::GetSessionOperationOutcome` возвращает `ESessionOperationOutcome` и `FGV2OperationFault` (для Blueprint) либо `TOptional<FGV2SessionOperationResult>` (в C++). Каталог канонических кодов ошибок сессии объявляется X-macro `GV2_SESSION_FAULT_CODES`; compiler-derived enum и программные перечислители `GetAllDeclaredFaultKinds()`/`GetAllDeclaredFaultCodes()` образуются из него, а не из ручного списка теста.
 По [Compatibility Policy](CompatibilityPolicy.md) расширение сигнатуры чтения исхода типизированным fault до версии `1.0.0` является классифицированным breaking change публичного C++/Blueprint downstream API: метод больше не отдаёт только `ESessionOperationOutcome` в обход typed fault, а compatibility alias без fault запрещён правилом полноты диагностики.
 Operation ID value-only и не содержит callback/Lua reference.
 

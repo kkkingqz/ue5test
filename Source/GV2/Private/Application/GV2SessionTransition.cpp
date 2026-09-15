@@ -637,9 +637,10 @@ void FGV2SessionTransitionPolicy::RecordOutcome(const uint64 OperationId, const 
     }
 }
 
-void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const FGV2OperationFault& Fault)
+void FGV2SessionTransitionPolicy::RecordFailure(
+    const uint64 OperationId,
+    const FGV2RequiredOperationFault& Fault)
 {
-    checkf(Fault.IsSet(), TEXT("RecordFailure requires an initialized fault with non-empty Code"));
     RecordResultInternal(OperationId, FGV2SessionOperationResult::MakeFailure(Fault));
     if (ActiveOperation.IsSet() && ActiveOperation->OperationId == OperationId)
     {
@@ -647,11 +648,19 @@ void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const 
     }
 }
 
-void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const GV2RuntimeCore::FRuntimeFault& Fault)
+void FGV2SessionTransitionPolicy::RecordRuntimeFailure(
+    const uint64 OperationId,
+    const GV2RuntimeCore::FRuntimeFault& Fault)
 {
-    checkf(!Fault.Code.empty(), TEXT("RecordFailure requires non-empty runtime fault code"));
-    const FGV2OperationFault OpFault(UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str()));
-    RecordFailure(OperationId, OpFault);
+    const FString RuntimeCode = UTF8_TO_TCHAR(Fault.Code.c_str());
+    EGV2SessionFaultCode DeclaredCode = EGV2SessionFaultCode::RuntimeFault;
+    const bool bHasDeclaredCode = FGV2SessionFaultCodes::TryParse(RuntimeCode, DeclaredCode);
+    RecordFailure(
+        OperationId,
+        FGV2RequiredOperationFault(
+            bHasDeclaredCode ? DeclaredCode : EGV2SessionFaultCode::RuntimeFault,
+            UTF8_TO_TCHAR(Fault.Message.c_str()),
+            bHasDeclaredCode ? FString() : RuntimeCode));
 }
 
 uint64 FGV2SessionTransitionPolicy::AllocateOperationId()

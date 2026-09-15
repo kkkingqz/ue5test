@@ -336,7 +336,7 @@ uint64 FGV2SessionCoordinator::RequestLoad(const FString& SlotId, const ESaveSlo
     if (!RepoToUse || !PkgToUse)
     {
         const uint64 OpId = TransitionPolicy.AllocateOperationId();
-        TransitionPolicy.RecordFailure(OpId, FGV2OperationFault{FGV2SessionFaultCodes::RepositoryNotReady, TEXT("Repository or package set is not ready for RequestLoad")});
+        TransitionPolicy.RecordFailure(OpId, FGV2RequiredOperationFault{EGV2SessionFaultCode::RepositoryNotReady, TEXT("Repository or package set is not ready for RequestLoad")});
         return OpId;
     }
 
@@ -364,13 +364,13 @@ uint64 FGV2SessionCoordinator::RequestSave(const FString& SlotId)
 
     if (!Status.bIsReady)
     {
-        TransitionPolicy.RecordFailure(OpId, FGV2OperationFault{FGV2SessionFaultCodes::SessionNotReady, TEXT("Session is not ready for RequestSave")});
+        TransitionPolicy.RecordFailure(OpId, FGV2RequiredOperationFault{EGV2SessionFaultCode::SessionNotReady, TEXT("Session is not ready for RequestSave")});
         return OpId;
     }
 
     if (!IsValidSaveSlotId(SlotId))
     {
-        TransitionPolicy.RecordFailure(OpId, FGV2OperationFault{FGV2SessionFaultCodes::InvalidSaveSlotId, FString::Printf(TEXT("Invalid save slot ID: %s"), *SlotId)});
+        TransitionPolicy.RecordFailure(OpId, FGV2RequiredOperationFault{EGV2SessionFaultCode::InvalidSaveSlotId, FString::Printf(TEXT("Invalid save slot ID: %s"), *SlotId)});
         return OpId;
     }
 
@@ -388,7 +388,7 @@ void FGV2SessionCoordinator::ExecuteSaveOperation(const uint64 OpId, const FStri
 {
     if (!Status.bIsReady)
     {
-        TransitionPolicy.RecordFailure(OpId, FGV2OperationFault{FGV2SessionFaultCodes::SessionNotReady, TEXT("Session is not ready for save operation")});
+        TransitionPolicy.RecordFailure(OpId, FGV2RequiredOperationFault{EGV2SessionFaultCode::SessionNotReady, TEXT("Session is not ready for save operation")});
         return;
     }
 
@@ -406,7 +406,7 @@ void FGV2SessionCoordinator::ExecuteSaveOperation(const uint64 OpId, const FStri
             TEXT("SaveToSlot failed: code=%s message=%s"),
             UTF8_TO_TCHAR(Fault.Code.c_str()),
             UTF8_TO_TCHAR(Fault.Message.c_str()));
-        TransitionPolicy.RecordFailure(OpId, Fault);
+        TransitionPolicy.RecordRuntimeFailure(OpId, Fault);
     }
 }
 
@@ -490,7 +490,7 @@ void FGV2SessionCoordinator::ProcessNextTransition()
             }
             else
             {
-                TransitionPolicy.RecordFailure(NextOp->OperationId, FGV2OperationFault{FGV2SessionFaultCodes::NoPendingStartContext, TEXT("No pending start context found for session start")});
+                TransitionPolicy.RecordFailure(NextOp->OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::NoPendingStartContext, TEXT("No pending start context found for session start")});
             }
             break;
 
@@ -517,7 +517,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     {
         FailReplacementAttempt(
             {"InvalidSessionDescriptor", TCHAR_TO_UTF8(*DescriptorError)}, bHadPriorReadySession);
-        TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::InvalidSessionDescriptor, DescriptorError});
+        TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::InvalidSessionDescriptor, DescriptorError});
         return false;
     }
 
@@ -525,7 +525,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     {
         FailReplacementAttempt(
             {"RepositoryNotReady", "No published GameDataRepository to pin."}, bHadPriorReadySession);
-        TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::RepositoryNotReady, TEXT("No published GameDataRepository to pin.")});
+        TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::RepositoryNotReady, TEXT("No published GameDataRepository to pin.")});
         return false;
     }
 
@@ -535,7 +535,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     if (!LoadPortableRuntimeSources(RuntimeSources, Fault, InResolvedPackageSet, SchemaPackageRoots))
     {
         FailReplacementAttempt(Fault, bHadPriorReadySession);
-        TransitionPolicy.RecordFailure(Op.OperationId, Fault);
+        TransitionPolicy.RecordRuntimeFailure(Op.OperationId, Fault);
         return false;
     }
 
@@ -557,7 +557,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             CandidateFault))
     {
         FailReplacementAttempt(CandidateFault, bHadPriorReadySession);
-        TransitionPolicy.RecordFailure(Op.OperationId, CandidateFault);
+        TransitionPolicy.RecordRuntimeFailure(Op.OperationId, CandidateFault);
         return false;
     }
 
@@ -578,7 +578,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             FailReplacementAttempt(
                 {"SaveSlotStorageUnavailable", "Save storage is not configured."},
                 bHadPriorReadySession);
-            TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::SaveSlotStorageUnavailable, TEXT("Save storage is not configured.")});
+            TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::SaveSlotStorageUnavailable, TEXT("Save storage is not configured.")});
             return false;
         }
 
@@ -595,7 +595,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             FailReplacementAttempt(
                 {"SaveSlotNotFound", "Requested save slot was not found."},
                 bHadPriorReadySession);
-            TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::SaveSlotNotFound, TEXT("Requested save slot was not found.")});
+            TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::SaveSlotNotFound, TEXT("Requested save slot was not found.")});
             return false;
         }
         if (ReadResult.Result != GV2RuntimeCore::ESaveSlotResult::Ok)
@@ -603,7 +603,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             FailReplacementAttempt(
                 {"SaveSlotUnreadable", "Requested save slot is unreadable."},
                 bHadPriorReadySession);
-            TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::SaveSlotUnreadable, TEXT("Requested save slot is unreadable.")});
+            TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::SaveSlotUnreadable, TEXT("Requested save slot is unreadable.")});
             return false;
         }
 
@@ -621,7 +621,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             if (!RuntimeSession.PreflightSaveBytes(CapturedSaveBytes, PreflightFault))
             {
                 FailReplacementAttempt(PreflightFault, bHadPriorReadySession);
-                TransitionPolicy.RecordFailure(Op.OperationId, PreflightFault);
+                TransitionPolicy.RecordRuntimeFailure(Op.OperationId, PreflightFault);
                 return false;
             }
         }
@@ -630,7 +630,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     if (InRepositoryVersion <= 0 || !InPinnedRepository.IsValid())
     {
         FailReplacementAttempt({"RepositoryVersionChanged", "Repository handle is invalid or changed before BeginReplace."}, bHadPriorReadySession);
-        TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::RepositoryVersionChanged, TEXT("Repository handle is invalid or changed before BeginReplace.")});
+        TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::RepositoryVersionChanged, TEXT("Repository handle is invalid or changed before BeginReplace.")});
         return false;
     }
 
@@ -639,7 +639,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     GV2RuntimeCore::FRuntimeFault ReplaceFault;
     if (!BeginReplace(Token, InPinnedRepository, InRepositoryVersion, ReplaceFault, Op.Kind))
     {
-        TransitionPolicy.RecordFailure(Op.OperationId, ReplaceFault);
+        TransitionPolicy.RecordRuntimeFailure(Op.OperationId, ReplaceFault);
         return false;
     }
 
@@ -716,7 +716,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
         }
         else
         {
-            TransitionPolicy.RecordFailure(Op.OperationId, ReplaceFault);
+            TransitionPolicy.RecordRuntimeFailure(Op.OperationId, ReplaceFault);
         }
         return false;
     }
@@ -741,7 +741,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             TEXT("GV2 Lua runtime fault: code=%s message=%s"),
             UTF8_TO_TCHAR(DocFault.Code.c_str()),
             UTF8_TO_TCHAR(DocFault.Message.c_str()));
-        TransitionPolicy.RecordFailure(Op.OperationId, DocFault);
+        TransitionPolicy.RecordRuntimeFailure(Op.OperationId, DocFault);
         return false;
     }
     if (!PendingDoc.has_value())
@@ -755,7 +755,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             LogTemp,
             Error,
             TEXT("GV2 Lua runtime fault: code=InitialPresentationMissing message=Session start did not publish an initial UI document."));
-        TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::InitialPresentationMissing, TEXT("Session start did not publish an initial UI document.")});
+        TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::InitialPresentationMissing, TEXT("Session start did not publish an initial UI document.")});
         return false;
     }
 
@@ -773,7 +773,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             LogTemp,
             Error,
             TEXT("GV2 Lua runtime fault: code=InitialPresentationInvalid message=Initial UI document failed binding preparation."));
-        TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::InitialPresentationInvalid, TEXT("Initial UI document failed binding preparation.")});
+        TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::InitialPresentationInvalid, TEXT("Initial UI document failed binding preparation.")});
         return false;
     }
 
@@ -789,7 +789,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             LogTemp,
             Error,
             TEXT("GV2 Lua runtime fault: code=InitialPresentationApplyFailed message=Initial UI document could not be applied."));
-        TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::InitialPresentationApplyFailed, TEXT("Initial UI document could not be applied.")});
+        TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::InitialPresentationApplyFailed, TEXT("Initial UI document could not be applied.")});
         return false;
     }
     if (!BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
@@ -803,7 +803,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
             LogTemp,
             Error,
             TEXT("GV2 Lua runtime fault: code=InitialPresentationCommitFailed message=Initial UI binding candidate could not be committed."));
-        TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::InitialPresentationCommitFailed, TEXT("Initial UI binding candidate could not be committed.")});
+        TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::InitialPresentationCommitFailed, TEXT("Initial UI binding candidate could not be committed.")});
         return false;
     }
 
@@ -815,7 +815,7 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     }
     else
     {
-        TransitionPolicy.RecordFailure(Op.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::PublishReadyFailed, TEXT("Failed to publish Ready state for session.")});
+        TransitionPolicy.RecordFailure(Op.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::PublishReadyFailed, TEXT("Failed to publish Ready state for session.")});
     }
     return bReadyOk;
 }
@@ -956,7 +956,7 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
 
     for (const FPendingSaveRequest& Req : PendingSaveRequests)
     {
-        TransitionPolicy.RecordFailure(Req.OperationId, FGV2OperationFault{FGV2SessionFaultCodes::SessionShutdown, TEXT("Save request aborted due to session shutdown.")});
+        TransitionPolicy.RecordFailure(Req.OperationId, FGV2RequiredOperationFault{EGV2SessionFaultCode::SessionShutdown, TEXT("Save request aborted due to session shutdown.")});
     }
     PendingSaveRequests.Empty();
 
@@ -1392,7 +1392,7 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
 {
     for (const FPendingSaveRequest& Req : PendingSaveRequests)
     {
-        TransitionPolicy.RecordFailure(Req.OperationId, Fault);
+        TransitionPolicy.RecordRuntimeFailure(Req.OperationId, Fault);
     }
     PendingSaveRequests.Empty();
 

@@ -19,6 +19,17 @@
 
 #include <vector>
 #include <string>
+#include <type_traits>
+
+static_assert(
+    !std::is_default_constructible_v<FGV2RequiredOperationFault>,
+    "The Failed construction token must require a declared fault code.");
+static_assert(
+    std::is_constructible_v<FGV2RequiredOperationFault, EGV2SessionFaultCode, FString>,
+    "The Failed construction token must be constructible only with typed fault data.");
+static_assert(
+    !std::is_constructible_v<FGV2RequiredOperationFault, FString, FString>,
+    "Arbitrary strings must not bypass the declared session fault code enum.");
 
 namespace
 {
@@ -768,11 +779,12 @@ bool FGV2SessionOperationFaultPropagationTest::RunTest(const FString& Parameters
     }
 
     // 2. Fault catalog enumerator: GetAllDeclaredFaultCodes() provides all declared codes
-    const TArray<FString> DeclaredCodes = FGV2SessionFaultCodes::GetAllDeclaredFaultCodes();
-    TestTrue(TEXT("Declared fault codes list is non-empty"), DeclaredCodes.Num() > 0);
+    const TArray<EGV2SessionFaultCode> DeclaredKinds = FGV2SessionFaultCodes::GetAllDeclaredFaultKinds();
+    TestTrue(TEXT("Declared fault code enum is non-empty"), DeclaredKinds.Num() > 0);
     TSet<FString> UniqueCodes;
-    for (const FString& Code : DeclaredCodes)
+    for (const EGV2SessionFaultCode Kind : DeclaredKinds)
     {
+        const FString Code = FGV2SessionFaultCodes::ToString(Kind);
         TestFalse(TEXT("Code is not empty"), Code.IsEmpty());
         TestFalse(*FString::Printf(TEXT("Code %s is unique"), *Code), UniqueCodes.Contains(Code));
         UniqueCodes.Add(Code);
@@ -781,12 +793,24 @@ bool FGV2SessionOperationFaultPropagationTest::RunTest(const FString& Parameters
         FGV2SessionTransitionPolicy Policy;
         const uint64 TestOp = Policy.AllocateOperationId();
         const FString TestMsg = FString::Printf(TEXT("Error detail for %s"), *Code);
-        Policy.RecordFailure(TestOp, FGV2OperationFault{Code, TestMsg});
+        Policy.RecordFailure(TestOp, FGV2RequiredOperationFault{Kind, TestMsg});
         const TOptional<FGV2SessionOperationResult> FaultRes = Policy.GetOutcome(TestOp);
         TestTrue(TEXT("FaultRes is set"), FaultRes.IsSet());
         TestEqual(TEXT("Outcome is Failed"), FaultRes->Outcome, ESessionOperationOutcome::Failed);
         TestEqual(*FString::Printf(TEXT("Fault code matches %s"), *Code), FaultRes->Fault.Code, Code);
         TestEqual(*FString::Printf(TEXT("Fault message matches %s"), *Code), FaultRes->Fault.Message, TestMsg);
+    }
+
+    // Raw runtime/Lua diagnostics cannot become undeclared top-level operation codes.
+    // The source code remains observable as CauseCode.
+    {
+        FGV2SessionTransitionPolicy Policy;
+        const uint64 TestOp = Policy.AllocateOperationId();
+        Policy.RecordRuntimeFailure(TestOp, GV2RuntimeCore::FRuntimeFault{"LuaCustomFailure", "runtime detail"});
+        const TOptional<FGV2SessionOperationResult> FaultRes = Policy.GetOutcome(TestOp);
+        TestTrue(TEXT("Raw runtime fault is recorded"), FaultRes.IsSet());
+        TestEqual(TEXT("Raw runtime fault uses declared RuntimeFault code"), FaultRes->Fault.Code, FGV2SessionFaultCodes::RuntimeFault);
+        TestEqual(TEXT("Raw runtime fault preserves distinguishable cause code"), FaultRes->Fault.CauseCode, TEXT("LuaCustomFailure"));
     }
 
     // 3. Coordinator achievable failure paths: each path produces typed fault matching declared codes
@@ -853,24 +877,35 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2PublicSubsystemReachableFaultCodesTest::RunTest(const FString& Parameters)
 {
-    // 1. Prohibit empty faults at construction/compile time
+    // 1. The public DTO has an empty state for non-failure/out parameters, while the
+    // compile-time assertions above prove that the Failed construction token does not.
     {
         FGV2OperationFault DefaultFault;
         TestFalse(TEXT("Default constructed fault is not set"), DefaultFault.IsSet());
         TestTrue(TEXT("Default constructed fault Code is empty"), DefaultFault.Code.IsEmpty());
 
-        const FGV2OperationFault ValidFault(TEXT("CustomTestCode"), TEXT("Custom message"));
+        const FGV2OperationFault ValidFault = FGV2RequiredOperationFault(
+            EGV2SessionFaultCode::RuntimeFault,
+            TEXT("Custom message"),
+            TEXT("CustomTestCode")).ToDto();
         TestTrue(TEXT("Explicitly constructed fault is set"), ValidFault.IsSet());
-        TestEqual(TEXT("Fault Code matches"), ValidFault.Code, TEXT("CustomTestCode"));
+        TestEqual(TEXT("Fault Code comes from the declared enum"), ValidFault.Code, FGV2SessionFaultCodes::RuntimeFault);
+        TestEqual(TEXT("Runtime cause code is preserved"), ValidFault.CauseCode, TEXT("CustomTestCode"));
     }
 
     // 2. Structural single source of truth: verify all declared fault codes
+    const TArray<EGV2SessionFaultCode> AllKinds = FGV2SessionFaultCodes::GetAllDeclaredFaultKinds();
     const TArray<FString> AllCodes = FGV2SessionFaultCodes::GetAllDeclaredFaultCodes();
-    TestTrue(TEXT("Declared fault codes catalog is populated"), AllCodes.Num() >= 20);
-    for (const FString& Code : AllCodes)
+    TestEqual(TEXT("Every declared enum kind produces one public code"), AllCodes.Num(), AllKinds.Num());
+    TSet<FString> UniquePublicCodes;
+    for (int32 Index = 0; Index < AllKinds.Num(); ++Index)
     {
+        const FString& Code = AllCodes[Index];
+        TestEqual(TEXT("Public code is derived from the enumerated kind"), Code, FGV2SessionFaultCodes::ToString(AllKinds[Index]));
         TestTrue(*FString::Printf(TEXT("Code '%s' is recognized by IsDeclared"), *Code),
             FGV2SessionFaultCodes::IsDeclared(Code));
+        TestFalse(*FString::Printf(TEXT("Code '%s' is unique"), *Code), UniquePublicCodes.Contains(Code));
+        UniquePublicCodes.Add(Code);
     }
     TestTrue(TEXT("UiSchemaNotReady is declared"), FGV2SessionFaultCodes::IsDeclared(FGV2SessionFaultCodes::UiSchemaNotReady));
     TestTrue(TEXT("ScreenRegistryNotReady is declared"), FGV2SessionFaultCodes::IsDeclared(FGV2SessionFaultCodes::ScreenRegistryNotReady));
@@ -1107,7 +1142,7 @@ bool FGV2SessionOperationRetentionAndEvictionTest::RunTest(const FString& Parame
 
     // Record outcomes for Op1, Op2, Op3
     Policy.RecordOutcome(Op1, ESessionNonFailureOutcome::Completed);
-    Policy.RecordFailure(Op2, FGV2OperationFault{FGV2SessionFaultCodes::InvalidSessionDescriptor, TEXT("Bad descriptor")});
+    Policy.RecordFailure(Op2, FGV2RequiredOperationFault{EGV2SessionFaultCode::InvalidSessionDescriptor, TEXT("Bad descriptor")});
     Policy.RecordOutcome(Op3, ESessionNonFailureOutcome::Cancelled);
 
     TestEqual(TEXT("Retained count is 3"), Policy.GetRetainedOutcomesCount(), 3);
