@@ -2,6 +2,7 @@
 #include "UI/GV2PresentationAuthorityProbe.h"
 
 #include "Bridge/GV2StableIdUE.h"
+#include "GV2ContentCore/CanonicalHash.h"
 #include "HAL/FileManager.h"
 #include "ImageUtils.h"
 #include "Math/UnrealMathUtility.h"
@@ -193,6 +194,14 @@ bool BuildEntryFromPngFile(
         Definition.TileSize = FVector2D(SourceImage.SizeX, SourceImage.SizeY);
         break;
     }
+
+    GV2ContentCore::FSha256Builder PixelHashBuilder;
+    PixelHashBuilder.Update(std::to_string(SourceImage.SizeX));
+    PixelHashBuilder.Update(":");
+    PixelHashBuilder.Update(std::to_string(SourceImage.SizeY));
+    PixelHashBuilder.Update(":bgra8:srgb:");
+    PixelHashBuilder.Update(SourceImage.RawData.GetData(), SourceImage.RawData.Num());
+    Definition.CanonicalPixelHash = UTF8_TO_TCHAR(PixelHashBuilder.FinalizeHex().c_str());
 
     UTexture2D* Texture = FImageUtils::CreateTexture2DFromImage(SourceImage);
     if (Texture == nullptr)
@@ -599,4 +608,3 @@ bool UGV2ImageResourceCatalog::BuildFromPackageClosure(const TArray<FString>& Pa
     }
     return BuildFromPackageResourceRoots(PackageResourceRoots, OutError);
 }
-

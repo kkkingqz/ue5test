@@ -776,6 +776,38 @@ bool FGV2UiKitThemeTokensAndTypographyContractTest::RunTest(const FString& Param
             TEXT("core:resource.image.missing"),
             ScannedPanel,
             ImagePathError));
+
+    FString OriginalPixelHash;
+    for (const FGV2ImageResourceDefinition& Entry : ScannedCatalog->GetEntries())
+    {
+        if (Entry.ResourceId == TEXT("core:resource.image.character_portrait"))
+        {
+            OriginalPixelHash = Entry.CanonicalPixelHash;
+            break;
+        }
+    }
+    TestFalse(TEXT("Decoded image has a canonical pixel hash"), OriginalPixelHash.IsEmpty());
+    reinterpret_cast<FColor*>(ScannerFixtureImage.RawData.GetData())[0] = FColor::Black;
+    TestTrue(
+        TEXT("Mutated scanner fixture PNG is written"),
+        FImageUtils::SaveImageByExtension(*ScannerFixturePng, ScannerFixtureImage));
+    UGV2ImageResourceCatalog* MutatedPixelCatalog = NewObject<UGV2ImageResourceCatalog>();
+    TestTrue(
+        TEXT("Image catalog rebuilds after pixel mutation"),
+        MutatedPixelCatalog->BuildFromDirectory(ScannerFixtureRoot, ImagePathError));
+    FString MutatedPixelHash;
+    for (const FGV2ImageResourceDefinition& Entry : MutatedPixelCatalog->GetEntries())
+    {
+        if (Entry.ResourceId == TEXT("core:resource.image.character_portrait"))
+        {
+            MutatedPixelHash = Entry.CanonicalPixelHash;
+            break;
+        }
+    }
+    TestNotEqual(
+        TEXT("Changing decoded pixels changes canonical pixel identity"),
+        MutatedPixelHash,
+        OriginalPixelHash);
     IFileManager::Get().DeleteDirectory(*ScannerFixtureRoot, false, true);
 
     FString ConfiguredCatalogError;

@@ -180,7 +180,7 @@ bool FGV2SessionContentCandidate::Build(
     OutSnapshot.GameShellClass = TStrongObjectPtr<UClass>(GameShellClass);
 
     // presentation_hash: resolved screens' (screen_id, widget class path), resolved
-    // resources' (resource_id, texture soft path, render mode), canonical Theme content
+    // resources' (resource_id, normalized pixel hash, complete render metadata), canonical Theme content
     // (all reflection-derived fields), GameShell class path -- every field the Done bullet
     // names, all from already-resolved identities, never raw authoring rows.
     std::vector<std::pair<std::string, GV2ContentCore::FValue>> PresentationFields;
@@ -205,9 +205,16 @@ bool FGV2SessionContentCandidate::Build(
     {
         std::vector<std::pair<std::string, GV2ContentCore::FValue>> ResourceFields;
         ResourceFields.emplace_back("resource_id", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Entry.ResourceId)));
-        ResourceFields.emplace_back("texture", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Entry.Texture.ToString())));
+        ResourceFields.emplace_back("pixel_hash", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Entry.CanonicalPixelHash)));
         ResourceFields.emplace_back(
             "render_mode", GV2ContentCore::FValue::MakeInteger(static_cast<std::int64_t>(Entry.RenderMode)));
+        ResourceFields.emplace_back("fixed_aspect_ratio", GV2ContentCore::FValue::MakeNumber(Entry.FixedAspectRatio));
+        ResourceFields.emplace_back("nine_slice_left", GV2ContentCore::FValue::MakeNumber(Entry.NineSliceBorderPixels.Left));
+        ResourceFields.emplace_back("nine_slice_top", GV2ContentCore::FValue::MakeNumber(Entry.NineSliceBorderPixels.Top));
+        ResourceFields.emplace_back("nine_slice_right", GV2ContentCore::FValue::MakeNumber(Entry.NineSliceBorderPixels.Right));
+        ResourceFields.emplace_back("nine_slice_bottom", GV2ContentCore::FValue::MakeNumber(Entry.NineSliceBorderPixels.Bottom));
+        ResourceFields.emplace_back("tile_size_x", GV2ContentCore::FValue::MakeNumber(Entry.TileSize.X));
+        ResourceFields.emplace_back("tile_size_y", GV2ContentCore::FValue::MakeNumber(Entry.TileSize.Y));
         ResourcesArray.push_back(GV2ContentCore::FValue::MakeObject(std::move(ResourceFields)));
     }
     PresentationFields.emplace_back("resources", GV2ContentCore::FValue::MakeArray(std::move(ResourcesArray)));

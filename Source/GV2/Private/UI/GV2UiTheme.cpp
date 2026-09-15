@@ -139,6 +139,12 @@ bool UGV2UiTheme::CompileResolvedTheme(
 
 namespace
 {
+void AppendFramed(FString& OutText, const FString& Value)
+{
+    OutText += FString::Printf(TEXT("%d:"), Value.Len());
+    OutText += Value;
+}
+
 void ExportPropertyValueCanonical(FString& OutText, const FProperty* Prop, const void* ValuePtr, UObject* Owner)
 {
     if (Prop == nullptr || ValuePtr == nullptr)
@@ -174,16 +180,12 @@ void ExportPropertyValueCanonical(FString& OutText, const FProperty* Prop, const
             return A.KeyStr < B.KeyStr;
         });
 
-        OutText += TEXT("(");
-        for (int32 i = 0; i < Pairs.Num(); ++i)
+        OutText += FString::Printf(TEXT("M%d:"), Pairs.Num());
+        for (const FExportedPair& Pair : Pairs)
         {
-            if (i > 0)
-            {
-                OutText += TEXT(",");
-            }
-            OutText += FString::Printf(TEXT("(%s,%s)"), *Pairs[i].KeyStr, *Pairs[i].ValStr);
+            AppendFramed(OutText, Pair.KeyStr);
+            AppendFramed(OutText, Pair.ValStr);
         }
-        OutText += TEXT(")");
         return;
     }
 
@@ -205,16 +207,11 @@ void ExportPropertyValueCanonical(FString& OutText, const FProperty* Prop, const
 
         Elements.Sort();
 
-        OutText += TEXT("(");
-        for (int32 i = 0; i < Elements.Num(); ++i)
+        OutText += FString::Printf(TEXT("S%d:"), Elements.Num());
+        for (const FString& Element : Elements)
         {
-            if (i > 0)
-            {
-                OutText += TEXT(",");
-            }
-            OutText += Elements[i];
+            AppendFramed(OutText, Element);
         }
-        OutText += TEXT(")");
         return;
     }
 
@@ -228,13 +225,32 @@ void ExportPropertyValueCanonical(FString& OutText, const FProperty* Prop, const
             {
                 FString CurveText;
                 TBaseStructure<FRichCurve>::Get()->ExportText(CurveText, RichCurve, nullptr, Owner, PPF_None, nullptr);
-                OutText += FString::Printf(TEXT("(EditorCurveData=%s)"), *CurveText);
+                OutText += TEXT("C");
+                AppendFramed(OutText, CurveText);
                 return;
             }
         }
     }
 
-    Prop->ExportTextItem_Direct(OutText, ValuePtr, nullptr, Owner, PPF_None);
+    FString ExportedText;
+    Prop->ExportTextItem_Direct(ExportedText, ValuePtr, nullptr, Owner, PPF_None);
+    OutText += TEXT("V");
+    AppendFramed(OutText, ExportedText);
+}
+
+GV2ContentCore::FValue ComputeTextCatalogCanonicalValue(const TMap<FString, FText>& Catalog)
+{
+    std::vector<std::pair<std::string, GV2ContentCore::FValue>> Fields;
+    Fields.reserve(Catalog.Num());
+    for (const TPair<FString, FText>& Pair : Catalog)
+    {
+        FString TextIdentity;
+        FTextStringHelper::WriteToBuffer(TextIdentity, Pair.Value);
+        Fields.emplace_back(
+            TCHAR_TO_UTF8(*Pair.Key),
+            GV2ContentCore::FValue::MakeString(TCHAR_TO_UTF8(*TextIdentity)));
+    }
+    return GV2ContentCore::FValue::MakeObject(std::move(Fields));
 }
 } // namespace
 
@@ -388,8 +404,15 @@ bool FGV2ResolvedUiTheme::Compile(
     OutResolved.DropdownMaxPopupHeight = InTheme->DropdownMaxPopupHeight;
     OutResolved.DropdownOptionItemPadding = InTheme->DropdownOptionItemPadding;
 
-    // Canonical presentation value computed via reflection
-    OutResolved.CanonicalThemeValue = ComputeThemeCanonicalValue(InTheme);
+    // The identity is assembled only after resolution. Reflection enumerates the full
+    // configured authoring surface; the separately resolved core fallback catalog is
+    // included from the captured value actually consulted by FindText().
+    std::vector<std::pair<std::string, GV2ContentCore::FValue>> CanonicalFields;
+    CanonicalFields.emplace_back("authoring_theme", ComputeThemeCanonicalValue(InTheme));
+    CanonicalFields.emplace_back(
+        "effective_core_fallback_text_catalog",
+        ComputeTextCatalogCanonicalValue(OutResolved.CoreMinimalFallbackTextCatalog));
+    OutResolved.CanonicalThemeValue = GV2ContentCore::FValue::MakeObject(std::move(CanonicalFields));
 
     return true;
 }
@@ -506,4 +529,3 @@ bool FGV2ResolvedUiTheme::ResolveStyle(FName StyleToken, FTextBlockStyle& OutSty
     StyleCDO->ToTextBlockStyle(OutStyle);
     return true;
 }
-

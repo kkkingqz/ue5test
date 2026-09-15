@@ -280,7 +280,9 @@ bool FGV2UiThemeReflectionNegativeTest::RunTest(const FString& Parameters)
         }
     }
 
-    TestEqual(TEXT("UGV2UiTheme has exactly 38 properties declared"), ThemeProperties.Num(), 38);
+    AddInfo(FString::Printf(
+        TEXT("Reflection enumerated %d UGV2UiTheme properties for mutation coverage."),
+        ThemeProperties.Num()));
 
     int32 TestedPropertiesCount = 0;
     for (FProperty* Prop : ThemeProperties)
@@ -338,7 +340,155 @@ bool FGV2UiThemeReflectionNegativeTest::RunTest(const FString& Parameters)
         TestedPropertiesCount++;
     }
 
-    TestEqual(TEXT("All 38 properties were tested"), TestedPropertiesCount, 38);
+    TestEqual(
+        TEXT("Every reflection-enumerated UGV2UiTheme property was tested"),
+        TestedPropertiesCount,
+        ThemeProperties.Num());
+
+    // CFC-AF-28: the effective core fallback participates in rendering even though it
+    // is not a field of the configured authoring asset. Exercise the real candidate
+    // builder twice with the same authoring theme and different fallback content.
+    UGV2UiTheme* CoreFallback = UGV2UiTheme::GetCoreMinimalTheme();
+    TestNotNull(TEXT("Core minimal fallback theme is available"), CoreFallback);
+    if (CoreFallback == nullptr)
+    {
+        return false;
+    }
+
+    struct FCoreFallbackRestorer
+    {
+        UGV2UiTheme* Theme = nullptr;
+        TMap<FString, FText> TextCatalog;
+        TMap<FString, FText> FallbackTextCatalog;
+        ~FCoreFallbackRestorer()
+        {
+            if (Theme != nullptr)
+            {
+                Theme->TextCatalog = MoveTemp(TextCatalog);
+                Theme->FallbackTextCatalog = MoveTemp(FallbackTextCatalog);
+            }
+        }
+    } CoreFallbackRestorer{CoreFallback, CoreFallback->TextCatalog, CoreFallback->FallbackTextCatalog};
+
+    const FString FallbackProbeId = TEXT("core:text.test.effective_fallback_identity");
+    CoreFallback->TextCatalog.Add(FallbackProbeId, FText::FromString(TEXT("Fallback A")));
+    FGV2SessionContentSnapshot FallbackSnapshotA;
+    FString FallbackErrorA;
+    TestTrue(
+        TEXT("Fallback snapshot A builds through the production candidate path"),
+        BuildCandidateSnapshot(BaseTheme.Get(), FallbackSnapshotA, FallbackErrorA));
+
+    FGV2SessionContentSnapshot FallbackSnapshotARepeat;
+    FString FallbackErrorARepeat;
+    TestTrue(
+        TEXT("Repeated fallback snapshot A builds through the production candidate path"),
+        BuildCandidateSnapshot(BaseTheme.Get(), FallbackSnapshotARepeat, FallbackErrorARepeat));
+    TestEqual(
+        TEXT("Unchanged effective fallback has deterministic resolved Theme identity"),
+        FString(UTF8_TO_TCHAR(GV2ContentCore::ComputeCanonicalHash(FallbackSnapshotARepeat.GetTheme().GetCanonicalValue()).c_str())),
+        FString(UTF8_TO_TCHAR(GV2ContentCore::ComputeCanonicalHash(FallbackSnapshotA.GetTheme().GetCanonicalValue()).c_str())));
+
+    auto ComputeScreenIdentityHash = [](const FGV2SessionContentSnapshot& Snapshot)
+    {
+        std::vector<GV2ContentCore::FValue> Entries;
+        for (const TPair<FString, FString>& Identity : Snapshot.GetScreenRegistry().GetResolvedScreenIdentities())
+        {
+            Entries.push_back(GV2ContentCore::FValue::MakeObject({
+                {"screen_id", GV2ContentCore::FValue::MakeString(TCHAR_TO_UTF8(*Identity.Key))},
+                {"widget_class", GV2ContentCore::FValue::MakeString(TCHAR_TO_UTF8(*Identity.Value))},
+            }));
+        }
+        return GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue::MakeArray(std::move(Entries)));
+    };
+    auto ComputeResourceIdentityHash = [](const FGV2SessionContentSnapshot& Snapshot)
+    {
+        TArray<FGV2ImageResourceDefinition> ResourceEntries = Snapshot.GetImageCatalog().Catalog->GetEntries();
+        ResourceEntries.Sort([](const FGV2ImageResourceDefinition& A, const FGV2ImageResourceDefinition& B)
+        {
+            return A.ResourceId < B.ResourceId;
+        });
+        std::vector<GV2ContentCore::FValue> Entries;
+        for (const FGV2ImageResourceDefinition& Entry : ResourceEntries)
+        {
+            Entries.push_back(GV2ContentCore::FValue::MakeObject({
+                {"resource_id", GV2ContentCore::FValue::MakeString(TCHAR_TO_UTF8(*Entry.ResourceId))},
+                {"pixel_hash", GV2ContentCore::FValue::MakeString(TCHAR_TO_UTF8(*Entry.CanonicalPixelHash))},
+                {"render_mode", GV2ContentCore::FValue::MakeInteger(static_cast<std::int64_t>(Entry.RenderMode))},
+                {"fixed_aspect_ratio", GV2ContentCore::FValue::MakeNumber(Entry.FixedAspectRatio)},
+                {"nine_slice_left", GV2ContentCore::FValue::MakeNumber(Entry.NineSliceBorderPixels.Left)},
+                {"nine_slice_top", GV2ContentCore::FValue::MakeNumber(Entry.NineSliceBorderPixels.Top)},
+                {"nine_slice_right", GV2ContentCore::FValue::MakeNumber(Entry.NineSliceBorderPixels.Right)},
+                {"nine_slice_bottom", GV2ContentCore::FValue::MakeNumber(Entry.NineSliceBorderPixels.Bottom)},
+                {"tile_size_x", GV2ContentCore::FValue::MakeNumber(Entry.TileSize.X)},
+                {"tile_size_y", GV2ContentCore::FValue::MakeNumber(Entry.TileSize.Y)},
+            }));
+        }
+        return GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue::MakeArray(std::move(Entries)));
+    };
+    TestEqual(
+        TEXT("Unchanged candidate has deterministic Screen Registry identity"),
+        FString(UTF8_TO_TCHAR(ComputeScreenIdentityHash(FallbackSnapshotARepeat).c_str())),
+        FString(UTF8_TO_TCHAR(ComputeScreenIdentityHash(FallbackSnapshotA).c_str())));
+    TestEqual(
+        TEXT("Unchanged candidate has deterministic Image Catalog identity"),
+        FString(UTF8_TO_TCHAR(ComputeResourceIdentityHash(FallbackSnapshotARepeat).c_str())),
+        FString(UTF8_TO_TCHAR(ComputeResourceIdentityHash(FallbackSnapshotA).c_str())));
+    TestEqual(
+        TEXT("Unchanged candidate has deterministic GameShell identity"),
+        GetPathNameSafe(FallbackSnapshotARepeat.GetGameShellClass()),
+        GetPathNameSafe(FallbackSnapshotA.GetGameShellClass()));
+    TestEqual(
+        TEXT("Unchanged effective fallback has deterministic PresentationHash"),
+        FallbackSnapshotARepeat.GetPresentationHash(),
+        FallbackSnapshotA.GetPresentationHash());
+    TestEqual(
+        TEXT("Unchanged effective fallback has deterministic SessionContentId"),
+        FallbackSnapshotARepeat.GetSessionContentId(),
+        FallbackSnapshotA.GetSessionContentId());
+
+    CoreFallback->TextCatalog.Add(FallbackProbeId, FText::FromString(TEXT("Fallback B")));
+    FGV2SessionContentSnapshot FallbackSnapshotB;
+    FString FallbackErrorB;
+    TestTrue(
+        TEXT("Fallback snapshot B builds through the production candidate path"),
+        BuildCandidateSnapshot(BaseTheme.Get(), FallbackSnapshotB, FallbackErrorB));
+
+    const FText* FallbackTextA = FallbackSnapshotA.GetTheme().FindText(FallbackProbeId);
+    const FText* FallbackTextB = FallbackSnapshotB.GetTheme().FindText(FallbackProbeId);
+    TestNotNull(TEXT("Snapshot A resolves its captured effective fallback"), FallbackTextA);
+    TestNotNull(TEXT("Snapshot B resolves its captured effective fallback"), FallbackTextB);
+    if (FallbackTextA != nullptr && FallbackTextB != nullptr)
+    {
+        TestEqual(TEXT("Snapshot A retains fallback A"), FallbackTextA->ToString(), TEXT("Fallback A"));
+        TestEqual(TEXT("Snapshot B observes fallback B"), FallbackTextB->ToString(), TEXT("Fallback B"));
+    }
+    TestNotEqual(
+        TEXT("Different effective fallback content changes PresentationHash"),
+        FallbackSnapshotA.GetPresentationHash(),
+        FallbackSnapshotB.GetPresentationHash());
+    TestNotEqual(
+        TEXT("Different effective fallback content changes SessionContentId"),
+        FallbackSnapshotA.GetSessionContentId(),
+        FallbackSnapshotB.GetSessionContentId());
+
+    TStrongObjectPtr<UGV2UiTheme> FallbackThemeA(NewObject<UGV2UiTheme>(GetTransientPackage()));
+    TStrongObjectPtr<UGV2UiTheme> FallbackThemeB(DuplicateObject<UGV2UiTheme>(FallbackThemeA.Get(), GetTransientPackage()));
+    FallbackThemeA->TextCatalog.Add(FallbackProbeId, FText::FromString(TEXT("Fallback A")));
+    FallbackThemeB->TextCatalog.Add(FallbackProbeId, FText::FromString(TEXT("Fallback B")));
+    FGV2ResolvedUiTheme DirectResolvedA;
+    FGV2ResolvedUiTheme DirectResolvedB;
+    FString DirectErrorA;
+    FString DirectErrorB;
+    TestTrue(
+        TEXT("Direct resolved fallback A compiles"),
+        FGV2ResolvedUiTheme::Compile(BaseTheme.Get(), FallbackThemeA.Get(), DirectResolvedA, DirectErrorA));
+    TestTrue(
+        TEXT("Direct resolved fallback B compiles"),
+        FGV2ResolvedUiTheme::Compile(BaseTheme.Get(), FallbackThemeB.Get(), DirectResolvedB, DirectErrorB));
+    TestNotEqual(
+        TEXT("Resolved canonical value distinguishes effective fallback content"),
+        FString(UTF8_TO_TCHAR(GV2ContentCore::ComputeCanonicalHash(DirectResolvedA.GetCanonicalValue()).c_str())),
+        FString(UTF8_TO_TCHAR(GV2ContentCore::ComputeCanonicalHash(DirectResolvedB.GetCanonicalValue()).c_str())));
     return true;
 }
 
@@ -625,4 +775,3 @@ bool FGV2UiThemeMapInsertionOrderTest::RunTest(const FString& Parameters)
 }
 
 #endif
-

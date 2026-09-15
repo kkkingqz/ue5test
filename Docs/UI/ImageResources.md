@@ -32,6 +32,7 @@ decisions:
 - Lua, Definitions и Presentation Snapshot хранят только canonical `resource_id`.
 - Project `Resources` tree является authoring source; **session-scoped** `UGV2ImageResourceCatalog` (PAH-04B) владеет опубликованным mapping `resource_id → runtime texture + render metadata` и входит частью в session content snapshot (`ADR-0043` D1) наравне со Screen Registry, UI-схемами, Theme и GameShell — не отдельный по владению surface с координированным lifetime. Каталог перестраивается один раз за сессию, синхронно внутри `FGV2SessionCoordinator::StartSession()`, до перехода в `Ready`, из тех же resolved package roots, что уже использует репозиторий и Lua-исходники пакета — не из отдельной настройки. Ресурс, чей namespace не входит в замыкание пакетов этой сессии, отсутствует в опубликованном каталоге (как и схемы/скрипты пакета вне замыкания), а не считается ошибкой сборки. **Целевое правило (закрывает `PAH-R5`):** фильтрация по замыканию пакетов происходит **до** чтения/decode файла, per-package root (`for package in ResolvedPackageClosure: scan Resources/<package_id>/`), а не сканированием всего дерева `Resources/` с последующим отбрасыванием — файл отключённого пакета не должен влиять на bootstrap активной сессии даже если он повреждён. Каталог не переживает `EndSession()`.
 - UE Presentation разрешает resource после repository/catalog validation и до Widget mutation.
+- Candidate вычисляет `CanonicalPixelHash` из нормализованных decoded pixels и включает его вместе со всей render metadata в `presentation_hash`. Transient path созданного `UTexture2D` в identity не входит: он различается между эквивалентными candidate build и не является content identity.
 - Headless catalog сохраняет только ID, kind и availability metadata, не загружает texture payload и может не хранить UE-specific image geometry metadata.
 - Screen Template владеет геометрией принимающего image block.
 
@@ -113,7 +114,7 @@ Image block Blueprint задаёт политику масштабировани
 
 1. Startup scanner рекурсивно перечисляет `Resources/**/*.png`, определяет mode по suffix и выводит Stable ID без `.tile`/`.9`.
 2. Candidate build декодирует PNG, проверяет duplicate entries и mode-specific metadata/marker border.
-3. Candidate build один раз создаёт runtime texture и готовый `FSlateBrush`, затем формирует immutable lookup `resource_id → resolved resource`.
+3. Candidate build вычисляет canonical pixel hash, один раз создаёт runtime texture и готовый `FSlateBrush`, затем формирует immutable lookup `resource_id → resolved resource`; pixel hash и mode-specific geometry входят в session presentation identity.
 4. После полной validation catalog публикуется атомарно; старый catalog не меняется при ошибке.
 5. Application bootstrap фиксирует successful build как required readiness prerequisite; только после этого может создавать session candidate.
 6. Presentation готовит required resource согласно общему prepare/prefetch lifecycle.
@@ -150,6 +151,7 @@ Image Catalog является required session dependency (PAH-04B): постр
 - `Resources/core/resource/ui/old_paper_tile_256.tile.png` разрешается как `core:resource.ui.old_paper_tile_256`, `tile`, `256×256`, tiling по обеим осям.
 - Resolver создаёт ожидаемые `DrawAs`, tiling, margins и logical tile size.
 - Repeated resolve использует подготовленный immutable lookup и возвращает эквивалентный brush; runtime lookup не перечисляет entries и не перестраивает brush.
+- Два candidate build неизменного набора PNG имеют одинаковый `presentation_hash`; замена decoded pixels или render metadata меняет его, независимо от transient имени runtime texture.
 - Scaling benchmark через public `Resolve()` для 10, 1 000 и 10 000 synthetic entries не демонстрирует линейного роста относительно размера catalog.
 - Widget отклоняет несовместимый mode/ratio без изменения предыдущего resource.
 - Непустой `InitialResourceId` использует тот же resolver и mode validation, что и динамическое применение.

@@ -56,6 +56,10 @@ struct GV2_API FGV2ImageResourceDefinition
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|Resources|Image", meta = (ClampMin = "1.0", EditCondition = "RenderMode == EGV2ImageRenderMode::Tile", EditConditionHides))
     FVector2D TileSize = FVector2D(128.0f, 128.0f);
+
+    // Session identity of the decoded pixels after mode-specific normalization.
+    // Runtime texture object paths are transient and therefore must never be hashed.
+    FString CanonicalPixelHash;
 };
 
 USTRUCT(BlueprintType)

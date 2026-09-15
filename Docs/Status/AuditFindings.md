@@ -14,7 +14,7 @@ depends_on:
 
 > **Показывает:** внешнее повторное ревью session/presentation boundaries после закрытия плана C++ Foundation Closure и результат проверки каждого его утверждения по коду.
 > **Не является нормативным:** правила задают owner contracts и accepted ADR. Формулировки ревью не являются нормой; нормой является contract, на который они ссылаются.
-> **Исход:** раунд открыт. Исходные `CFC-AF-19…26` сохраняют записанные ниже исходы; повторная приёмка плана `SessionAuthorityCorrection` обнаружила четыре новых открытых finding `CFC-AF-27…30`.
+> **Исход:** раунд открыт. Исходные `CFC-AF-19…26` сохраняют записанные ниже исходы; повторная приёмка плана `SessionAuthorityCorrection` обнаружила четыре finding `CFC-AF-27…30`, из которых `CFC-AF-29…30` остаются открыты.
 
 ## Состояние и метод
 
@@ -167,7 +167,7 @@ depends_on:
 
 `FGV2ResolvedUiTheme::Compile` добавляет `CoreMinimalFallbackTextCatalog` из `InFallbackTheme`, и `FindText` читает этот каталог, но `CanonicalThemeValue` вычисляется только из `InTheme`. Два effective resolved Theme могут выдавать различный runtime text при одинаковом `PresentationHash`.
 
-**Исход:** открыт.
+**Исход:** *(Закрыто задачей SAC-04)* Canonical Theme value теперь включает захваченный effective core fallback catalog; production candidate test доказывает изменение `PresentationHash`/`SessionContentId`, контроль одинакового входа исключает ложноположительную недетерминированность, а reflection-derived набор authoring-полей не содержит ручного счётчика.
 
 #### CFC-AF-29 — пустой typed fault остаётся представимым
 
