@@ -4,6 +4,9 @@
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2SessionTransition.h"
@@ -1102,11 +1105,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2SessionOperationRetentionAndEvictionTest::RunTest(const FString& Parameters)
 {
-    // 1. Verify default capacity constant is 160 based on 2-hour session profile calculation
-    TestEqual(TEXT("DefaultMaxRetainedOutcomes is 160"), FGV2SessionTransitionPolicy::DefaultMaxRetainedOutcomes, 160);
+    // 1. Verify the default derived from three measured production-path profile windows.
+    TestEqual(TEXT("DefaultMaxRetainedOutcomes is 18"), FGV2SessionTransitionPolicy::DefaultMaxRetainedOutcomes, 18);
     {
         FGV2SessionTransitionPolicy DefaultPolicy;
-        TestEqual(TEXT("Default constructed policy capacity is 160"), DefaultPolicy.GetMaxRetainedOutcomes(), 160);
+        TestEqual(TEXT("Default constructed policy capacity is 18"), DefaultPolicy.GetMaxRetainedOutcomes(), 18);
         TestEqual(TEXT("Initial retained count is 0"), DefaultPolicy.GetRetainedOutcomesCount(), 0);
         TestEqual(TEXT("Initial highest evicted ID is 0"), DefaultPolicy.GetHighestEvictedOperationId(), static_cast<uint64>(0));
     }
@@ -1284,6 +1287,151 @@ bool FGV2SessionOperationRetentionAndEvictionTest::RunTest(const FString& Parame
         TestEqual(TEXT("Unknown op 999 is Unknown on coordinator"), Coordinator.QuerySessionOperationOutcome(999), ESessionOperationQueryStatus::Unknown);
     }
 
+    return true;
+}
+
+// SAC-06: Measures a fixed representative lifecycle trace on the public production
+// path. The checked-in JSON is the independent golden; the Python contract test only
+// verifies its derivation and never manufactures observations.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionOperationProfileMeasurementTest,
+    "GV2.Runtime.Session.OperationProfileMeasurement",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionOperationProfileMeasurementTest::RunTest(const FString& Parameters)
+{
+    const GV2PresentationTestFixtures::FGV2ScopedSamplePackageOverride SampleOverride;
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UGV2RuntimeSubsystem* Runtime = GameInstance != nullptr
+        ? GameInstance->GetSubsystem<UGV2RuntimeSubsystem>()
+        : nullptr;
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SlotId = TEXT("sac06_operation_profile");
+    const FString SaveDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadPath = FPaths::Combine(SaveDirectory, SlotId + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadPath);
+    TArray<FString> ExistingGenerations;
+    IFileManager::Get().FindFiles(ExistingGenerations, *SaveDirectory, *(SlotId + TEXT(".gen_*")));
+    for (const FString& Generation : ExistingGenerations)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDirectory, Generation));
+    }
+
+    // Scenario session_lifecycle_v1. Operations are deliberately issued only through
+    // public UGV2RuntimeSubsystem calls; StartSession's internal operation is discovered
+    // by enumerating the contiguous operation-id domain below.
+    const int64 UnreadySaveOp = Runtime->RequestSave(TEXT("unready_profile_slot"));
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready after public StartSession"), Runtime->GetSessionState().bIsReady);
+    const int64 InvalidSaveOp = Runtime->RequestSave(TEXT("invalid/profile/slot"));
+
+    AddExpectedErrorPlain(
+        TEXT("GV2 Lua runtime fault: code=SaveSlotNotFound"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    const int64 MissingLoadOp = Runtime->RequestLoad(TEXT("sac06_missing_profile_slot"));
+    const int64 SaveOp = Runtime->RequestSave(SlotId);
+    const int64 LastOperationId = Runtime->RequestLoad(SlotId);
+
+    TestEqual(TEXT("Scenario starts with operation id 1"), UnreadySaveOp, static_cast<int64>(1));
+    TestEqual(TEXT("Invalid save follows the hidden startup operation"), InvalidSaveOp, static_cast<int64>(3));
+    TestEqual(TEXT("Missing load operation id"), MissingLoadOp, static_cast<int64>(4));
+    TestEqual(TEXT("Successful save operation id"), SaveOp, static_cast<int64>(5));
+    TestEqual(TEXT("Successful load is the last scenario operation"), LastOperationId, static_cast<int64>(6));
+
+    int32 TerminalOperations = 0;
+    int32 Completed = 0;
+    int32 Failed = 0;
+    int32 Cancelled = 0;
+    int32 Superseded = 0;
+    for (int64 OperationId = UnreadySaveOp; OperationId <= LastOperationId; ++OperationId)
+    {
+        FGV2SessionOperationResult Result;
+        const ESessionOperationQueryStatus Status = Runtime->QuerySessionOperation(OperationId, Result);
+        TestEqual(
+            *FString::Printf(TEXT("Operation %lld is a retained terminal result"), OperationId),
+            Status,
+            ESessionOperationQueryStatus::Found);
+        if (Status != ESessionOperationQueryStatus::Found)
+        {
+            continue;
+        }
+        ++TerminalOperations;
+        switch (Result.Outcome)
+        {
+        case ESessionOperationOutcome::Completed: ++Completed; break;
+        case ESessionOperationOutcome::Failed: ++Failed; break;
+        case ESessionOperationOutcome::Cancelled: ++Cancelled; break;
+        case ESessionOperationOutcome::Superseded: ++Superseded; break;
+        }
+    }
+
+    UE_LOG(
+        LogTemp,
+        Display,
+        TEXT("GV2_SESSION_OPERATION_PROFILE scenario=session_lifecycle_v1 first=%lld last=%lld terminal=%d completed=%d failed=%d cancelled=%d superseded=%d"),
+        UnreadySaveOp,
+        LastOperationId,
+        TerminalOperations,
+        Completed,
+        Failed,
+        Cancelled,
+        Superseded);
+
+    FString ProfileText;
+    const FString ProfilePath = FPaths::Combine(
+        FPaths::ProjectDir(),
+        TEXT("Docs/Status/Measurements/session_operation_profile.json"));
+    TestTrue(TEXT("Checked-in operation profile can be read"), FFileHelper::LoadFileToString(ProfileText, *ProfilePath));
+
+    TSharedPtr<FJsonObject> Profile;
+    const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ProfileText);
+    TestTrue(TEXT("Checked-in operation profile is valid JSON"), FJsonSerializer::Deserialize(Reader, Profile) && Profile.IsValid());
+    if (!Profile.IsValid())
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    const TSharedPtr<FJsonObject>* Observed = nullptr;
+    TestTrue(TEXT("Profile contains observed object"), Profile->TryGetObjectField(TEXT("observed"), Observed));
+    if (Observed == nullptr || !Observed->IsValid())
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    TestEqual(TEXT("Profile schema"), Profile->GetStringField(TEXT("schema_version")), FString(TEXT("2.0.0")));
+    TestEqual(TEXT("Measurement uses production public API"), Profile->GetStringField(TEXT("measurement_kind")), FString(TEXT("production_public_api_trace")));
+    TestEqual(TEXT("Profile names its production-path test"), Profile->GetStringField(TEXT("source_test")), FString(TEXT("GV2.Runtime.Session.OperationProfileMeasurement")));
+    TestEqual(TEXT("Profile scenario id"), Profile->GetStringField(TEXT("scenario_id")), FString(TEXT("session_lifecycle_v1")));
+    TestEqual(TEXT("Observed first operation id"), static_cast<int64>((*Observed)->GetIntegerField(TEXT("first_operation_id"))), UnreadySaveOp);
+    TestEqual(TEXT("Observed last operation id"), static_cast<int64>((*Observed)->GetIntegerField(TEXT("last_operation_id"))), LastOperationId);
+    TestEqual(TEXT("Observed terminal count"), static_cast<int64>((*Observed)->GetIntegerField(TEXT("terminal_operations"))), static_cast<int64>(TerminalOperations));
+    TestEqual(TEXT("Observed completed count"), static_cast<int64>((*Observed)->GetIntegerField(TEXT("completed"))), static_cast<int64>(Completed));
+    TestEqual(TEXT("Observed failed count"), static_cast<int64>((*Observed)->GetIntegerField(TEXT("failed"))), static_cast<int64>(Failed));
+    TestEqual(TEXT("Observed cancelled count"), static_cast<int64>((*Observed)->GetIntegerField(TEXT("cancelled"))), static_cast<int64>(Cancelled));
+    TestEqual(TEXT("Observed superseded count"), static_cast<int64>((*Observed)->GetIntegerField(TEXT("superseded"))), static_cast<int64>(Superseded));
+
+    const int64 RetentionWindows = Profile->GetIntegerField(TEXT("retention_windows"));
+    const int64 DerivedLimit = Profile->GetIntegerField(TEXT("derived_default_max_retained_outcomes"));
+    TestEqual(TEXT("Retention policy keeps three measured windows"), RetentionWindows, static_cast<int64>(3));
+    TestEqual(TEXT("Derived limit is measured count times policy windows"), DerivedLimit, static_cast<int64>(TerminalOperations) * RetentionWindows);
+    TestEqual(TEXT("Production default equals measured derived limit"), static_cast<int64>(FGV2SessionTransitionPolicy::DefaultMaxRetainedOutcomes), DerivedLimit);
+
+    Runtime->EndSession();
+    IFileManager::Get().Delete(*HeadPath);
+    IFileManager::Get().FindFiles(ExistingGenerations, *SaveDirectory, *(SlotId + TEXT(".gen_*")));
+    for (const FString& Generation : ExistingGenerations)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDirectory, Generation));
+    }
     return true;
 }
 

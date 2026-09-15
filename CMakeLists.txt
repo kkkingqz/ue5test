@@ -626,6 +626,7 @@ if(BUILD_TESTING)
         COMMAND
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Testing/measure_session_operation_profile.py"
+            "--check"
     )
     add_test(
         NAME session_operation_profile_negative_contract

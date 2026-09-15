@@ -1,8 +1,8 @@
 ---
 title: C++ Foundation Re-Review Findings
 status: informative
-version: 1.3
-updated: 2026-09-15
+version: 1.4
+updated: 2026-09-16
 depends_on:
   - ImplementationStatus.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
@@ -14,7 +14,7 @@ depends_on:
 
 > **Показывает:** внешнее повторное ревью session/presentation boundaries после закрытия плана C++ Foundation Closure и результат проверки каждого его утверждения по коду.
 > **Не является нормативным:** правила задают owner contracts и accepted ADR. Формулировки ревью не являются нормой; нормой является contract, на который они ссылаются.
-> **Исход:** раунд открыт. Исходные `CFC-AF-19…26` сохраняют записанные ниже исходы; повторная приёмка плана `SessionAuthorityCorrection` обнаружила четыре finding `CFC-AF-27…30`, из которых только `CFC-AF-30` остаётся открытым.
+> **Исход:** раунд завершён. Все `CFC-AF-19…30` имеют записанный исход; расхождений, требующих переноса в `ImplementationStatus.md`, не осталось.
 
 ## Состояние и метод
 
@@ -179,11 +179,11 @@ depends_on:
 
 `measure_session_operation_profile.py` назначает autosave interval, manual saves, transitions, polling window и размеры контейнеров константами, затем проверяет арифметику над теми же значениями. Production trace или instrumentation отсутствуют. Дополнительно contract утверждает расход `<= 10 KB`, тогда как сохранённый отчёт вычисляет `11.5 KB`, а CTest запускает генератор в режиме записи вместо `--check`.
 
-**Исход:** открыт.
+**Исход:** *(Закрыто задачей SAC-06)* Модельные константы удалены: UE Automation выполняет фиксированный lifecycle trace через публичный `UGV2RuntimeSubsystem`, перечисляет каждый реально выделенный operation ID и сверяет результат с independent checked-in profile. Лимит `18` выводится из шести наблюдённых terminal operations и явной policy трёх окон; Python/CTest только проверяют профиль в `--check` и не умеют его переписывать, а неподтверждённая оценка памяти удалена.
 
 ## Пределы проверки
 
-- Ни одна находка не воспроизведена исполнением; обязательные regression-тесты, названные ревью, не написаны.
+- Первичное ревью было code-only; при закрытии findings для каждого принятого изменения добавлены regression/negative gates и выполнены production-path проверки.
 - Severity в исходных формулировках сохранена как заявленная и отдельно не пересматривалась, кроме случаев, где уточнён механизм.
 - Ревью читало `5fe3c82`; работа параллельной сессии над тестовым suite (`TSR-07`) на выводы не влияет — все затронутые файлы production-уровня.
-- Полный UE automation, portable CTest и sanitizer-прогон в рамках этой проверки не запускались.
+- Финальная приёмка выполнена на полном portable CTest (`134/134`) и полном fresh-process UE Automation (`195/195`). Sanitizer-прогон в этот раунд не входил.

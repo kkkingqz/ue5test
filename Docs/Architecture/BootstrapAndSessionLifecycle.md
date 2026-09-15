@@ -1,8 +1,8 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 4.2
-updated: 2026-09-15
+version: 4.3
+updated: 2026-09-16
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -117,13 +117,17 @@ Operation ID value-only и не содержит callback/Lua reference.
 
 ### Ограничение истории операций и retention semantics
 
-История terminal operation outcomes ограничена детерминированным FIFO-вытеснением по `OperationId` с лимитом `DefaultMaxRetainedOutcomes = 160`.
-Размер истории обоснован операционным профилем сессии игры:
-- Сессионные переходы: \(N_{\text{trans}} \le 16\) за полный цикл (Cold Start Menu $\to$ New Game $\to$ до 10 загрузок/чекпоинтов $\to$ Restart $\to$ Shutdown).
-- Запросы сохранения (`RequestSave`): при минимальном интервале автосохранения \(T_{\text{auto}} = 60\,\text{с}\) за 2 часа непрерывной игры совершается 120 автосохранений плюс до 24 ручных сохранений (\(N_{\text{save}} \le 144\)).
-- Полное расчётное число операций за 2-часовую сессию: \(16 + 144 = 160\).
-- При объёме записи ~48–64 байт лимит 160 записей фиксирует расход памяти $\le 10\,\text{КБ}$ на всё время жизни `GameInstance`, предотвращая неконтролируемый рост долгоживущего процесса.
-- Downstream-потребители (UI-нотификации, индикаторы сохранения, Blueprint/Automation polling) опрашивают исход в пределах первых тиков ($W \le 16$ операций), поэтому лимит 160 даёт запас по времени $\ge 10\times$ даже для редкого опроса.
+История terminal operation outcomes ограничена детерминированным FIFO-вытеснением по `OperationId` с лимитом `DefaultMaxRetainedOutcomes = 18`. Пользовательская ёмкость policy обязана быть положительной; нулевая ёмкость не означает безлимитный режим.
+
+Лимит выводится из checked-in измерения [session operation profile](../Status/Measurements/session_operation_profile.json), а не из предположений о будущих autosave или polling:
+
+- UE Automation `GV2.Runtime.Session.OperationProfileMeasurement` выполняет сценарий `session_lifecycle_v1` через публичные production-входы `UGV2RuntimeSubsystem`: отказ сохранения до Ready, cold-start, отказ невалидного save slot, отказ загрузки отсутствующего slot, успешное сохранение и успешную загрузку.
+- Перечислитель — непрерывный диапазон реально выделенных `OperationId` из изолированного `GameInstance`. Тест запрашивает каждый ID через публичный `QuerySessionOperation`; пропущенная, незавершённая или вытесненная операция делает измерение красным.
+- Наблюдение сценария: 6 terminal operations (`Completed = 3`, `Failed = 3`, `Cancelled = 0`, `Superseded = 0`). Automation печатает эти числа и сверяет их с независимым checked-in JSON.
+- Retention policy хранит три полных измеренных окна: `6 × 3 = 18`. Тройной запас является явно выбранной policy, а не выданным за измерение свойством продукта.
+- `measure_session_operation_profile.py --check` только проверяет JSON, арифметическую производную и совпадение constants в contract/C++; записывать или генерировать measurement этот гейт не может. Изменение сценария требует свежего UE-прогона и осознанного обновления golden.
+
+Contract гарантирует ограничение количества записей, но не заявляет непроверенный байтовый размер контейнера и не предполагает наличие autosave scheduler, которого production-код не предоставляет.
 
 Момент вытеснения: при фиксации terminal outcome (`RecordOutcome` / `RecordFailure`), если число сохранённых записей достигает лимита, из карты `OperationOutcomes` немедленно удаляется запись с наименьшим `OperationId` (самая ранняя), а наивысший вытесненный ID обновляется (`HighestEvictedOperationId = max(HighestEvictedOperationId, EvictedId)`).
 

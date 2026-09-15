@@ -90,7 +90,7 @@ namespace GV2RuntimeCore { struct FRuntimeFault; }
 class GV2_API FGV2SessionTransitionPolicy
 {
 public:
-    static constexpr int32 DefaultMaxRetainedOutcomes = 160;
+    static constexpr int32 DefaultMaxRetainedOutcomes = 18;
 
     explicit FGV2SessionTransitionPolicy(int32 InMaxRetainedOutcomes = DefaultMaxRetainedOutcomes);
 

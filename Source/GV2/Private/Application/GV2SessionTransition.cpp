@@ -430,8 +430,9 @@ bool TryTransitionApplicationState(
 }
 
 FGV2SessionTransitionPolicy::FGV2SessionTransitionPolicy(const int32 InMaxRetainedOutcomes)
-    : MaxRetainedOutcomes(InMaxRetainedOutcomes)
+    : MaxRetainedOutcomes(FMath::Max(1, InMaxRetainedOutcomes))
 {
+    checkf(InMaxRetainedOutcomes > 0, TEXT("Session operation retention capacity must be positive."));
 }
 
 uint64 FGV2SessionTransitionPolicy::EnqueueRequest(
@@ -608,7 +609,7 @@ void FGV2SessionTransitionPolicy::RecordResultInternal(const uint64 OperationId,
         return;
     }
 
-    if (MaxRetainedOutcomes > 0 && OperationOutcomes.Num() >= MaxRetainedOutcomes)
+    if (OperationOutcomes.Num() >= MaxRetainedOutcomes)
     {
         uint64 EarliestId = TNumericLimits<uint64>::Max();
         for (const auto& Pair : OperationOutcomes)

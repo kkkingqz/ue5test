@@ -1,207 +1,183 @@
 #!/usr/bin/env python3
-"""Executable measurement and substantiation script for session operation profile and retention limit.
+"""Verify the checked-in production-path session operation measurement.
 
-SAC-06 (BootstrapAndSessionLifecycle.md, CFC-AF-23):
-Substantiates FGV2SessionTransitionPolicy::DefaultMaxRetainedOutcomes = 160
-by modeling the concrete operational lifecycle of a gameplay session,
-analyzing downstream consumer polling latencies, and evaluating memory footprint.
-
-Outputs the verified JSON profile to Docs/Status/Measurements/session_operation_profile.json.
+The observation is produced by UE automation test
+GV2.Runtime.Session.OperationProfileMeasurement. This script is deliberately
+read-only: it validates the independent golden and its derivation into the C++
+and lifecycle-contract constants, but never fabricates or rewrites measurements.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 TRANSITION_HEADER = REPO_ROOT / "Source" / "GV2" / "Private" / "Application" / "GV2SessionTransition.h"
 LIFECYCLE_DOC = REPO_ROOT / "Docs" / "Architecture" / "BootstrapAndSessionLifecycle.md"
-DEFAULT_OUTPUT_PATH = REPO_ROOT / "Docs" / "Status" / "Measurements" / "session_operation_profile.json"
+PROFILE_PATH = REPO_ROOT / "Docs" / "Status" / "Measurements" / "session_operation_profile.json"
 
-# Operational baseline constants
-AUTOSAVE_INTERVAL_SEC = 60
-MANUAL_SAVES_PER_HOUR_MAX = 12
-TRANSITIONS_PER_SESSION_MAX = 16
-CONSUMER_POLLING_WINDOW_MAX = 16  # Downstream UI / Blueprint polling window in operations
-
-# Memory model constants
-SIZEOF_OPERATION_RESULT_BYTES = 48  # FGV2SessionOperationResult (Outcome enum + Optional FGV2OperationFault)
-TMAP_NODE_OVERHEAD_BYTES = 24       # Unreal TMap node (hash + key uint64 + value + linked list indices)
-IN_PROGRESS_SET_ENTRY_BYTES = 16    # Unreal TSet entry (hash + key uint64)
+EXPECTED_SCHEMA = "2.0.0"
+EXPECTED_KIND = "production_public_api_trace"
+EXPECTED_TEST = "GV2.Runtime.Session.OperationProfileMeasurement"
+EXPECTED_SCENARIO = "session_lifecycle_v1"
+RETENTION_WINDOWS_POLICY = 3
 
 
-def compute_profile_for_duration(duration_minutes: int) -> dict:
-    """Calculates operational metrics for a session of given duration."""
-    autosaves = int(duration_minutes * 60 / AUTOSAVE_INTERVAL_SEC)
-    manual_saves = int(duration_minutes / 60.0 * MANUAL_SAVES_PER_HOUR_MAX)
-    
-    # Scale transitions realistically: startup + menu (2), loads/checkpoints, restart/shutdown
-    if duration_minutes <= 15:
-        transitions = 2
-    elif duration_minutes <= 30:
-        transitions = 4
-    elif duration_minutes <= 60:
-        transitions = 8
-    elif duration_minutes <= 120:
-        transitions = TRANSITIONS_PER_SESSION_MAX
-    else:
-        transitions = TRANSITIONS_PER_SESSION_MAX + int((duration_minutes - 120) / 30.0)
+def parse_named_constant(path: Path, pattern: str, label: str) -> int:
+    text = path.read_text(encoding="utf-8")
+    match = re.search(pattern, text)
+    if match is None:
+        raise ValueError(f"Could not find {label} in {path}")
+    return int(match.group(1))
 
-    total_operations = transitions + autosaves + manual_saves
 
+def validate_profile(profile: dict[str, Any], header_limit: int, doc_limit: int) -> None:
+    if profile.get("schema_version") != EXPECTED_SCHEMA:
+        raise ValueError(f"schema_version must be {EXPECTED_SCHEMA}")
+    if profile.get("measurement_kind") != EXPECTED_KIND:
+        raise ValueError("measurement_kind must identify the production public API trace")
+    if profile.get("source_test") != EXPECTED_TEST:
+        raise ValueError("source_test must name the UE production-path measurement test")
+    if profile.get("scenario_id") != EXPECTED_SCENARIO:
+        raise ValueError("scenario_id must identify the reviewed lifecycle scenario")
+
+    observed = profile.get("observed")
+    if not isinstance(observed, dict):
+        raise ValueError("observed must be an object")
+
+    integer_fields = (
+        "first_operation_id",
+        "last_operation_id",
+        "terminal_operations",
+        "completed",
+        "failed",
+        "cancelled",
+        "superseded",
+    )
+    for field in integer_fields:
+        value = observed.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"observed.{field} must be a non-negative integer")
+
+    first_id = observed["first_operation_id"]
+    last_id = observed["last_operation_id"]
+    terminal = observed["terminal_operations"]
+    if first_id != 1 or last_id < first_id:
+        raise ValueError("the isolated scenario must enumerate its operation-id domain from 1")
+    if terminal != last_id - first_id + 1:
+        raise ValueError("terminal_operations must enumerate every allocated scenario operation")
+    classified = sum(observed[name] for name in ("completed", "failed", "cancelled", "superseded"))
+    if terminal != classified:
+        raise ValueError("terminal_operations must equal the sum of terminal outcome classes")
+
+    windows = profile.get("retention_windows")
+    if windows != RETENTION_WINDOWS_POLICY:
+        raise ValueError(f"retention_windows must equal policy value {RETENTION_WINDOWS_POLICY}")
+    derived_limit = profile.get("derived_default_max_retained_outcomes")
+    if derived_limit != terminal * windows:
+        raise ValueError("derived limit must equal observed terminal operations times retention windows")
+    if header_limit != derived_limit:
+        raise ValueError(f"C++ default {header_limit} differs from measured derived limit {derived_limit}")
+    if doc_limit != derived_limit:
+        raise ValueError(f"contract default {doc_limit} differs from measured derived limit {derived_limit}")
+
+
+def sample_profile() -> dict[str, Any]:
     return {
-        "duration_minutes": duration_minutes,
-        "transitions": transitions,
-        "autosaves": autosaves,
-        "manual_saves": manual_saves,
-        "total_operations": total_operations,
+        "schema_version": EXPECTED_SCHEMA,
+        "measurement_kind": EXPECTED_KIND,
+        "source_test": EXPECTED_TEST,
+        "scenario_id": EXPECTED_SCENARIO,
+        "observed": {
+            "first_operation_id": 1,
+            "last_operation_id": 6,
+            "terminal_operations": 6,
+            "completed": 3,
+            "failed": 3,
+            "cancelled": 0,
+            "superseded": 0,
+        },
+        "retention_windows": RETENTION_WINDOWS_POLICY,
+        "derived_default_max_retained_outcomes": 18,
     }
 
 
-def compute_session_operation_profile(retained_limit: int = 160) -> dict:
-    """Computes comprehensive profile data including standard session substantiation and memory model."""
-    durations = [15, 30, 60, 120, 240]
-    scenarios = {f"{d}min": compute_profile_for_duration(d) for d in durations}
-
-    standard = scenarios["120min"]
-    total_standard_ops = standard["total_operations"]
-
-    # Memory footprint calculation
-    retained_bytes = retained_limit * (SIZEOF_OPERATION_RESULT_BYTES + TMAP_NODE_OVERHEAD_BYTES)
-    # At any time, InProgress operations rarely exceed max active pipeline depth (<= 16)
-    in_progress_bytes = CONSUMER_POLLING_WINDOW_MAX * IN_PROGRESS_SET_ENTRY_BYTES
-    total_memory_bytes = retained_bytes + in_progress_bytes
-    total_memory_kb = round(total_memory_bytes / 1024.0, 2)
-
-    headroom_factor = round(retained_limit / float(CONSUMER_POLLING_WINDOW_MAX), 2)
-    eviction_in_standard_session = total_standard_ops > retained_limit
-
-    return {
-        "schema_version": "1.0.0",
-        "measurement_target": "FGV2SessionTransitionPolicy::DefaultMaxRetainedOutcomes",
-        "substantiated_limit": retained_limit,
-        "standard_session_duration_minutes": 120,
-        "autosave_interval_seconds": AUTOSAVE_INTERVAL_SEC,
-        "consumer_polling_window_max_operations": CONSUMER_POLLING_WINDOW_MAX,
-        "retention_headroom_factor": headroom_factor,
-        "standard_session_breakdown": {
-            "session_transitions_max": standard["transitions"],
-            "autosaves": standard["autosaves"],
-            "manual_saves_max": standard["manual_saves"],
-            "total_calculated_operations": total_standard_ops,
-            "eviction_occurs_within_standard_session": eviction_in_standard_session,
-        },
-        "memory_footprint": {
-            "sizeof_operation_result_bytes": SIZEOF_OPERATION_RESULT_BYTES,
-            "tmap_node_overhead_bytes": TMAP_NODE_OVERHEAD_BYTES,
-            "retained_history_bytes": retained_bytes,
-            "in_progress_tracking_bytes_est": in_progress_bytes,
-            "total_memory_bytes_est": total_memory_bytes,
-            "total_memory_kb_est": total_memory_kb,
-            "bounded_upper_limit_kb": 16.0,
-        },
-        "scenarios": scenarios,
-        "verdict": "SUBSTANTIATED_LIMIT_160",
-    }
-
-
-def parse_header_constant(header_path: Path) -> int:
-    """Parses DefaultMaxRetainedOutcomes from GV2SessionTransition.h."""
-    text = header_path.read_text(encoding="utf-8")
-    m = re.search(r"static\s+constexpr\s+int32\s+DefaultMaxRetainedOutcomes\s*=\s*(\d+)\s*;", text)
-    if not m:
-        raise ValueError(f"Could not find DefaultMaxRetainedOutcomes in {header_path}")
-    return int(m.group(1))
-
-
-def parse_doc_constant(doc_path: Path) -> int:
-    """Parses DefaultMaxRetainedOutcomes from BootstrapAndSessionLifecycle.md."""
-    text = doc_path.read_text(encoding="utf-8")
-    m = re.search(r"DefaultMaxRetainedOutcomes\s*=\s*(\d+)", text)
-    if not m:
-        raise ValueError(f"Could not find DefaultMaxRetainedOutcomes in {doc_path}")
-    return int(m.group(1))
+def expect_rejected(profile: dict[str, Any], header_limit: int = 18, doc_limit: int = 18) -> None:
+    try:
+        validate_profile(profile, header_limit, doc_limit)
+    except ValueError:
+        return
+    raise AssertionError("invalid profile was accepted")
 
 
 def run_self_tests() -> None:
-    """Executes verification and negative self-tests."""
-    # Test 1: Standard 120min calculation
-    prof = compute_session_operation_profile(160)
-    std = prof["standard_session_breakdown"]
-    assert std["total_calculated_operations"] == 160, f"Expected 160, got {std['total_calculated_operations']}"
-    assert std["session_transitions_max"] == 16
-    assert std["autosaves"] == 120
-    assert std["manual_saves_max"] == 24
-    assert not std["eviction_occurs_within_standard_session"]
+    profile = sample_profile()
+    validate_profile(profile, 18, 18)
 
-    # Test 2: Headroom factor calculation
-    assert prof["retention_headroom_factor"] == 10.0, f"Expected 10.0, got {prof['retention_headroom_factor']}"
+    mutation = copy.deepcopy(profile)
+    mutation["measurement_kind"] = "modeled_constants"
+    expect_rejected(mutation)
 
-    # Test 3: Memory footprint bounds
-    assert prof["memory_footprint"]["total_memory_kb_est"] < 16.0
+    mutation = copy.deepcopy(profile)
+    mutation["observed"]["terminal_operations"] = 5
+    expect_rejected(mutation)
 
-    # Test 4: Negative case - limit too low
-    low_prof = compute_session_operation_profile(10)
-    assert low_prof["retention_headroom_factor"] < 1.0
-    assert low_prof["standard_session_breakdown"]["eviction_occurs_within_standard_session"]
+    mutation = copy.deepcopy(profile)
+    mutation["observed"]["completed"] = 2
+    expect_rejected(mutation)
 
-    print("PASS: all measure_session_operation_profile self-tests passed")
+    mutation = copy.deepcopy(profile)
+    mutation["derived_default_max_retained_outcomes"] = 160
+    expect_rejected(mutation)
+
+    expect_rejected(profile, header_limit=160)
+    expect_rejected(profile, doc_limit=160)
+    print("PASS: session operation profile negative self-tests")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--self-test", action="store_true", help="Run self-tests and exit")
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH, help="Path to write JSON profile")
-    parser.add_argument("--check", action="store_true", help="Check that output matches without writing")
+    parser.add_argument("--check", action="store_true", help="verify the checked-in profile without writing")
+    parser.add_argument("--self-test", action="store_true", help="run negative verifier tests")
     args = parser.parse_args()
 
     if args.self_test:
         run_self_tests()
         return 0
+    if not args.check:
+        parser.error("--check is required; measurement artifacts are never generated by this verifier")
 
-    # 1. Parse constants from code and contract
-    if not TRANSITION_HEADER.is_file():
-        print(f"ERROR: Header not found at {TRANSITION_HEADER}", file=sys.stderr)
+    try:
+        profile = json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+        header_limit = parse_named_constant(
+            TRANSITION_HEADER,
+            r"static\s+constexpr\s+int32\s+DefaultMaxRetainedOutcomes\s*=\s*(\d+)\s*;",
+            "DefaultMaxRetainedOutcomes",
+        )
+        doc_limit = parse_named_constant(
+            LIFECYCLE_DOC,
+            r"DefaultMaxRetainedOutcomes\s*=\s*`?(\d+)`?",
+            "documented DefaultMaxRetainedOutcomes",
+        )
+        validate_profile(profile, header_limit, doc_limit)
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    if not LIFECYCLE_DOC.is_file():
-        print(f"ERROR: Architecture doc not found at {LIFECYCLE_DOC}", file=sys.stderr)
-        return 1
 
-    header_limit = parse_header_constant(TRANSITION_HEADER)
-    doc_limit = parse_doc_constant(LIFECYCLE_DOC)
-
-    if header_limit != 160:
-        print(f"ERROR: Header constant is {header_limit}, expected 160", file=sys.stderr)
-        return 1
-    if doc_limit != 160:
-        print(f"ERROR: Doc constant is {doc_limit}, expected 160", file=sys.stderr)
-        return 1
-
-    # 2. Compute profile
-    profile_data = compute_session_operation_profile(header_limit)
-    formatted_json = json.dumps(profile_data, indent=2, ensure_ascii=False) + "\n"
-
-    # 3. Handle output / check
-    if args.check:
-        if not args.output.is_file():
-            print(f"ERROR: Output file does not exist: {args.output}", file=sys.stderr)
-            return 1
-        existing = args.output.read_text(encoding="utf-8")
-        if existing != formatted_json:
-            print(f"ERROR: Output file {args.output} differs from generated profile", file=sys.stderr)
-            return 1
-        print(f"OK: {args.output} matches substantiated operational profile.")
-        return 0
-
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(formatted_json, encoding="utf-8")
-    print(f"Successfully generated operation profile: {args.output}")
-    print(f"Substantiated retention limit: {header_limit} operations ({profile_data['standard_session_breakdown']['total_calculated_operations']} standard ops, headroom {profile_data['retention_headroom_factor']}x, memory {profile_data['memory_footprint']['total_memory_kb_est']} KB)")
+    observed = profile["observed"]
+    print(
+        "PASS: checked-in UE production trace "
+        f"observed {observed['terminal_operations']} terminal operations; "
+        f"{profile['retention_windows']} windows derive limit "
+        f"{profile['derived_default_max_retained_outcomes']}"
+    )
     return 0
 
 
