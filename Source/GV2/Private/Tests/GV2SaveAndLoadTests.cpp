@@ -1289,7 +1289,8 @@ bool FGV2SaveAndLoadPreflightFailurePreservesSessionATest::RunTest(const FString
     FGV2OperationFault LoadFault;
     TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome, LoadFault));
     TestEqual(TEXT("Load outcome is Failed"), LoadOutcome, ESessionOperationOutcome::Failed);
-    TestEqual(TEXT("Load fault code is SaveContainerCorrupt"), LoadFault.Code, TEXT("SaveContainerCorrupt"));
+    TestEqual(TEXT("Load fault uses the closed session code"), LoadFault.Code, FGV2SessionFaultCodes::RuntimeFault);
+    TestEqual(TEXT("Load fault preserves SaveContainerCorrupt as its cause"), LoadFault.CauseCode, TEXT("SaveContainerCorrupt"));
 
     // Assert session A is preserved
     const FGV2SessionStatus StatusAfterFail = Runtime->GetSessionState();
