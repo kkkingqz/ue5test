@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 4.2
+version: 4.3
 updated: 2026-09-15
 depends_on:
   - SystemContextAndComponents.md
@@ -378,13 +378,17 @@ Cold-start использует только core-minimal values (`ImageCatalogF
 
 ## Integration gate
 
-`.github/workflows/linux-ci.yml` обязателен и состоит из трёх независимых jobs:
+`.github/workflows/linux-ci.yml` обязателен. Два job исполняются автоматически на каждый push и pull request; третий запускается только вручную через `workflow_dispatch`:
 
 | Job | Runner | Содержание |
 |---|---|---|
 | CMake, CTest and headless | hosted Ubuntu | Configure/build, CTest (включая `host_conformance_parity_contract`, `ue_test_report_contract`, `mcp_transport_contract`, `ue_acceptance_runner_contract`, `test_fixture_ownership_contract`, `test_fixture_ownership_negative_contract`, `session_snapshot_ownership_contract`, `session_snapshot_ownership_negative_contract`), явные `gv2-headless --self-test`, `gv2-headless --check-scripts` и `gv2-content` smoke commands (включая информационный `gv2-content coverage`) |
 | Documentation contracts | hosted Ubuntu | `Tools/Documentation/validate_docs.py`: UTF-8, front matter, relative links/anchors, targets `depends_on`/`decisions`, отсутствие cycles |
-| Unreal `GV2` Acceptance | self-hosted linux x64 | Build `GV2Editor` и полный automation filter `GV2` через `Tools/Testing/run_ue_acceptance.py` с fail-closed валидацией машинного отчёта `index.json` модулем `ue_test_report.py` |
+| Unreal `GV2` Acceptance | self-hosted linux x64, **только `workflow_dispatch`** | Build `GV2Editor` и полный automation filter `GV2` через `Tools/Testing/run_ue_acceptance.py` с fail-closed валидацией машинного отчёта `index.json` модулем `ue_test_report.py` |
+
+**Почему третий job ручной.** Self-hosted runner с установленным UE не зарегистрирован ни разу. При автозапуске GitHub не считает отсутствие runner'а ошибкой: job уходит в очередь ожидания на предельные 24 часа, а `timeout-minutes` начинает тикать только со старта job'а и потому не срабатывает. Автозапуск давал не сигнал, а суточное ожидание и красную запись в истории на каждый push. Ручной запуск возвращает честное состояние: отсутствие прогона видно как отсутствие прогона.
+
+**Следствие для приёмки.** UE acceptance evidence получают локальными fresh-process прогонами `run_ue_acceptance.py`, и это evidence одного исполнителя без независимого подтверждения. Расхождение с требованием обязательного третьего job открыто как [`STATUS-027`](../Status/ImplementationStatus.md); оно закрывается регистрацией runner'а и возвратом автозапуска, а не переписыванием требования.
 
 `Tools/Content/validate_host_conformance_parity.py` (CTest `host_conformance_parity_contract`) проверяет:
 1. Отсутствие host-локальных self-тестов в `Headless/Source/main.cpp`.

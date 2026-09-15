@@ -51,9 +51,14 @@ jobs:
       - name: Validate links, front matter and dependency graph
         run: python3 Tools/Documentation/validate_docs.py
 
+  # Ручной job: self-hosted runner с установленным UE не зарегистрирован, поэтому
+  # автозапуск на push/pull_request давал не сигнал, а суточное ожидание в очереди
+  # (GitHub держит job до 24h, ожидая появления runner'а с метками, и timeout-minutes
+  # при этом не тикает). Запускается только через workflow_dispatch; пока runner не
+  # поднят, обязательный третий job интеграционного гейта не исполняется -- STATUS-027.
   unreal-acceptance:
     name: Unreal GV2 Acceptance
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 45
     env:
