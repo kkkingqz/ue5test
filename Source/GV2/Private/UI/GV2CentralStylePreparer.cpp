@@ -28,7 +28,7 @@ namespace
 using namespace GV2PresentationApply;
 
 FPreparedRichTextTokenStyle ResolveRichTextTokenStyle(
-    const UGV2UiTheme& Theme,
+    const FGV2ResolvedUiTheme& Theme,
     const FName Token,
     const TSubclassOf<UCommonTextStyle> StyleClass)
 {
@@ -37,7 +37,7 @@ FPreparedRichTextTokenStyle ResolveRichTextTokenStyle(
     // resolves against the Theme's own TextStyle rather than producing nothing. Without it
     // the prepared table would disagree with the resolver it replaced for exactly the tokens
     // an author left half-filled.
-    const TSubclassOf<UCommonTextStyle> EffectiveClass = StyleClass != nullptr ? StyleClass : Theme.TextStyle;
+    const TSubclassOf<UCommonTextStyle> EffectiveClass = StyleClass != nullptr ? StyleClass : TSubclassOf<UCommonTextStyle>(Theme.TextStyle.Get());
     Result.StyleClass = EffectiveClass;
     Result.UnscaledFontSize = Theme.ResolveUnscaledFontSize(Token);
     if (const UCommonTextStyle* CommonStyle = EffectiveClass != nullptr
@@ -50,7 +50,7 @@ FPreparedRichTextTokenStyle ResolveRichTextTokenStyle(
     return Result;
 }
 
-FPreparedRichTextPopoverStyle ResolveRichTextPopoverStyle(const UGV2UiTheme& Theme)
+FPreparedRichTextPopoverStyle ResolveRichTextPopoverStyle(const FGV2ResolvedUiTheme& Theme)
 {
     FPreparedRichTextPopoverStyle Result;
     Result.Background = Theme.RichTextPopoverBackground;
@@ -73,8 +73,7 @@ bool EmitForWidget(
     FGV2PreparedPresentationTransaction& OutTransaction,
     FString& OutError)
 {
-    const FGV2ResolvedUiTheme& ResolvedTheme = PrepareContext.GetTheme();
-    const UGV2UiTheme& Theme = *ResolvedTheme.Theme;
+    const FGV2ResolvedUiTheme& Theme = PrepareContext.GetTheme();
 
     if (UGV2SeparatorWidgetBase* Separator = Cast<UGV2SeparatorWidgetBase>(Widget))
     {
@@ -172,12 +171,12 @@ bool EmitForWidget(
     if (UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(Widget))
     {
         FPreparedButtonStyle Style;
-        Style.ButtonStyle = Theme.ButtonStyle;
+        Style.ButtonStyle = Theme.ButtonStyle.Get();
         // The theme names the button-label default explicitly; the scale policy for it
         // comes from the theme's own default text token, resolved by the text pipeline so
         // this preparer does not become a second implementation of that math.
-        Style.DefaultLabelStyle = Theme.ButtonLabelStyle;
-        Style.DefaultLabelScale = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, NAME_None);
+        Style.DefaultLabelStyle = Theme.ButtonLabelStyle.Get();
+        Style.DefaultLabelScale = UGV2TextPipeline::ResolveScalePolicyForTheme(Theme, NAME_None);
 
         FPreparedCentralStyleOperation Operation;
         Operation.TargetWidget = Button;
@@ -190,7 +189,7 @@ bool EmitForWidget(
     {
         FPreparedCheckboxStyle Style;
         Style.WidgetStyle = Theme.CheckboxStyle;
-        Style.DefaultLabelStyle = Theme.CheckboxLabelStyle;
+        Style.DefaultLabelStyle = Theme.CheckboxLabelStyle.Get();
 
         FPreparedCentralStyleOperation Operation;
         Operation.TargetWidget = Checkbox;
@@ -202,7 +201,7 @@ bool EmitForWidget(
     if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(Widget))
     {
         FPreparedDropdownStyle Style;
-        Style.HeaderStyle = Theme.DropdownHeaderStyle;
+        Style.HeaderStyle = Theme.DropdownHeaderStyle.Get();
         Style.PopupBackground = Theme.DropdownPopupBackground;
         Style.PopupPadding = Theme.DropdownPopupPadding;
         Style.OptionItemPadding = Theme.DropdownOptionItemPadding;
@@ -221,10 +220,10 @@ bool EmitForWidget(
     {
         FPreparedInputFieldStyle Style;
         Style.WidgetStyle = Theme.InputFieldStyle;
-        Style.DefaultLabelStyle = Theme.InputFieldLabelStyle;
+        Style.DefaultLabelStyle = Theme.InputFieldLabelStyle.Get();
         // "body", not the theme's default text token: this class's token-less size has
         // always been the body size, and that is a behaviour to carry over, not to tidy.
-        Style.DefaultLabelScale = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, FName(TEXT("body")));
+        Style.DefaultLabelScale = UGV2TextPipeline::ResolveScalePolicyForTheme(Theme, FName(TEXT("body")));
 
         FPreparedCentralStyleOperation Operation;
         Operation.TargetWidget = InputField;
@@ -239,21 +238,21 @@ bool EmitForWidget(
         Style.DefaultTokenName = Theme.DefaultTextStyleToken.IsNone()
             ? FName(TEXT("default"))
             : Theme.DefaultTextStyleToken;
-        Style.DefaultStyleClass = Theme.RichTextStyle;
+        Style.DefaultStyleClass = Theme.RichTextStyle.Get();
         Style.DefaultToken = ResolveRichTextTokenStyle(
             Theme,
             Style.DefaultTokenName,
-            Theme.RichTextStyle);
+            Theme.RichTextStyle.Get());
         // The legacy default run used RichTextStyle verbatim; only named semantic style
         // and size tokens participate in viewport scaling. Preserve that distinction.
         Style.DefaultToken.UnscaledFontSize = 0.0f;
-        for (const TPair<FName, FGV2TextStyleToken>& Pair : Theme.TextStyleTokens)
+        for (const TPair<FName, TStrongObjectPtr<UClass>>& Pair : Theme.TextStyleTokens)
         {
             if (Pair.Key != Style.DefaultTokenName && Pair.Key != FName(TEXT("default")))
             {
                 Style.StyleByToken.Add(
                     Pair.Key,
-                    ResolveRichTextTokenStyle(Theme, Pair.Key, Pair.Value.Style));
+                    ResolveRichTextTokenStyle(Theme, Pair.Key, Pair.Value.Get()));
             }
         }
         Style.ColorByToken = Theme.TextColorTokens;
@@ -265,16 +264,16 @@ bool EmitForWidget(
         {
             Style.UnscaledSizeByToken.Add(Pair.Key, Theme.ResolveUnscaledFontSize(Pair.Key));
         }
-        for (const TPair<FName, FGV2TextStyleToken>& Pair : Theme.TextStyleTokens)
+        for (const TPair<FName, TStrongObjectPtr<UClass>>& Pair : Theme.TextStyleTokens)
         {
             Style.UnscaledSizeByToken.FindOrAdd(Pair.Key) = Theme.ResolveUnscaledFontSize(Pair.Key);
         }
-        Style.ScalePolicy = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, Style.DefaultTokenName);
+        Style.ScalePolicy = UGV2TextPipeline::ResolveScalePolicyForTheme(Theme, Style.DefaultTokenName);
         Style.InteractiveStyle = Theme.RichTextInteractiveStyle;
         // PSC-10B (ADR-0043 D1): already loaded once at snapshot build. Prepare performs no
         // load of its own -- this used to be a LoadSynchronous() per rich text widget per
         // reconcile, which is a content-resolution capability on a per-frame path.
-        Style.PopoverClass = ResolvedTheme.RichTextPopoverClass.Get();
+        Style.PopoverClass = Theme.RichTextPopoverClass.Get();
         Style.PopoverStyle = ResolveRichTextPopoverStyle(Theme);
         Style.bIsResolved = true;
 
@@ -386,7 +385,7 @@ bool PrepareForSubtree(
     // PSC-10B: a snapshot without a Theme cannot produce style, and since no widget pulls
     // one any more the result would be a silently unstyled tree. Fail loudly instead: the
     // whole point of the push model is that missing presentation authority is observable.
-    if (PrepareContext.GetTheme().Theme.Get() == nullptr)
+    if (!PrepareContext.GetTheme().IsValid())
     {
         OutError = TEXT("core:diagnostic.ui_central_style.missing_theme: the session snapshot carries no Theme");
         return false;

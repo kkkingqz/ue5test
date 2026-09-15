@@ -1794,10 +1794,10 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
         // PSC-10B (ADR-0043 D1): the popover renderer class was loaded ONCE at snapshot
         // build. Checking availability here must not be a synchronous load of its own --
         // this check runs during Prepare for every rich text field carrying a hover span.
-        const UGV2UiTheme* Theme = PrepareContext != nullptr
-            ? PrepareContext->GetTheme().Theme.Get()
+        const FGV2ResolvedUiTheme* Theme = PrepareContext != nullptr
+            ? &PrepareContext->GetTheme()
             : nullptr;
-        if (Theme == nullptr || PrepareContext->GetTheme().RichTextPopoverClass.Get() == nullptr)
+        if (Theme == nullptr || !Theme->IsValid() || Theme->RichTextPopoverClass.Get() == nullptr)
         {
             OutError = TEXT("core:diagnostic.ui_consumer.missing_popover_renderer: RichText popover renderer unavailable in prepared session theme");
             return false;

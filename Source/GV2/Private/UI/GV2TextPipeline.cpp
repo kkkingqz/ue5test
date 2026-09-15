@@ -155,7 +155,28 @@ void FillResolvedPresentation(const UGV2UiTheme& Theme, FName StyleToken, FGV2Te
     OutText.bHasResolvedDefaultStyle = ResolveStyleCore(&Theme, StyleToken, OutText.ResolvedDefaultStyle);
 }
 
+void FillResolvedPresentation(const FGV2ResolvedUiTheme& Theme, FName StyleToken, FGV2TextViewModel& OutText)
+{
+    OutText.StyleToken = StyleToken;
+    OutText.bHasResolvedPresentation = true;
+    OutText.ResolvedStyleClass = Theme.ResolveStyleClass(StyleToken);
+    OutText.ResolvedBaseFontSize = Theme.ResolveUnscaledFontSize(StyleToken);
+    OutText.ResolvedMinReadableFontSize = Theme.MinReadableFontSize;
+    OutText.ResolvedReferenceViewportHeight = Theme.ReferenceViewportHeight;
+    OutText.ResolvedFontScaleCurve = Theme.TextScaleCurve;
+    OutText.bHasResolvedDefaultStyle = Theme.ResolveStyle(StyleToken, OutText.ResolvedDefaultStyle);
+}
+
 FName ResolveDeclaredStyleToken(const UGV2UiTheme& Theme, FName StyleToken)
+{
+    if (!StyleToken.IsNone())
+    {
+        return StyleToken;
+    }
+    return !Theme.DefaultTextStyleToken.IsNone() ? Theme.DefaultTextStyleToken : FName(TEXT("default"));
+}
+
+FName ResolveDeclaredStyleToken(const FGV2ResolvedUiTheme& Theme, FName StyleToken)
 {
     if (!StyleToken.IsNone())
     {
@@ -237,6 +258,63 @@ bool ResolveTextWithTheme(
         OutText.NormalizedMarkup,
         OutError);
 }
+
+bool ResolveTextWithResolvedTheme(
+    const FGV2ResolvedUiTheme& Theme,
+    const FString& TextId,
+    const TArray<FGV2UiControlValue>& Args,
+    FName StyleToken,
+    FGV2TextViewModel& OutText,
+    FString& OutError)
+{
+    OutText = {};
+    OutError.Reset();
+    const FText* Template = Theme.FindText(TextId);
+    if (Template == nullptr)
+    {
+        OutError = FString::Printf(TEXT("Unknown text_id: %s"), *TextId);
+        return false;
+    }
+    StyleToken = ResolveDeclaredStyleToken(Theme, StyleToken);
+    if (!Theme.TextStyleTokens.IsEmpty()
+        && !Theme.TextStyleTokens.Contains(StyleToken)
+        && StyleToken != FName(TEXT("default")))
+    {
+        OutError = FString::Printf(TEXT("Unknown text style token: %s"), *StyleToken.ToString());
+        return false;
+    }
+
+    FFormatNamedArguments FormatArgs;
+    for (const FGV2UiControlValue& Arg : Args)
+    {
+        switch (Arg.Type)
+        {
+        case EGV2UiControlValueType::Boolean:
+            FormatArgs.Add(Arg.Name.ToString(), FText::FromString(Arg.BooleanValue ? TEXT("true") : TEXT("false")));
+            break;
+        case EGV2UiControlValueType::Integer:
+            FormatArgs.Add(Arg.Name.ToString(), Arg.IntegerValue);
+            break;
+        case EGV2UiControlValueType::Number:
+            FormatArgs.Add(Arg.Name.ToString(), Arg.NumberValue);
+            break;
+        case EGV2UiControlValueType::String:
+            FormatArgs.Add(Arg.Name.ToString(), FText::FromString(EscapeMarkup(Arg.StringValue)));
+            break;
+        case EGV2UiControlValueType::Null:
+            OutError = TEXT("Text arguments must be scalar non-null values.");
+            return false;
+        }
+    }
+
+    OutText.Text = FormatArgs.IsEmpty() ? *Template : FText::Format(*Template, FormatArgs);
+    FillResolvedPresentation(Theme, StyleToken, OutText);
+    return UGV2TextPipeline::NormalizeMarkup(
+        Theme,
+        OutText.Text.ToString(),
+        OutText.NormalizedMarkup,
+        OutError);
+}
 }
 
 bool UGV2TextPipeline::Resolve(
@@ -247,16 +325,12 @@ bool UGV2TextPipeline::Resolve(
     FString& OutError,
     const FGV2PresentationPrepareContext* PrepareContext)
 {
-    const UGV2UiTheme* Theme = PrepareContext != nullptr
-        ? PrepareContext->GetTheme().Theme.Get()
-        : nullptr;
-    if (Theme == nullptr)
+    if (PrepareContext == nullptr || !PrepareContext->GetTheme().IsValid())
     {
         OutError = TEXT("core:diagnostic.ui_text.missing_prepare_context: session Theme is unavailable");
         return false;
     }
-    const UGV2UiTheme* FallbackTheme = PrepareContext->GetTheme().FallbackTheme.Get();
-    return ResolveTextWithTheme(*Theme, FallbackTheme, TextId, Args, StyleToken, OutText, OutError);
+    return ResolveTextWithResolvedTheme(PrepareContext->GetTheme(), TextId, Args, StyleToken, OutText, OutError);
 }
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -275,6 +349,23 @@ bool UGV2TextPipeline::ResolveForAutomationTest(
         return false;
     }
     return ResolveTextWithTheme(*Theme, nullptr, TextId, Args, StyleToken, OutText, OutError);
+}
+
+bool UGV2TextPipeline::ResolveForAutomationTest(
+    const FGV2ResolvedUiTheme& Theme,
+    const FString& TextId,
+    const TArray<FGV2UiControlValue>& Args,
+    FName StyleToken,
+    FGV2TextViewModel& OutText,
+    FString& OutError)
+{
+    if (!Theme.IsValid())
+    {
+        OutText = {};
+        OutError = TEXT("Automation-test Theme is unavailable.");
+        return false;
+    }
+    return ResolveTextWithResolvedTheme(Theme, TextId, Args, StyleToken, OutText, OutError);
 }
 
 // PSC-10B: the one sanctioned way for a test to obtain a resolved view model from LITERAL
@@ -299,6 +390,25 @@ bool UGV2TextPipeline::ResolveLiteralForAutomationTest(
     FillResolvedPresentation(*Theme, ResolveDeclaredStyleToken(*Theme, StyleToken), OutText);
     return NormalizeMarkup(Theme, LiteralText, OutText.NormalizedMarkup, OutError);
 }
+
+bool UGV2TextPipeline::ResolveLiteralForAutomationTest(
+    const FGV2ResolvedUiTheme& Theme,
+    const FString& LiteralText,
+    FName StyleToken,
+    FGV2TextViewModel& OutText,
+    FString& OutError)
+{
+    OutText = {};
+    OutError.Reset();
+    if (!Theme.IsValid())
+    {
+        OutError = TEXT("Automation-test Theme is unavailable.");
+        return false;
+    }
+    OutText.Text = FText::FromString(LiteralText);
+    FillResolvedPresentation(Theme, ResolveDeclaredStyleToken(Theme, StyleToken), OutText);
+    return NormalizeMarkup(Theme, LiteralText, OutText.NormalizedMarkup, OutError);
+}
 #endif
 
 static FName ResolveEffectiveStyleToken(const UGV2UiTheme* Theme, FName StyleToken)
@@ -317,6 +427,11 @@ TSubclassOf<UCommonTextStyle> UGV2TextPipeline::ResolveStyleClassForTheme(const 
     return ResolveStyleClassCore(Theme, ResolveEffectiveStyleToken(Theme, StyleToken));
 }
 
+TSubclassOf<UCommonTextStyle> UGV2TextPipeline::ResolveStyleClassForTheme(const FGV2ResolvedUiTheme& Theme, FName StyleToken)
+{
+    return Theme.ResolveStyleClass(StyleToken);
+}
+
 GV2PresentationApply::FPreparedTextScalePolicy UGV2TextPipeline::ResolveScalePolicyForTheme(const UGV2UiTheme* Theme, FName StyleToken)
 {
     const FName EffectiveToken = ResolveEffectiveStyleToken(Theme, StyleToken);
@@ -325,6 +440,19 @@ GV2PresentationApply::FPreparedTextScalePolicy UGV2TextPipeline::ResolveScalePol
     Policy.MinReadableFontSize = Theme != nullptr ? Theme->MinReadableFontSize : 10.0f;
     Policy.ReferenceViewportHeight = Theme != nullptr ? Theme->ReferenceViewportHeight : 1080.0f;
     Policy.ScaleCurve = Theme != nullptr ? Theme->TextScaleCurve : FRuntimeFloatCurve();
+    return Policy;
+}
+
+GV2PresentationApply::FPreparedTextScalePolicy UGV2TextPipeline::ResolveScalePolicyForTheme(const FGV2ResolvedUiTheme& Theme, FName StyleToken)
+{
+    const FName EffectiveToken = StyleToken.IsNone()
+        ? (!Theme.DefaultTextStyleToken.IsNone() ? Theme.DefaultTextStyleToken : FName("default"))
+        : StyleToken;
+    GV2PresentationApply::FPreparedTextScalePolicy Policy;
+    Policy.BaseFontSize = Theme.ResolveUnscaledFontSize(EffectiveToken);
+    Policy.MinReadableFontSize = Theme.MinReadableFontSize;
+    Policy.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
+    Policy.ScaleCurve = Theme.TextScaleCurve;
     return Policy;
 }
 
@@ -428,19 +556,15 @@ bool UGV2TextPipeline::ApplyHint(UEditableTextBox* Widget, const FGV2TextViewMod
     return FGV2PresentationApply::Apply(Transaction, Result);
 }
 
-bool UGV2TextPipeline::NormalizeMarkup(
-    const UGV2UiTheme* Theme,
+template <typename TTheme>
+static bool NormalizeMarkupCommon(
+    const TTheme& Theme,
     const FString& Source,
     FString& OutMarkup,
     FString& OutError)
 {
     OutMarkup.Reset();
     OutError.Reset();
-    if (Theme == nullptr)
-    {
-        OutError = TEXT("Text theme is unavailable.");
-        return false;
-    }
 
     TArray<FMarkupFrame> Stack;
     Stack.AddDefaulted();
@@ -513,17 +637,17 @@ bool UGV2TextPipeline::NormalizeMarkup(
         }
         FString Tag = Body.Left(TagLength).ToLower();
         if (Tag == TEXT("color") && ReadAssignedValue(Body, Value)
-            && Theme->TextColorTokens.Contains(FName(Value)))
+            && Theme.TextColorTokens.Contains(FName(Value)))
         {
             Frame.Color = FName(Value);
         }
         else if (Tag == TEXT("size") && ReadAssignedValue(Body, Value)
-            && Theme->TextSizeTokens.Contains(FName(Value)))
+            && Theme.TextSizeTokens.Contains(FName(Value)))
         {
             Frame.Size = FName(Value);
         }
         else if (Tag == TEXT("style") && ReadAssignedValue(Body, Value)
-            && Theme->TextStyleTokens.Contains(FName(Value)))
+            && Theme.TextStyleTokens.Contains(FName(Value)))
         {
             Frame.Style = FName(Value);
         }
@@ -546,4 +670,34 @@ bool UGV2TextPipeline::NormalizeMarkup(
         return false;
     }
     return true;
+}
+
+bool UGV2TextPipeline::NormalizeMarkup(
+    const UGV2UiTheme* Theme,
+    const FString& Source,
+    FString& OutMarkup,
+    FString& OutError)
+{
+    if (Theme == nullptr)
+    {
+        OutMarkup.Reset();
+        OutError = TEXT("Text theme is unavailable.");
+        return false;
+    }
+    return NormalizeMarkupCommon(*Theme, Source, OutMarkup, OutError);
+}
+
+bool UGV2TextPipeline::NormalizeMarkup(
+    const FGV2ResolvedUiTheme& Theme,
+    const FString& Source,
+    FString& OutMarkup,
+    FString& OutError)
+{
+    if (!Theme.IsValid())
+    {
+        OutMarkup.Reset();
+        OutError = TEXT("Text theme is unavailable.");
+        return false;
+    }
+    return NormalizeMarkupCommon(Theme, Source, OutMarkup, OutError);
 }

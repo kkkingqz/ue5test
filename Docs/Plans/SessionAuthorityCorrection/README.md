@@ -181,7 +181,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-04 — Компилировать Theme в значение и внести её в идентичность
 
-- [ ] SAC-04 — Компилировать Theme в значение и внести её в идентичность
+- [x] SAC-04 — Компилировать Theme в значение и внести её в идентичность
 
 **Зависимость:** SAC-02. **Файлы:** `Source/GV2/Private/Application/GV2SessionContentSnapshot.h/.cpp`, потребители `PrepareContext.GetTheme()` (`GV2TextPipeline.cpp`, `GV2CentralStylePreparer.cpp`, `GV2PropertyConsumers.cpp`), `Tools/Testing/validate_session_snapshot_ownership.py`.
 

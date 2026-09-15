@@ -1208,7 +1208,7 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
     {
         return false;
     }
-    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
+    const FGV2ResolvedUiTheme& Theme = PrepareContext->GetTheme();
 
     // Before Prepare/Commit, CanApplyScreenField only checked field_id/schema_id and
     // never opened a keyed collection, so "schema passes, a deep child fails at
@@ -1289,10 +1289,10 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
         return Schema;
     };
 
-    auto MakeItem = [Theme](const TCHAR* Key, const TCHAR* DisplayText) -> FGV2PreparedUiValue
+    auto MakeItem = [&Theme](const TCHAR* Key, const TCHAR* DisplayText) -> FGV2PreparedUiValue
     {
         const FGV2TextViewModel TextModel =
-            MakeResolvedLiteralTextForTest(*Theme, DisplayText);
+            MakeResolvedLiteralTextForTest(Theme, DisplayText);
         TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
         Fields.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(Key));
         Fields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(TextModel));

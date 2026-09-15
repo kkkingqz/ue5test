@@ -2000,7 +2000,7 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
             RecoveredSeparator->BuildBoundSubWidgets();
             RecoveredSeparator->SetTestOrientation(Orient_Horizontal);
             ReusedScreenRoot->AddChildToVerticalBox(RecoveredSeparator);
-            const float ThemeSeparatorThickness = PrepareContext->GetTheme().Theme->SeparatorThickness;
+            const float ThemeSeparatorThickness = PrepareContext->GetTheme().SeparatorThickness;
             constexpr float UnstyledSentinel = -41.5f;
 
             UGV2DeclaredCompositeWidgetBase* FieldA = ReusedScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(

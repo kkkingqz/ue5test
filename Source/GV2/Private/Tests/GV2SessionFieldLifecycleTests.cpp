@@ -399,11 +399,11 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 
     // A text model the central pipeline must reject: authoring markup may never reach
     // a plain renderer. Used throughout as the failure injector.
-    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
-    FGV2TextViewModel PoisonText = MakeResolvedLiteralTextForTest(*Theme, TEXT("Poison"));
+    const FGV2ResolvedUiTheme& Theme = PrepareContext->GetTheme();
+    FGV2TextViewModel PoisonText = MakeResolvedLiteralTextForTest(Theme, TEXT("Poison"));
     PoisonText.NormalizedMarkup = TEXT("<gv2:action id=\"x\">y</>");
 
-    const FGV2TextViewModel GoodText = MakeResolvedLiteralTextForTest(*Theme, TEXT("Fine"));
+    const FGV2TextViewModel GoodText = MakeResolvedLiteralTextForTest(Theme, TEXT("Fine"));
 
     UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
     TestNotNull(TEXT("Test world created"), TestWorld);
@@ -570,7 +570,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 
     // 3b. REV3-09: RichText with hover spans fails validation when RichTextPopoverClass is unavailable
     {
-        UGV2UiTheme* MutableTheme = const_cast<UGV2UiTheme*>(Theme);
+        UGV2UiTheme* MutableTheme = GV2PresentationTestFixtures::GetAuthoringThemeForTest();
         if (MutableTheme != nullptr)
         {
             // PSC-10B: the renderer class is resolved once at snapshot build, so the session
@@ -589,7 +589,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 
             TMap<FString, FGV2PreparedUiValue> HoverMap;
             const FGV2TextViewModel TitleModel =
-                MakeResolvedLiteralTextForTest(*Theme, TEXT("Definition"));
+                MakeResolvedLiteralTextForTest(Theme, TEXT("Definition"));
             HoverMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(TitleModel));
 
             TMap<FString, FGV2PreparedUiValue> SpanMap;
@@ -667,6 +667,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters)
 {
+    UGV2UiTheme* Theme = GV2PresentationTestFixtures::GetAuthoringThemeForTest();
+    GV2SyntheticMechanicalFixture::FScopedSyntheticFallbackTexts ScopedTexts(Theme);
+
     GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
     FString ContextError;
     const bool bContextReady = ContextFixture.Initialize(ContextError);
@@ -677,12 +680,6 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
     if (!bContextReady || PrepareContext == nullptr)
     {
         return false;
-    }
-    if (UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get())
-    {
-        Theme->TextCatalog.FindOrAdd(
-            TEXT("core:text.character.test_hero.name"),
-            FText::FromString(TEXT("Player")));
     }
 
     auto ReadSource = [this](const TCHAR* RelativePath, FString& OutSource)

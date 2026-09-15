@@ -308,6 +308,12 @@ private:
     TUniquePtr<FGV2PresentationPrepareContext> Context;
 };
 
+inline UGV2UiTheme* GetAuthoringThemeForTest()
+{
+    const UGV2UiThemeSettings* Settings = GetDefault<UGV2UiThemeSettings>();
+    return Settings != nullptr ? Settings->ThemeAsset.LoadSynchronous() : nullptr;
+}
+
 // PSC-10C: the image catalog a session builds, as a plain instance. The process-global
 // session catalog it replaces is gone: production resolves resources through the snapshot,
 // so a test that needs a catalog constructs the same object the candidate builder does
@@ -406,6 +412,17 @@ inline FGV2TextViewModel MakeResolvedLiteralTextForTest(
     FGV2TextViewModel Result;
     FString Error;
     UGV2TextPipeline::ResolveLiteralForAutomationTest(&Theme, Text, StyleToken, Result, Error);
+    return Result;
+}
+
+inline FGV2TextViewModel MakeResolvedLiteralTextForTest(
+    const FGV2ResolvedUiTheme& Theme,
+    const FString& Text,
+    FName StyleToken = NAME_None)
+{
+    FGV2TextViewModel Result;
+    FString Error;
+    UGV2TextPipeline::ResolveLiteralForAutomationTest(Theme, Text, StyleToken, Result, Error);
     return Result;
 }
 

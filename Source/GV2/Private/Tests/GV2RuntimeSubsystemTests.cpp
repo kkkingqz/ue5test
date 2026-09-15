@@ -1972,6 +1972,7 @@ bool FGV2UiTabContainerConsumerContractTest::RunTest(const FString& Parameters)
 {
     if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
     {
+        Theme->TextCatalog.FindOrAdd(TEXT("core:text.duc09_day"), FText::FromString(TEXT("Monday")));
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inventory"), FText::FromString(TEXT("Inventory")));
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.btn_use"), FText::FromString(TEXT("Use Potion")));
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_skills"), FText::FromString(TEXT("Skills")));
@@ -1992,7 +1993,7 @@ bool FGV2UiTabContainerConsumerContractTest::RunTest(const FString& Parameters)
     {
         return false;
     }
-    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
+    const FGV2ResolvedUiTheme& Theme = PrepareContext->GetTheme();
 
     // =========================================================================
     // UIF-22: Registry Layer 'embedded' and placement rules
@@ -2026,13 +2027,13 @@ bool FGV2UiTabContainerConsumerContractTest::RunTest(const FString& Parameters)
         TArray<FGV2PreparedUiValue> DupTabs;
         TMap<FString, FGV2PreparedUiValue> T1;
         T1.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("tab_a")));
-        T1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Tab A"))));
+        T1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Tab A"))));
         T1.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.tab_a"), TEXT("screen")));
         DupTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(T1)));
 
         TMap<FString, FGV2PreparedUiValue> T2;
         T2.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("tab_a"))); // duplicate key
-        T2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Tab B"))));
+        T2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Tab B"))));
         T2.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.tab_b"), TEXT("screen")));
         DupTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(T2)));
 
@@ -2042,13 +2043,13 @@ bool FGV2UiTabContainerConsumerContractTest::RunTest(const FString& Parameters)
         TArray<FGV2PreparedUiValue> ValidTabs;
         TMap<FString, FGV2PreparedUiValue> V1;
         V1.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("inventory")));
-        V1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Inventory"))));
+        V1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Inventory"))));
         V1.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
         ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(V1)));
 
         TMap<FString, FGV2PreparedUiValue> V2;
         V2.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("skills")));
-        V2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Skills"))));
+        V2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Skills"))));
         V2.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
         ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(V2)));
 
@@ -2217,7 +2218,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
     {
         return false;
     }
-    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
+    const FGV2ResolvedUiTheme& Theme = PrepareContext->GetTheme();
 
     // 27b. Consumer: FGV2TabContainerTabsPropertyConsumer turns an already-
     // materialized envelope array into a real TArray<FGV2ScreenFieldValue>
@@ -2296,7 +2297,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
             NestedTabCap.TargetType = EGV2UiCapabilityTargetType::NestedScreen;
 
             const FGV2TextViewModel DayVM =
-                MakeResolvedLiteralTextForTest(*Theme, TEXT("Tuesday"));
+                MakeResolvedLiteralTextForTest(Theme, TEXT("Tuesday"));
             TMap<FString, FGV2PreparedUiValue> InnerFields;
             InnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(DayVM));
             InnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.7));
@@ -2310,7 +2311,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
 
             TMap<FString, FGV2PreparedUiValue> TabMap;
             TabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("info")));
-            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Info"))));
+            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Info"))));
             TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
             TabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FieldsArray)));
 
@@ -2325,7 +2326,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
             // rightly rejected. Publishing both tabs keeps both widgets reused,
             // which is what this scenario is about.
             TMap<FString, FGV2PreparedUiValue> BaselineFailureInner;
-            BaselineFailureInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Baseline"))));
+            BaselineFailureInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Baseline"))));
             BaselineFailureInner.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.5));
             TArray<TPair<FString, FGV2PreparedUiValue>> BaselineFailureEnvelope;
             BaselineFailureEnvelope.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
@@ -2335,7 +2336,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
             BaselineFailureFields.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(BaselineFailureEnvelope)));
             TMap<FString, FGV2PreparedUiValue> BaselineFailureTabMap = TabMap;
             BaselineFailureTabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("failure")));
-            BaselineFailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Failure"))));
+            BaselineFailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Failure"))));
             BaselineFailureTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineFailureFields)));
 
             TArray<FGV2PreparedUiValue> Tabs;
@@ -2359,7 +2360,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
                 Cast<UGV2ScreenWidgetBase>(NestedTabContainer->GetScreenWidgetForTab(FName(TEXT("failure")))), FailureScreen);
 
             const FGV2TextViewModel UpdatedDayVM =
-                MakeResolvedLiteralTextForTest(*Theme, TEXT("Wednesday"));
+                MakeResolvedLiteralTextForTest(Theme, TEXT("Wednesday"));
             TMap<FString, FGV2PreparedUiValue> UpdatedInnerFields;
             UpdatedInnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(UpdatedDayVM));
             UpdatedInnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.2));
@@ -2373,7 +2374,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
             UpdatedInfoTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UpdatedFieldsArray)));
 
             TMap<FString, FGV2PreparedUiValue> FailureInnerFields;
-            FailureInnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Never committed"))));
+            FailureInnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Never committed"))));
             FailureInnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.1));
             TArray<TPair<FString, FGV2PreparedUiValue>> FailureEnvelopeFields;
             FailureEnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
@@ -2383,7 +2384,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
             FailureFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureEnvelopeFields)));
             TMap<FString, FGV2PreparedUiValue> FailureTabMap = TabMap;
             FailureTabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("failure")));
-            FailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Failure"))));
+            FailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Failure"))));
             FailureTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FailureFieldsArray)));
             TArray<FGV2PreparedUiValue> NestedFailureTabs;
             NestedFailureTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UpdatedInfoTabMap)));
@@ -2443,7 +2444,7 @@ bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parame
             // FGV2TabContainerTabsPropertyConsumer::Prepare turns DayText into
             // "Thursday" here and makes this assertion red.
             TMap<FString, FGV2PreparedUiValue> ThursdayInner;
-            ThursdayInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Thursday"))));
+            ThursdayInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Thursday"))));
             ThursdayInner.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.9));
             TArray<TPair<FString, FGV2PreparedUiValue>> ThursdayEnvelope;
             ThursdayEnvelope.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
@@ -2536,7 +2537,7 @@ bool FGV2UiTabContainerLifecycleAndCycleContractTest::RunTest(const FString& Par
     {
         return false;
     }
-    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
+    const FGV2ResolvedUiTheme& Theme = PrepareContext->GetTheme();
 
     // =========================================================================
     // DUC-11: composition-cycle guard for screen_id-based nested screens
@@ -2570,11 +2571,11 @@ bool FGV2UiTabContainerLifecycleAndCycleContractTest::RunTest(const FString& Par
         // tab (no nested "fields" of its own -- irrelevant here, since the
         // cycle check runs before any recursion into a child screen) whose
         // screen_id is TargetScreenId.
-        auto MakeTabsFieldValue = [Theme](const FString& TargetScreenId) -> FGV2ScreenFieldValue
+        auto MakeTabsFieldValue = [&Theme](const FString& TargetScreenId) -> FGV2ScreenFieldValue
         {
             TMap<FString, FGV2PreparedUiValue> TabMap;
             TabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("back")));
-            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Back"))));
+            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(Theme, TEXT("Back"))));
             TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TargetScreenId, TEXT("screen")));
             TArray<FGV2PreparedUiValue> Tabs;
             Tabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));

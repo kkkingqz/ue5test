@@ -13,6 +13,7 @@ class UEditableTextBox;
 class UWidget;
 
 class FGV2PresentationPrepareContext;
+class FGV2ResolvedUiTheme;
 class UGV2UiTheme;
 
 UCLASS()
@@ -42,11 +43,14 @@ public:
     // instead of a second copy in the preparer. A null StyleToken resolves the same way
     // Resolve() resolves it: the theme's DefaultTextStyleToken, else "default".
     static TSubclassOf<UCommonTextStyle> ResolveStyleClassForTheme(const UGV2UiTheme* Theme, FName StyleToken);
+    static TSubclassOf<UCommonTextStyle> ResolveStyleClassForTheme(const FGV2ResolvedUiTheme& Theme, FName StyleToken);
     static GV2PresentationApply::FPreparedTextScalePolicy ResolveScalePolicyForTheme(const UGV2UiTheme* Theme, FName StyleToken);
+    static GV2PresentationApply::FPreparedTextScalePolicy ResolveScalePolicyForTheme(const FGV2ResolvedUiTheme& Theme, FName StyleToken);
     static bool Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text);
     static bool ApplyRichText(UCommonRichTextBlock* Widget, const FGV2TextViewModel& Text, const UWidget* ContextWidget = nullptr);
     static bool ApplyHint(UEditableTextBox* Widget, const FGV2TextViewModel& Text);
     static bool NormalizeMarkup(const UGV2UiTheme* Theme, const FString& Source, FString& OutMarkup, FString& OutError);
+    static bool NormalizeMarkup(const FGV2ResolvedUiTheme& Theme, const FString& Source, FString& OutMarkup, FString& OutError);
 
 #if WITH_DEV_AUTOMATION_TESTS
     static bool ResolveForAutomationTest(
@@ -57,8 +61,23 @@ public:
         FGV2TextViewModel& OutText,
         FString& OutError);
 
+    static bool ResolveForAutomationTest(
+        const FGV2ResolvedUiTheme& Theme,
+        const FString& TextId,
+        const TArray<FGV2UiControlValue>& Args,
+        FName StyleToken,
+        FGV2TextViewModel& OutText,
+        FString& OutError);
+
     static bool ResolveLiteralForAutomationTest(
         const UGV2UiTheme* Theme,
+        const FString& LiteralText,
+        FName StyleToken,
+        FGV2TextViewModel& OutText,
+        FString& OutError);
+
+    static bool ResolveLiteralForAutomationTest(
+        const FGV2ResolvedUiTheme& Theme,
         const FString& LiteralText,
         FName StyleToken,
         FGV2TextViewModel& OutText,

@@ -51,6 +51,9 @@ SCREEN_WIDGET_BASE_HEADER_PATH = (
 UI_MUTATION_PLAN_HEADER_PATH = (
     REPO_ROOT / "Source" / "GV2" / "Public" / "UI" / "GV2UiMutationPlan.h"
 )
+THEME_HEADER_PATH = (
+    REPO_ROOT / "Source" / "GV2" / "Public" / "UI" / "GV2UiTheme.h"
+)
 
 EXPECTED_PREPARED_TYPES_MEMBERS: dict[str, dict[str, str]] = {
     "FActiveScreenEntry": {
@@ -269,6 +272,7 @@ def find_snapshot_ownership_violations(
     snapshot_header: str,
     registry_header: str,
     registry_impl: str,
+    theme_header: str | None = None,
 ) -> list[str]:
     violations: list[str] = []
 
@@ -296,6 +300,22 @@ def find_snapshot_ownership_violations(
     if re.search(r"\bUGV2ScreenRegistry\s*[*&]\s*Get", snapshot_body):
         violations.append(
             "FGV2SessionContentSnapshot declares a getter returning UGV2ScreenRegistry pointer/reference."
+        )
+
+    # Check for raw/smart pointers to UGV2UiTheme in snapshot body
+    ugv2_theme_ptr_pattern = re.compile(
+        r"(?:TStrongObjectPtr|TWeakObjectPtr|TObjectPtr|TSoftObjectPtr)\s*<\s*UGV2UiTheme\s*>"
+        r"|\bUGV2UiTheme\s*[*&]"
+    )
+    if ugv2_theme_ptr_pattern.search(snapshot_body):
+        violations.append(
+            "FGV2SessionContentSnapshot retains a pointer or reference to UGV2UiTheme. "
+            "It must exclusively own an independent FGV2ResolvedUiTheme value."
+        )
+
+    if re.search(r"\bUGV2UiTheme\s*[*&]\s*Get", snapshot_body):
+        violations.append(
+            "FGV2SessionContentSnapshot declares a getter returning UGV2UiTheme pointer/reference."
         )
 
     # Check member inventory and types of FGV2SessionContentSnapshot
@@ -373,6 +393,42 @@ def find_snapshot_ownership_violations(
     if re.search(r"\bbool\s+UGV2ScreenRegistry::Resolve\s*\(", clean_registry_impl):
         violations.append("UGV2ScreenRegistry.cpp defines obsolete member UGV2ScreenRegistry::Resolve().")
 
+    # 4. Inspect FGV2ResolvedUiTheme & UGV2UiTheme
+    clean_theme_header = strip_comments(
+        theme_header if theme_header is not None else THEME_HEADER_PATH.read_text(encoding="utf-8")
+    )
+    resolved_theme_body = extract_class_body(clean_theme_header, "FGV2ResolvedUiTheme")
+    if not resolved_theme_body:
+        violations.append("Could not find 'class FGV2ResolvedUiTheme' in theme header")
+    else:
+        theme_members = extract_member_fields(resolved_theme_body)
+        for member_name, member_type in theme_members.items():
+            if ugv2_theme_ptr_pattern.search(member_type):
+                violations.append(
+                    f"FGV2ResolvedUiTheme::{member_name} retains a pointer/reference to UGV2UiTheme."
+                )
+            if re.search(r"\bUClass\s*\*", member_type):
+                violations.append(
+                    f"FGV2ResolvedUiTheme::{member_name} must use TStrongObjectPtr<UClass> for GC safety instead of raw UClass*."
+                )
+        if "TStrongObjectPtr<UClass>" not in resolved_theme_body:
+            violations.append(
+                "FGV2ResolvedUiTheme must hold resolved classes via TStrongObjectPtr<UClass> for GC safety."
+            )
+        if not re.search(r"bool\s+Compile\s*\(", resolved_theme_body):
+            violations.append(
+                "FGV2ResolvedUiTheme must declare 'bool Compile(...)'."
+            )
+
+    ugv2_theme_body = extract_class_body(clean_theme_header, "UGV2UiTheme")
+    if not ugv2_theme_body:
+        violations.append("Could not find 'class UGV2UiTheme' in theme header")
+    else:
+        if not re.search(r"bool\s+CompileResolvedTheme\s*\([^)]*\)\s*const\s*;", ugv2_theme_body):
+            violations.append(
+                "UGV2UiTheme must declare 'bool CompileResolvedTheme(...) const;'."
+            )
+
     return violations
 
 
@@ -426,6 +482,7 @@ def validate_repository() -> list[str]:
         SNAPSHOT_HEADER_PATH.read_text(encoding="utf-8"),
         REGISTRY_HEADER_PATH.read_text(encoding="utf-8"),
         REGISTRY_IMPL_PATH.read_text(encoding="utf-8"),
+        THEME_HEADER_PATH.read_text(encoding="utf-8"),
     )
     headers = {
         "reconciler": RECONCILER_HEADER_PATH.read_text(encoding="utf-8"),
@@ -442,6 +499,7 @@ def run_self_test() -> bool:
     base_snapshot_hdr = SNAPSHOT_HEADER_PATH.read_text(encoding="utf-8")
     base_registry_hdr = REGISTRY_HEADER_PATH.read_text(encoding="utf-8")
     base_registry_impl = REGISTRY_IMPL_PATH.read_text(encoding="utf-8")
+    base_theme_hdr = THEME_HEADER_PATH.read_text(encoding="utf-8")
     base_headers = {
         "reconciler": RECONCILER_HEADER_PATH.read_text(encoding="utf-8"),
         "property_consumers": PROPERTY_CONSUMERS_HEADER_PATH.read_text(encoding="utf-8"),
@@ -449,7 +507,7 @@ def run_self_test() -> bool:
         "ui_mutation_plan": UI_MUTATION_PLAN_HEADER_PATH.read_text(encoding="utf-8"),
     }
 
-    errors = find_snapshot_ownership_violations(base_snapshot_hdr, base_registry_hdr, base_registry_impl)
+    errors = find_snapshot_ownership_violations(base_snapshot_hdr, base_registry_hdr, base_registry_impl, base_theme_hdr)
     if errors:
         print("FAILED: current production sources violate the snapshot ownership contract:\n" + "\n".join(errors))
         return False
@@ -464,7 +522,7 @@ def run_self_test() -> bool:
         "FGV2ResolvedScreenRegistry ScreenRegistry;",
         "TStrongObjectPtr<UGV2ScreenRegistry> ScreenRegistry;",
     )
-    if not any("retains a pointer or reference" in err for err in find_snapshot_ownership_violations(mutated_snap_1, base_registry_hdr, base_registry_impl)):
+    if not any("retains a pointer or reference" in err for err in find_snapshot_ownership_violations(mutated_snap_1, base_registry_hdr, base_registry_impl, base_theme_hdr)):
         print("FAILED: gate did not flag Snapshot containing TStrongObjectPtr<UGV2ScreenRegistry>")
         return False
 
@@ -473,7 +531,7 @@ def run_self_test() -> bool:
         "const FGV2ResolvedScreenRegistry& GetScreenRegistry() const { return ScreenRegistry; }",
         "UGV2ScreenRegistry* GetScreenRegistry() const { return nullptr; }",
     )
-    if not any("declares a getter returning UGV2ScreenRegistry" in err for err in find_snapshot_ownership_violations(mutated_snap_2, base_registry_hdr, base_registry_impl)):
+    if not any("declares a getter returning UGV2ScreenRegistry" in err for err in find_snapshot_ownership_violations(mutated_snap_2, base_registry_hdr, base_registry_impl, base_theme_hdr)):
         print("FAILED: gate did not flag getter returning UGV2ScreenRegistry*")
         return False
 
@@ -482,7 +540,7 @@ def run_self_test() -> bool:
         "TArray<FGV2ScreenRegistryEntry> Entries;",
         "TArray<FGV2ScreenRegistryEntry> Entries;\n    TMap<FString, int32> ResolvedByScreenId;",
     )
-    if not any("ResolvedByScreenId" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_3, base_registry_impl)):
+    if not any("ResolvedByScreenId" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_3, base_registry_impl, base_theme_hdr)):
         print("FAILED: gate did not flag mutable ResolvedByScreenId in UGV2ScreenRegistry")
         return False
 
@@ -491,7 +549,7 @@ def run_self_test() -> bool:
         "TArray<FGV2ScreenRegistryEntry> Entries;",
         "TArray<FGV2ScreenRegistryEntry> Entries;\n    bool bBuilt = false;",
     )
-    if not any("bBuilt" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_4, base_registry_impl)):
+    if not any("bBuilt" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_4, base_registry_impl, base_theme_hdr)):
         print("FAILED: gate did not flag mutable bBuilt in UGV2ScreenRegistry")
         return False
 
@@ -500,7 +558,7 @@ def run_self_test() -> bool:
         "bool CompileResolvedRegistry(",
         "bool Build(const TArray<GV2PackageClosure::FEntry>& ClosureEntries, FString& OutError);\n    bool CompileResolvedRegistry(",
     )
-    if not any("declares a member Build() method" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_5, base_registry_impl)):
+    if not any("declares a member Build() method" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_5, base_registry_impl, base_theme_hdr)):
         print("FAILED: gate did not flag Build() member method on UGV2ScreenRegistry")
         return False
 
@@ -509,7 +567,7 @@ def run_self_test() -> bool:
         "bool CompileResolvedRegistry(",
         "bool Resolve(const FString& ScreenId) const;\n    bool CompileResolvedRegistry(",
     )
-    if not any("declares a member Resolve() method" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_6, base_registry_impl)):
+    if not any("declares a member Resolve() method" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_6, base_registry_impl, base_theme_hdr)):
         print("FAILED: gate did not flag Resolve() member method on UGV2ScreenRegistry")
         return False
 
@@ -518,7 +576,7 @@ def run_self_test() -> bool:
         "TStrongObjectPtr<UClass> WidgetClass;",
         "UClass* WidgetClass;",
     )
-    if not any("TStrongObjectPtr<UClass>" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_7, base_registry_impl)):
+    if not any("TStrongObjectPtr<UClass>" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, mutated_reg_7, base_registry_impl, base_theme_hdr)):
         print("FAILED: gate did not flag missing TStrongObjectPtr<UClass> in FGV2ResolvedScreenRegistry")
         return False
 
@@ -527,7 +585,7 @@ def run_self_test() -> bool:
         "FString SessionContentId;",
         "FString SessionContentId;\n    int32 RogueField;",
     )
-    if not any("RogueField" in err for err in find_snapshot_ownership_violations(mutated_snap_8, base_registry_hdr, base_registry_impl)):
+    if not any("RogueField" in err for err in find_snapshot_ownership_violations(mutated_snap_8, base_registry_hdr, base_registry_impl, base_theme_hdr)):
         print("FAILED: gate did not flag unclassified member in FGV2SessionContentSnapshot")
         return False
 
@@ -581,7 +639,43 @@ def run_self_test() -> bool:
         print("FAILED: gate did not flag unclassified member in FPreparedScreenInstance")
         return False
 
-    print("SUCCESS: validate_session_snapshot_ownership self-test passed (13/13 negative mutations caught)")
+    # Negative mutation 14: Snapshot retains TStrongObjectPtr<UGV2UiTheme>
+    mutated_snap_14 = base_snapshot_hdr.replace(
+        "FGV2ResolvedUiTheme Theme;",
+        "TStrongObjectPtr<UGV2UiTheme> Theme;",
+    )
+    if not any("retains a pointer or reference to UGV2UiTheme" in err for err in find_snapshot_ownership_violations(mutated_snap_14, base_registry_hdr, base_registry_impl, base_theme_hdr)):
+        print("FAILED: gate did not flag Snapshot containing TStrongObjectPtr<UGV2UiTheme>")
+        return False
+
+    # Negative mutation 15: FGV2ResolvedUiTheme retains UGV2UiTheme*
+    mutated_theme_15 = base_theme_hdr.replace(
+        "bool bIsValid = false;",
+        "bool bIsValid = false;\n    UGV2UiTheme* AuthoredTheme = nullptr;",
+    )
+    if not any("retains a pointer/reference to UGV2UiTheme" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, base_registry_hdr, base_registry_impl, mutated_theme_15)):
+        print("FAILED: gate did not flag FGV2ResolvedUiTheme retaining UGV2UiTheme*")
+        return False
+
+    # Negative mutation 16: FGV2ResolvedUiTheme misses TStrongObjectPtr<UClass>
+    mutated_theme_16 = base_theme_hdr.replace(
+        "TStrongObjectPtr<UClass> RichTextPopoverClass;",
+        "UClass* RichTextPopoverClass;",
+    )
+    if not any("TStrongObjectPtr<UClass>" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, base_registry_hdr, base_registry_impl, mutated_theme_16)):
+        print("FAILED: gate did not flag missing TStrongObjectPtr<UClass> in FGV2ResolvedUiTheme")
+        return False
+
+    # Negative mutation 17: UGV2UiTheme::CompileResolvedTheme drops const
+    mutated_theme_17 = base_theme_hdr.replace(
+        "class FGV2ResolvedUiTheme& OutResolved,\n        FString& OutError) const;",
+        "class FGV2ResolvedUiTheme& OutResolved,\n        FString& OutError);",
+    )
+    if not any("CompileResolvedTheme(...) const" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, base_registry_hdr, base_registry_impl, mutated_theme_17)):
+        print("FAILED: gate did not flag non-const CompileResolvedTheme on UGV2UiTheme")
+        return False
+
+    print("SUCCESS: validate_session_snapshot_ownership self-test passed (17/17 negative mutations caught)")
     return True
 
 

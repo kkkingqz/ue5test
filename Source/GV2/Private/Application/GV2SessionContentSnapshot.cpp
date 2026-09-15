@@ -163,12 +163,16 @@ bool FGV2SessionContentCandidate::Build(
         OutFault = {"ThemeNotReady", "The configured session Theme could not be resolved."};
         return false;
     }
-    OutSnapshot.Theme.Theme = TStrongObjectPtr<UGV2UiTheme>(ResolvedTheme);
-    OutSnapshot.Theme.FallbackTheme = TStrongObjectPtr<UGV2UiTheme>(UGV2UiTheme::GetCoreMinimalTheme());
-    OutSnapshot.Theme.RichTextPopoverClass = TStrongObjectPtr<UClass>(
-        !ResolvedTheme->RichTextPopoverClass.IsNull() && !IsInAsyncLoadingThread() && !IsGarbageCollecting()
-            ? ResolvedTheme->RichTextPopoverClass.LoadSynchronous()
-            : ResolvedTheme->RichTextPopoverClass.Get());
+    FString CompileThemeError;
+    if (!FGV2ResolvedUiTheme::Compile(
+            ResolvedTheme,
+            UGV2UiTheme::GetCoreMinimalTheme(),
+            OutSnapshot.Theme,
+            CompileThemeError))
+    {
+        OutFault = {"ThemeNotReady", std::string(TCHAR_TO_UTF8(*CompileThemeError))};
+        return false;
+    }
 
     UClass* GameShellClass = RegistrySettings != nullptr
         ? RegistrySettings->GameShellClass.LoadSynchronous()
@@ -176,9 +180,9 @@ bool FGV2SessionContentCandidate::Build(
     OutSnapshot.GameShellClass = TStrongObjectPtr<UClass>(GameShellClass);
 
     // presentation_hash: resolved screens' (screen_id, widget class path), resolved
-    // resources' (resource_id, texture soft path, render mode), Theme asset path, GameShell
-    // class path -- every field the Done bullet names, all from already-resolved
-    // identities, never raw authoring rows.
+    // resources' (resource_id, texture soft path, render mode), canonical Theme content
+    // (all reflection-derived fields), GameShell class path -- every field the Done bullet
+    // names, all from already-resolved identities, never raw authoring rows.
     std::vector<std::pair<std::string, GV2ContentCore::FValue>> PresentationFields;
 
     std::vector<GV2ContentCore::FValue> ScreensArray;
@@ -208,7 +212,7 @@ bool FGV2SessionContentCandidate::Build(
     }
     PresentationFields.emplace_back("resources", GV2ContentCore::FValue::MakeArray(std::move(ResourcesArray)));
 
-    PresentationFields.emplace_back("theme", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(ResolvedTheme->GetPathName())));
+    PresentationFields.emplace_back("theme", OutSnapshot.Theme.GetCanonicalValue());
     PresentationFields.emplace_back(
         "game_shell_class",
         GV2ContentCore::FValue::MakeString(

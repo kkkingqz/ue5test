@@ -3,7 +3,9 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Engine/DeveloperSettings.h"
+#include "GV2ContentCore/Value.h"
 #include "Styling/SlateTypes.h"
+#include "UObject/StrongObjectPtr.h"
 #include "GV2UiTheme.generated.h"
 
 class UCommonButtonStyle;
@@ -156,6 +158,114 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dropdown")
     FMargin DropdownOptionItemPadding = FMargin(0.0f, 0.0f, 0.0f, 2.0f);
+
+    bool CompileResolvedTheme(
+        const UGV2UiTheme* FallbackTheme,
+        class FGV2ResolvedUiTheme& OutResolved,
+        FString& OutError) const;
+};
+
+// SAC-04 (ADR-0043 D1, ADR-0042, CFC-AF-21):
+// Independent, immutable resolved UI theme owned by a session content snapshot.
+// Compiled read-only from authoring UGV2UiTheme; holds resolved value copies (colors,
+// margins, brushes, curves, text catalogs) and GC-safe strong references to resolved
+// UClasses (TStrongObjectPtr<UClass>).
+// Retains NO pointer or reference to the authoring UGV2UiTheme DataAsset.
+class GV2_API FGV2ResolvedUiTheme
+{
+public:
+    FGV2ResolvedUiTheme() = default;
+    ~FGV2ResolvedUiTheme() = default;
+    FGV2ResolvedUiTheme(const FGV2ResolvedUiTheme&) = default;
+    FGV2ResolvedUiTheme& operator=(const FGV2ResolvedUiTheme&) = default;
+    FGV2ResolvedUiTheme(FGV2ResolvedUiTheme&&) = default;
+    FGV2ResolvedUiTheme& operator=(FGV2ResolvedUiTheme&&) = default;
+
+    bool IsValid() const { return bIsValid; }
+
+    static bool Compile(
+        const UGV2UiTheme* InTheme,
+        const UGV2UiTheme* InFallbackTheme,
+        FGV2ResolvedUiTheme& OutResolved,
+        FString& OutError);
+
+    static GV2ContentCore::FValue ComputeThemeCanonicalValue(const UGV2UiTheme* InTheme);
+
+    float EvaluateTextScale(float ViewportHeight) const;
+    float ResolveUnscaledFontSize(FName TextSizeToken) const;
+    float GetEffectiveFontSize(FName TextSizeToken, float ViewportHeight) const;
+
+    UClass* ResolveStyleClass(FName StyleToken) const;
+    bool ResolveStyle(FName StyleToken, FTextBlockStyle& OutStyle) const;
+    const FText* FindText(const FString& TextId) const;
+
+    const GV2ContentCore::FValue& GetCanonicalValue() const { return CanonicalThemeValue; }
+
+    bool bIsValid = false;
+
+    // Typography scaling
+    FRuntimeFloatCurve TextScaleCurve;
+    float MinReadableFontSize = 10.0f;
+    float ReferenceViewportHeight = 1080.0f;
+
+    // Typography pipeline
+    FName DefaultTextStyleToken = TEXT("default");
+    TMap<FName, TStrongObjectPtr<UClass>> TextStyleTokens;
+    TMap<FName, FLinearColor> TextColorTokens;
+    TMap<FName, float> TextSizeTokens;
+
+    // Localization catalogs
+    TMap<FString, FText> TextCatalog;
+    TMap<FString, FText> FallbackTextCatalog;
+    TMap<FString, FText> CoreMinimalFallbackTextCatalog;
+
+    // Typography styles
+    TStrongObjectPtr<UClass> TextStyle;
+    TStrongObjectPtr<UClass> RichTextStyle;
+    FHyperlinkStyle RichTextInteractiveStyle;
+
+    // Rich Text Popover
+    TStrongObjectPtr<UClass> RichTextPopoverClass;
+    FSlateBrush RichTextPopoverBackground;
+    FMargin RichTextPopoverPadding = FMargin(12.0f);
+    float RichTextPopoverMaxWidth = 360.0f;
+    float RichTextPopoverMaxHeight = 480.0f;
+
+    // Controls
+    TStrongObjectPtr<UClass> ButtonStyle;
+    TStrongObjectPtr<UClass> ButtonLabelStyle;
+    FCheckBoxStyle CheckboxStyle;
+    TStrongObjectPtr<UClass> CheckboxLabelStyle;
+    FEditableTextBoxStyle InputFieldStyle;
+    TStrongObjectPtr<UClass> InputFieldLabelStyle;
+    FMargin ButtonListItemPadding = FMargin(0.0f, 0.0f, 0.0f, 8.0f);
+
+    // Image
+    FLinearColor ImageTint = FLinearColor::White;
+
+    // Progress
+    FProgressBarStyle ProgressBarStyle;
+    FLinearColor ProgressFillColor = FLinearColor(0.12f, 0.65f, 1.0f, 1.0f);
+
+    // Separator
+    FSlateBrush SeparatorBrush;
+    float SeparatorThickness = 1.0f;
+
+    // Loading indicator
+    FSlateBrush LoadingIndicatorBrush;
+    int32 LoadingIndicatorPieces = 8;
+    float LoadingIndicatorPeriod = 0.75f;
+    float LoadingIndicatorRadius = 16.0f;
+
+    // Dropdown
+    TStrongObjectPtr<UClass> DropdownHeaderStyle;
+    FSlateBrush DropdownPopupBackground;
+    FMargin DropdownPopupPadding = FMargin(4.0f);
+    float DropdownMaxPopupHeight = 200.0f;
+    FMargin DropdownOptionItemPadding = FMargin(0.0f, 0.0f, 0.0f, 2.0f);
+
+private:
+    GV2ContentCore::FValue CanonicalThemeValue;
 };
 
 UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "GV2 UI Theme"))

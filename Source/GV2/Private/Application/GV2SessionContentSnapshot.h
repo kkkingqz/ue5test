@@ -24,24 +24,6 @@ struct FGV2ResolvedImageCatalog
     TArray<FString> GetResourceIds() const;
 };
 
-struct FGV2ResolvedUiTheme
-{
-    TStrongObjectPtr<UGV2UiTheme> Theme;
-
-    // PSC-10B: the UE-native core-minimal Theme, pinned here at snapshot build so a text id
-    // the authored Theme does not carry still resolves during Prepare WITHOUT any runtime
-    // code reaching UGV2UiTheme::GetCoreMinimalTheme() itself. Before this task the fallback
-    // lived inside UGV2TextPipeline::Resolve as a process-global lookup on the Commit-facing
-    // side; the values are the same, the reach is not.
-    TStrongObjectPtr<UGV2UiTheme> FallbackTheme;
-
-    // PSC-10B (ADR-0043 D1): the hover popover renderer class, loaded ONCE here. Prepare and
-    // the hover path both read this already-loaded class, so neither performs a synchronous
-    // load -- previously GV2CentralStylePreparer called LoadSynchronous() for every rich text
-    // widget on every reconcile, and the hover tooltip called it again per popover.
-    TStrongObjectPtr<UClass> RichTextPopoverClass;
-};
-
 // PSC-04 (ADR-0043 D1, BootstrapAndSessionLifecycle.md "Целевое правило"): one immutable,
 // coordinator-owned aggregate of everything a session's presentation depends on -- built
 // once, entirely, before the Lua VM exists, from the SAME FResolvedPackageSet the

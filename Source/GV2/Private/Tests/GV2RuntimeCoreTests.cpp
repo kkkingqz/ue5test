@@ -2134,7 +2134,7 @@ bool FGV2SessionContentSnapshotContract::RunTest(const FString& Parameters)
 
     TestTrue(TEXT("Snapshot owns a resolved Screen Registry"), !Snapshot->GetScreenRegistry().IsEmpty());
     TestTrue(TEXT("Snapshot owns a resolved Image Catalog"), Snapshot->GetImageCatalog().Catalog.IsValid());
-    TestTrue(TEXT("Snapshot owns a resolved Theme"), Snapshot->GetTheme().Theme.IsValid());
+    TestTrue(TEXT("Snapshot owns a resolved Theme"), Snapshot->GetTheme().IsValid());
 
     auto IsLowercaseHex = [](const FString& Value)
     {
@@ -2207,9 +2207,9 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     {
         return false;
     }
-    const UGV2UiTheme* SnapshotTheme = Snapshot->GetTheme().Theme.Get();
-    TestNotNull(TEXT("Snapshot owns a resolved Theme"), SnapshotTheme);
-    if (SnapshotTheme == nullptr)
+    const FGV2ResolvedUiTheme& SnapshotTheme = Snapshot->GetTheme();
+    TestTrue(TEXT("Snapshot owns a resolved Theme"), SnapshotTheme.IsValid());
+    if (!SnapshotTheme.IsValid())
     {
         Coordinator.EndSession();
         return false;
@@ -2219,7 +2219,7 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     // the widget happening to already sit on the expected value.
     constexpr float Sentinel = -73.5f;
     TestNotEqual(TEXT("Sentinel thickness differs from the snapshot theme's own thickness"),
-        SnapshotTheme->SeparatorThickness, Sentinel);
+        SnapshotTheme.SeparatorThickness, Sentinel);
 
     UGV2SeparatorBoundTestWidget* Separator = NewObject<UGV2SeparatorBoundTestWidget>();
     Separator->BuildBoundSubWidgets();
@@ -2284,11 +2284,11 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
         static_cast<int64>(ResolveCountAfterApply - ResolveCountBeforeApply),
         static_cast<int64>(0));
     TestEqual(TEXT("Applied thickness is the snapshot theme's own SeparatorThickness"),
-        Separator->ReadAppliedThickness(), SnapshotTheme->SeparatorThickness);
+        Separator->ReadAppliedThickness(), SnapshotTheme.SeparatorThickness);
     TestEqual(TEXT("Applied brush is the snapshot theme's own SeparatorBrush"),
-        Separator->ReadAppliedBrush().GetResourceName(), SnapshotTheme->SeparatorBrush.GetResourceName());
+        Separator->ReadAppliedBrush().GetResourceName(), SnapshotTheme.SeparatorBrush.GetResourceName());
     TestEqual(TEXT("The second role reached its own target: fill colour is the theme's ProgressFillColor"),
-        ProgressBar->ReadAppliedFillColor(), SnapshotTheme->ProgressFillColor);
+        ProgressBar->ReadAppliedFillColor(), SnapshotTheme.ProgressFillColor);
     TestTrue(TEXT("RichText retained a fully resolved style payload"),
         RichText->GetPreparedRichTextStyle().bIsResolved);
     const FTextBlockStyle ResolvedRun = RichText->ResolveRunTextStyle(
@@ -2304,7 +2304,7 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     const FHyperlinkStyle ResolvedInteractive = RichText->ResolveInteractiveTextStyle(ResolvedRun);
     TestEqual(TEXT("RichText interactive style uses the prepared underline brush"),
         ResolvedInteractive.UnderlineStyle.Normal.GetResourceName(),
-        SnapshotTheme->RichTextInteractiveStyle.UnderlineStyle.Normal.GetResourceName());
+        SnapshotTheme.RichTextInteractiveStyle.UnderlineStyle.Normal.GetResourceName());
 
     // A role delivered to the wrong class is rejected, not applied to whatever the widget
     // happens to be. This is what the closed variant buys: the mismatch is impossible to
@@ -2439,9 +2439,9 @@ bool FGV2HoverPopoverStyledFromPreparedValuesTest::RunTest(const FString& Parame
         return false;
     }
     const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
-    const UGV2UiTheme* Theme = PrepareContext.GetTheme().Theme.Get();
-    TestNotNull(TEXT("Snapshot owns a resolved Theme"), Theme);
-    if (Theme == nullptr)
+    const FGV2ResolvedUiTheme& Theme = PrepareContext.GetTheme();
+    TestTrue(TEXT("Snapshot owns a resolved Theme"), Theme.IsValid());
+    if (!Theme.IsValid())
     {
         Coordinator.EndSession();
         return false;
@@ -2483,12 +2483,12 @@ bool FGV2HoverPopoverStyledFromPreparedValuesTest::RunTest(const FString& Parame
         Popover->InitializePopover(Model, OwnerStyle));
 
     TestEqual(TEXT("Popover background comes from the snapshot Theme"),
-        Popover->ReadAppliedBackground().GetResourceName(), Theme->RichTextPopoverBackground.GetResourceName());
+        Popover->ReadAppliedBackground().GetResourceName(), Theme.RichTextPopoverBackground.GetResourceName());
     TestEqual(TEXT("Popover padding comes from the snapshot Theme"),
-        Popover->ReadAppliedPadding().Left, Theme->RichTextPopoverPadding.Left);
-    const float ExpectedScale = Theme->EvaluateTextScale(Theme->ReferenceViewportHeight);
+        Popover->ReadAppliedPadding().Left, Theme.RichTextPopoverPadding.Left);
+    const float ExpectedScale = Theme.EvaluateTextScale(Theme.ReferenceViewportHeight);
     TestEqual(TEXT("Popover max width follows the same viewport-derived scale as its text"),
-        Popover->ReadAppliedMaxWidth(), Theme->RichTextPopoverMaxWidth * ExpectedScale);
+        Popover->ReadAppliedMaxWidth(), Theme.RichTextPopoverMaxWidth * ExpectedScale);
 
     // A popover offered no prepared style must refuse rather than render unstyled.
     UGV2RichTextPopoverBoundTestWidget* Unstyled = NewObject<UGV2RichTextPopoverBoundTestWidget>();
@@ -2529,21 +2529,21 @@ bool FGV2SnapshotThemeResolutionContractTest::RunTest(const FString& Parameters)
         return false;
     }
 
-    const UGV2UiTheme* SessionTheme = PrepareContext->GetTheme().Theme.Get();
-    const UGV2UiTheme* FallbackTheme = PrepareContext->GetTheme().FallbackTheme.Get();
-    TestNotNull(TEXT("The snapshot pins the authored session Theme"), SessionTheme);
-    TestNotNull(TEXT("The snapshot pins the core-minimal Theme as the text fallback"), FallbackTheme);
-    if (SessionTheme == nullptr || FallbackTheme == nullptr)
+    const FGV2ResolvedUiTheme& ResolvedTheme = PrepareContext->GetTheme();
+    const UGV2UiTheme* FallbackThemeAsset = UGV2UiTheme::GetCoreMinimalTheme();
+    const UGV2UiTheme* AuthoredThemeAsset = GV2PresentationTestFixtures::GetAuthoringThemeForTest();
+    TestTrue(TEXT("The snapshot compiles a valid resolved Theme"), ResolvedTheme.IsValid());
+    TestNotNull(TEXT("The snapshot pins the core-minimal Theme as the text fallback"), FallbackThemeAsset);
+    if (!ResolvedTheme.IsValid() || FallbackThemeAsset == nullptr)
     {
         return false;
     }
-
     // (b) An id the authored Theme genuinely does not carry -- asserted, not assumed, so
     // this cannot pass vacuously against a Theme that happens to define everything.
     FString FallbackOnlyId;
-    for (const TPair<FString, FText>& Entry : FallbackTheme->TextCatalog)
+    for (const TPair<FString, FText>& Entry : FallbackThemeAsset->TextCatalog)
     {
-        if (!SessionTheme->TextCatalog.Contains(Entry.Key) && !SessionTheme->FallbackTextCatalog.Contains(Entry.Key))
+        if (AuthoredThemeAsset == nullptr || (!AuthoredThemeAsset->TextCatalog.Contains(Entry.Key) && !AuthoredThemeAsset->FallbackTextCatalog.Contains(Entry.Key)))
         {
             FallbackOnlyId = Entry.Key;
             break;
@@ -2559,7 +2559,7 @@ bool FGV2SnapshotThemeResolutionContractTest::RunTest(const FString& Parameters)
             *FString::Printf(TEXT("'%s' resolves through the snapshot's pinned fallback [Error: %s]"), *FallbackOnlyId, *ResolveError),
             UGV2TextPipeline::Resolve(FallbackOnlyId, {}, NAME_None, Resolved, ResolveError, PrepareContext));
         TestEqual(TEXT("The resolved text is the core-minimal entry"),
-            Resolved.Text.ToString(), FallbackTheme->TextCatalog[FallbackOnlyId].ToString());
+            Resolved.Text.ToString(), FallbackThemeAsset->TextCatalog[FallbackOnlyId].ToString());
         TestTrue(TEXT("The fallback-resolved value still carries a full resolved presentation"),
             Resolved.bHasResolvedPresentation);
     }
