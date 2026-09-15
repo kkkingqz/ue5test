@@ -125,13 +125,15 @@ Operation ID value-only и не содержит callback/Lua reference.
 - При объёме записи ~48–64 байт лимит 160 записей фиксирует расход памяти $\le 10\,\text{КБ}$ на всё время жизни `GameInstance`, предотвращая неконтролируемый рост долгоживущего процесса.
 - Downstream-потребители (UI-нотификации, индикаторы сохранения, Blueprint/Automation polling) опрашивают исход в пределах первых тиков ($W \le 16$ операций), поэтому лимит 160 даёт запас по времени $\ge 10\times$ даже для редкого опроса.
 
-Момент вытеснения: при фиксации terminal outcome (`RecordOutcome` / `RecordFailure`), если число сохранённых записей достигает лимита, из карты немедленно удаляется запись с наименьшим `OperationId` (самая ранняя), а наивысший вытесненный ID обновляется (`HighestEvictedOperationId = max(HighestEvictedOperationId, EvictedId)`).
+Момент вытеснения: при фиксации terminal outcome (`RecordOutcome` / `RecordFailure`), если число сохранённых записей достигает лимита, из карты `OperationOutcomes` немедленно удаляется запись с наименьшим `OperationId` (самая ранняя), а наивысший вытесненный ID обновляется (`HighestEvictedOperationId = max(HighestEvictedOperationId, EvictedId)`).
+
+Каждая выделенная операция отслеживается точно: при `AllocateOperationId()` операция добавляется в `InProgressOperations`, а при фиксации terminal outcome удаляется из него. Это гарантирует, что операции, завершающиеся вне порядка их выделения, никогда не определяются ложно как вытесненные.
 
 Наблюдаемое различие между вытесненной и неизвестной операцией:
 - Запрос исхода через `QueryOutcome(OpId)` возвращает статус `ESessionOperationQueryStatus`:
-  - `Found`: запись находится в ограниченной истории, результат (`Outcome`, `Fault`) возвращается;
-  - `Evicted`: операция была зафиксирована и завершена, но её запись была вытеснена по превышению лимита истории (\(1 \le \text{OpId} \le \text{HighestEvictedOperationId}\) и отсутствует в карте). Метод `IsOperationEvicted(OpId)` возвращает `true`;
-  - `InProgress`: операция выделена/поставлена в очередь (`ActiveOperation`, `PendingSlot` или safe-point save), но ещё не завершена;
+  - `Found`: запись находится в ограниченной истории `OperationOutcomes`, результат (`Outcome`, `Fault`) возвращается;
+  - `InProgress`: операция была выделена данным хостом и всё ещё выполняется (\(\text{OpId} \in \text{InProgressOperations}\));
+  - `Evicted`: операция была выделена (\(1 \le \text{OpId} < \text{NextOperationId}\)), завершена (\(\text{OpId} \notin \text{InProgressOperations}\)), но её результат вытеснен по превышению лимита истории (\(\text{OpId} \notin \text{OperationOutcomes}\)). Метод `IsOperationEvicted(OpId)` возвращает `true`;
   - `Unknown`: идентификатор никогда не выделялся данным хостом (\(\text{OpId} = 0\) либо \(\text{OpId} \ge \text{NextOperationId}\)). Метод `IsOperationEvicted(OpId)` возвращает `false`.
 - Вытесненная операция не маскируется под `Unknown` или тихий пропуск.
 - Ручные невызываемые методы очистки (такие как `FGV2SessionTransitionPolicy::Reset()`) запрещены; retention является строго автоматическим и ограниченным.

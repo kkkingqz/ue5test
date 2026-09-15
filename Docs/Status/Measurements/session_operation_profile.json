@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0.0",
+  "measurement_target": "FGV2SessionTransitionPolicy::DefaultMaxRetainedOutcomes",
+  "substantiated_limit": 160,
+  "standard_session_duration_minutes": 120,
+  "autosave_interval_seconds": 60,
+  "consumer_polling_window_max_operations": 16,
+  "retention_headroom_factor": 10.0,
+  "standard_session_breakdown": {
+    "session_transitions_max": 16,
+    "autosaves": 120,
+    "manual_saves_max": 24,
+    "total_calculated_operations": 160,
+    "eviction_occurs_within_standard_session": false
+  },
+  "memory_footprint": {
+    "sizeof_operation_result_bytes": 48,
+    "tmap_node_overhead_bytes": 24,
+    "retained_history_bytes": 11520,
+    "in_progress_tracking_bytes_est": 256,
+    "total_memory_bytes_est": 11776,
+    "total_memory_kb_est": 11.5,
+    "bounded_upper_limit_kb": 16.0
+  },
+  "scenarios": {
+    "15min": {
+      "duration_minutes": 15,
+      "transitions": 2,
+      "autosaves": 15,
+      "manual_saves": 3,
+      "total_operations": 20
+    },
+    "30min": {
+      "duration_minutes": 30,
+      "transitions": 4,
+      "autosaves": 30,
+      "manual_saves": 6,
+      "total_operations": 40
+    },
+    "60min": {
+      "duration_minutes": 60,
+      "transitions": 8,
+      "autosaves": 60,
+      "manual_saves": 12,
+      "total_operations": 80
+    },
+    "120min": {
+      "duration_minutes": 120,
+      "transitions": 16,
+      "autosaves": 120,
+      "manual_saves": 24,
+      "total_operations": 160
+    },
+    "240min": {
+      "duration_minutes": 240,
+      "transitions": 20,
+      "autosaves": 240,
+      "manual_saves": 48,
+      "total_operations": 308
+    }
+  },
+  "verdict": "SUBSTANTIATED_LIMIT_160"
+}

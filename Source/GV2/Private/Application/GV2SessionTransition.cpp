@@ -458,7 +458,7 @@ uint64 FGV2SessionTransitionPolicy::EnqueueRequest(
     }
 
     bOutJoined = false;
-    const uint64 OpId = NextOperationId++;
+    const uint64 OpId = AllocateOperationId();
     OutJoinedOpId = OpId;
 
     FSessionOperationRecord Record;
@@ -495,7 +495,7 @@ uint64 FGV2SessionTransitionPolicy::EnqueueShutdown(
     }
 
     bOutJoined = false;
-    const uint64 OpId = NextOperationId++;
+    const uint64 OpId = AllocateOperationId();
     OutJoinedOpId = OpId;
 
     FSessionOperationRecord Record;
@@ -554,7 +554,11 @@ bool FGV2SessionTransitionPolicy::IsOperationEvicted(const uint64 OperationId) c
     {
         return false;
     }
-    return OperationId <= HighestEvictedOperationId;
+    if (InProgressOperations.Contains(OperationId))
+    {
+        return false;
+    }
+    return true;
 }
 
 ESessionOperationQueryStatus FGV2SessionTransitionPolicy::QueryOutcome(
@@ -575,12 +579,12 @@ ESessionOperationQueryStatus FGV2SessionTransitionPolicy::QueryOutcome(
         return ESessionOperationQueryStatus::Found;
     }
 
-    if (OperationId <= HighestEvictedOperationId)
+    if (InProgressOperations.Contains(OperationId))
     {
-        return ESessionOperationQueryStatus::Evicted;
+        return ESessionOperationQueryStatus::InProgress;
     }
 
-    return ESessionOperationQueryStatus::InProgress;
+    return ESessionOperationQueryStatus::Evicted;
 }
 
 TOptional<FSessionOperationRecord> FGV2SessionTransitionPolicy::DequeuePendingOperation()
@@ -596,6 +600,8 @@ TOptional<FSessionOperationRecord> FGV2SessionTransitionPolicy::DequeuePendingOp
 
 void FGV2SessionTransitionPolicy::RecordResultInternal(const uint64 OperationId, FGV2SessionOperationResult Result)
 {
+    InProgressOperations.Remove(OperationId);
+
     if (OperationOutcomes.Contains(OperationId))
     {
         OperationOutcomes[OperationId] = MoveTemp(Result);
@@ -650,5 +656,7 @@ void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const 
 
 uint64 FGV2SessionTransitionPolicy::AllocateOperationId()
 {
-    return NextOperationId++;
+    const uint64 OpId = NextOperationId++;
+    InProgressOperations.Add(OpId);
+    return OpId;
 }

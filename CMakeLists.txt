@@ -606,6 +606,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_transition_ownership.py"
             "--self-test"
     )
+    # SAC-06: session operation profile measurement and retention limit contract
+    add_test(
+        NAME session_operation_profile_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/measure_session_operation_profile.py"
+    )
+    add_test(
+        NAME session_operation_profile_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/measure_session_operation_profile.py"
+            "--self-test"
+    )
     # CFC-08: save slot crash matrix and process concurrency contract
     add_test(
         NAME save_slot_crash_contract

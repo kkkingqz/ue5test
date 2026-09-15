@@ -1184,7 +1184,58 @@ bool FGV2SessionOperationRetentionAndEvictionTest::RunTest(const FString& Parame
     TestEqual(TEXT("Op5 is Found"), Policy.QueryOutcome(Op5), ESessionOperationQueryStatus::Found);
     TestEqual(TEXT("Op6 is Found"), Policy.QueryOutcome(Op6), ESessionOperationQueryStatus::Found);
 
-    // 5. Coordinator integration
+    // 5. Out-of-order counterexample demonstrating the fix for the HighestEvictedOperationId watermark flaw:
+    // When operations are allocated 1..5, but completed in order 5, 4, 3, 2, operation 1 is STILL in progress.
+    // The previous watermark logic (OpId <= HighestEvictedOperationId) incorrectly classified Op1 as Evicted.
+    // With InProgressOperations, Op1 is correctly classified as InProgress.
+    {
+        FGV2SessionTransitionPolicy OooPolicy(2); // Capacity = 2
+        const uint64 P1 = OooPolicy.AllocateOperationId(); // 1
+        const uint64 P2 = OooPolicy.AllocateOperationId(); // 2
+        const uint64 P3 = OooPolicy.AllocateOperationId(); // 3
+        const uint64 P4 = OooPolicy.AllocateOperationId(); // 4
+        const uint64 P5 = OooPolicy.AllocateOperationId(); // 5
+
+        TestEqual(TEXT("P1 is InProgress"), OooPolicy.QueryOutcome(P1), ESessionOperationQueryStatus::InProgress);
+        TestFalse(TEXT("P1 is not evicted"), OooPolicy.IsOperationEvicted(P1));
+        TestTrue(TEXT("P1 is in progress set"), OooPolicy.IsOperationInProgress(P1));
+        TestEqual(TEXT("5 in progress operations"), OooPolicy.GetInProgressOperationsCount(), 5);
+
+        // Complete 5, 4, 3, 2 out-of-order
+        OooPolicy.RecordOutcome(P5, ESessionNonFailureOutcome::Completed);
+        TestEqual(TEXT("P5 is Found"), OooPolicy.QueryOutcome(P5), ESessionOperationQueryStatus::Found);
+        TestFalse(TEXT("P5 no longer in progress"), OooPolicy.IsOperationInProgress(P5));
+
+        OooPolicy.RecordOutcome(P4, ESessionNonFailureOutcome::Completed);
+        TestEqual(TEXT("P4 is Found"), OooPolicy.QueryOutcome(P4), ESessionOperationQueryStatus::Found);
+
+        // Capacity is 2: map had {4, 5}. Recording P3 evicts P4 (earliest in map).
+        OooPolicy.RecordOutcome(P3, ESessionNonFailureOutcome::Completed);
+        TestEqual(TEXT("P4 was evicted"), OooPolicy.QueryOutcome(P4), ESessionOperationQueryStatus::Evicted);
+        TestTrue(TEXT("P4 is evicted"), OooPolicy.IsOperationEvicted(P4));
+
+        // Recording P2 evicts P3.
+        OooPolicy.RecordOutcome(P2, ESessionNonFailureOutcome::Completed);
+        TestEqual(TEXT("P3 was evicted"), OooPolicy.QueryOutcome(P3), ESessionOperationQueryStatus::Evicted);
+        TestTrue(TEXT("P3 is evicted"), OooPolicy.IsOperationEvicted(P3));
+
+        // CRITICAL CHECK: P1 was NEVER recorded. It must still be InProgress, NOT Evicted!
+        TestEqual(TEXT("P1 remains InProgress despite P3 and P4 being evicted"), OooPolicy.QueryOutcome(P1), ESessionOperationQueryStatus::InProgress);
+        TestFalse(TEXT("P1 is NOT evicted"), OooPolicy.IsOperationEvicted(P1));
+        TestTrue(TEXT("P1 is still in progress"), OooPolicy.IsOperationInProgress(P1));
+
+        // P2 and P5 are Found
+        TestEqual(TEXT("P2 is Found"), OooPolicy.QueryOutcome(P2), ESessionOperationQueryStatus::Found);
+        TestEqual(TEXT("P5 is Found"), OooPolicy.QueryOutcome(P5), ESessionOperationQueryStatus::Found);
+
+        // Finally complete P1
+        OooPolicy.RecordOutcome(P1, ESessionNonFailureOutcome::Completed);
+        TestEqual(TEXT("P1 is now Found"), OooPolicy.QueryOutcome(P1), ESessionOperationQueryStatus::Found);
+        TestFalse(TEXT("P1 no longer in progress"), OooPolicy.IsOperationInProgress(P1));
+        TestEqual(TEXT("0 in progress operations"), OooPolicy.GetInProgressOperationsCount(), 0);
+    }
+
+    // 6. Coordinator integration
     {
         FGV2SessionCoordinator Coordinator;
         const uint64 UnreadyOp = Coordinator.RequestSave(TEXT("any_slot"));

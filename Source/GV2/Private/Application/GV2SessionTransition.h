@@ -113,6 +113,9 @@ public:
     bool IsOperationEvicted(uint64 OperationId) const;
     bool IsOperationKnown(uint64 OperationId) const;
 
+    bool IsOperationInProgress(uint64 OperationId) const { return InProgressOperations.Contains(OperationId); }
+    int32 GetInProgressOperationsCount() const { return InProgressOperations.Num(); }
+
     int32 GetMaxRetainedOutcomes() const { return MaxRetainedOutcomes; }
     int32 GetRetainedOutcomesCount() const { return OperationOutcomes.Num(); }
     uint64 GetHighestEvictedOperationId() const { return HighestEvictedOperationId; }
@@ -143,4 +146,5 @@ private:
     TOptional<FSessionOperationRecord> ActiveOperation;
     TOptional<FSessionOperationRecord> PendingSlot;
     TMap<uint64, FGV2SessionOperationResult> OperationOutcomes;
+    TSet<uint64> InProgressOperations;
 };

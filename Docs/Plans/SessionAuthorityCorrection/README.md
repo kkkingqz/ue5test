@@ -85,7 +85,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 - [x] M0 — SAC-01…03 приняты по Done/Evidence.
 - [x] M1 — SAC-04 принят по Done/Evidence.
-- [ ] M2 — SAC-05…06 приняты по Done/Evidence.
+- [x] M2 — SAC-05…06 приняты по Done/Evidence.
 
 ---
 
@@ -246,7 +246,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-06 — Ограничить историю операций и убрать мёртвую очистку
 
-- [ ] SAC-06 — Ограничить историю операций и убрать мёртвую очистку
+- [x] SAC-06 — Ограничить историю операций и убрать мёртвую очистку
 
 **Зависимость:** SAC-05. **Файлы:** `Source/GV2/Private/Application/GV2SessionTransition.h/.cpp`, `Docs/Architecture/BootstrapAndSessionLifecycle.md`, тест в `Source/GV2/Private/Tests/`.
 
