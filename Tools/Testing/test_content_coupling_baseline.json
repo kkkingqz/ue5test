@@ -350,30 +350,6 @@
     },
     {
       "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 218,
-      "token": "/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 602,
-      "token": "/Game/TextSystem/UI/Styles/BP_UIStyle_Text_Default.BP_UIStyle_Text_Default_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 603,
-      "token": "/Game/TextSystem/UI/Styles/BP_UIStyle_ButtonLabel_Default.BP_UIStyle_ButtonLabel_Default_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 684,
-      "token": "/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"
-    },
-    {
-      "category": "class_2",
       "file": "Source/GV2/Private/Tests/GV2DeclaredCompositeTests.cpp",
       "line": 276,
       "token": "/Game/TextSystem/UI/Widgets/WBP_DeclaredCompositeFlatFixture.WBP_DeclaredCompositeFlatFixture_C"
@@ -409,16 +385,18 @@
       "token": "/Game/TextSystem/UI/Widgets/WBP_RichText.WBP_RichText_C"
     }
   ],
-  "description": "Baseline ratchet of allowed test suite content couplings and file line limits for TSR-02 / ADR-0046",
+  "description": "Baseline ratchet of allowed test suite content couplings and file line limits for TSR-02 / TSR-10 / ADR-0046 (residual contract couplings tracked under STATUS-028)",
   "max_file_lines": 3306,
   "max_file_lines_exceptions": [],
   "max_run_test_lines": 480,
   "smoke_files": [
     {
       "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "reason": "Smoke-\u0442\u0435\u0441\u0442\u044b \u043a\u043e\u043c\u043f\u043e\u0437\u0438\u0442\u043e\u0432, \u044d\u043a\u0440\u0430\u043d\u043e\u0432 \u0438 \u0430\u0441\u0441\u0435\u0442\u043e\u0432 \u043a\u043e\u043d\u0442\u0435\u043d\u0442\u0430 (TextSystem/RH)."
+      "reason": "Smoke-тесты композитов, экранов и ассетов контента (TextSystem/RH)."
     }
   ],
-  "total_allowed_couplings": 68,
-  "version": 1
+  "total_allowed_couplings": 64,
+  "version": 1,
+  "residual_couplings_gap": "STATUS-028",
+  "residual_couplings_gap_reason": "Residual content couplings in 8 non-smoke test files from older plans (DCA/DUC/UI) ratcheted under STATUS-028 until refactored to synthetic core: fixtures."
 }

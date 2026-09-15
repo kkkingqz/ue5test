@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Ratchet gate validating test suite content coupling boundaries and file size limits.
 
-Implements TSR-02 (ADR-0046, Plan TestSuiteRestructuring):
-  1. Enforces that test files in Source/**/Tests do not introduce any new content
-     couplings to game packages (Class 1 namespaced IDs or Class 2 game content roots).
-     Couplings are strictly ratcheted against Tools/Testing/test_content_coupling_baseline.json.
-  2. Enforces that the baseline cannot grow or contain phantom entries. When a coupling
-     is removed from code, the baseline must be ratcheted down in the same change set.
-  3. Enforces a file size ceiling (max_file_lines) for all test files, preventing the
-     creation of new oversized monoliths during test suite restructuring.
-  4. Requires explicit justifications for designated smoke files and file size exceptions.
+Implements TSR-02 and TSR-10 (ADR-0046, Plan TestSuiteRestructuring):
+  1. Enforces the two-category test boundary:
+     - Contract tests (Source/**/Tests outside smoke_files) are strictly forbidden from
+       coupling to game package content (Class 1 namespaced IDs, Class 2 content roots).
+     - Content smoke tests (explicitly declared in baseline smoke_files with reason) are
+       permitted to touch content assets with structural assertions.
+  2. Residual couplings in contract tests from legacy plans (DCA/DUC/UI) are strictly
+     ratcheted under a mandatory confirmed gap ID (STATUS-028) until refactored.
+  3. Enforces that the baseline cannot grow or contain phantom entries.
+  4. Enforces a file size ceiling (max_file_lines) for all test files.
+  5. Enforces a method size ceiling (max_run_test_lines) for all RunTest methods.
+  6. Requires explicit justifications for designated smoke files and file size exceptions.
 """
 
 from __future__ import annotations
@@ -66,7 +69,7 @@ def validate_file_sizes(
     """Validate that test files do not exceed the baseline ceiling unless explicitly excepted."""
     max_lines = baseline["max_file_lines"]
     exceptions_list = baseline.get("max_file_lines_exceptions", [])
-    
+
     # Map exception relative path to justification reason
     exceptions: Dict[str, str] = {}
     for exc in exceptions_list:
@@ -167,19 +170,28 @@ def validate_couplings(
     report = scan_inventory(repo_root)
     violations: List[str] = []
 
-    # Current occurrences of Class 1 and Class 2
-    current_occurrences = [
-        o for o in report.occurrences if o.category in ("class_1", "class_2")
-    ]
-
-    current_counts: Counter[Tuple[str, str, str]] = Counter(
-        (o.category, o.file_path, o.token) for o in current_occurrences
-    )
+    # Smoke files declaration check
+    smoke_files = baseline.get("smoke_files", [])
+    smoke_file_paths: Set[str] = set()
+    for sf in smoke_files:
+        if not isinstance(sf, dict) or "file" not in sf or "reason" not in sf:
+            violations.append(f"Baseline error: malformed smoke_files entry: {sf}")
+            continue
+        if not sf["reason"] or not sf["reason"].strip():
+            violations.append(f"Baseline error: smoke_file '{sf.get('file')}' has empty reason.")
+        smoke_file_paths.add(sf["file"])
 
     # Baseline couplings
     baseline_list = baseline.get("allowed_couplings", [])
-    baseline_counts: Counter[Tuple[str, str, str]] = Counter()
+    residual_gap = baseline.get("residual_couplings_gap")
+    if baseline_list and (not residual_gap or not str(residual_gap).strip()):
+        violations.append(
+            "Baseline error [TEST_CONTENT_COUPLING_RATCHET]: Baseline has non-empty 'allowed_couplings' "
+            "without specifying 'residual_couplings_gap'. Any residual couplings in contract tests must "
+            "be recorded under a confirmed gap ID in Docs/Status/ImplementationStatus.md (e.g. 'STATUS-028') per TSR-10."
+        )
 
+    baseline_counts: Counter[Tuple[str, str, str]] = Counter()
     for item in baseline_list:
         cat = item.get("category", "")
         f_path = item.get("file", "")
@@ -187,18 +199,34 @@ def validate_couplings(
         if not cat or not f_path or not tok:
             violations.append(f"Baseline error: malformed allowed_coupling entry: {item}")
             continue
+        if f_path in smoke_file_paths:
+            violations.append(
+                f"Baseline error: smoke file '{f_path}' must not be listed in 'allowed_couplings' — "
+                f"smoke files are permitted content couplings by virtue of their 'smoke_files' declaration."
+            )
+            continue
         baseline_counts[(cat, f_path, tok)] += 1
 
-    # Check 1: Any new coupling in code that is not in baseline (or count increased)
-    for occ in current_occurrences:
+    # Current occurrences of Class 1 and Class 2 in CONTRACT test files (smoke files exempt)
+    contract_occurrences = [
+        o for o in report.occurrences
+        if o.category in ("class_1", "class_2") and o.file_path not in smoke_file_paths
+    ]
+
+    current_counts: Counter[Tuple[str, str, str]] = Counter(
+        (o.category, o.file_path, o.token) for o in contract_occurrences
+    )
+
+    # Check 1: Any new coupling in contract test code that is not in baseline (or count increased)
+    for occ in contract_occurrences:
         key = (occ.category, occ.file_path, occ.token)
         curr_num = current_counts[key]
         base_num = baseline_counts.get(key, 0)
         if curr_num > base_num:
             violations.append(
                 f"{occ.file_path}:{occ.line_number}: error [TEST_CONTENT_COUPLING_RULE]: "
-                f"New content coupling detected in test code: '{occ.token}' ({occ.category}, {occ.matched_detail}). "
-                f"Count in code ({curr_num}) exceeds baseline ({base_num}). (ADR-0046)"
+                f"Forbidden content coupling detected in contract test code: '{occ.token}' ({occ.category}, {occ.matched_detail}). "
+                f"Count in code ({curr_num}) exceeds baseline ({base_num}). (ADR-0046 / TSR-10)"
             )
 
     # Check 2: Ratchet check -- baseline must not contain phantom couplings or grown count
@@ -209,17 +237,8 @@ def validate_couplings(
             violations.append(
                 f"error [TEST_CONTENT_COUPLING_RATCHET]: Baseline contains coupling not present in code "
                 f"or removed without updating baseline: '{tok}' ({cat}) in {f_path}. "
-                f"Baseline count ({base_num}) exceeds code count ({curr_num}). Baseline must be ratcheted down. (ADR-0046)"
+                f"Baseline count ({base_num}) exceeds code count ({curr_num}). Baseline must be ratcheted down. (ADR-0046 / TSR-10)"
             )
-
-    # Check 3: Smoke files justification check
-    smoke_files = baseline.get("smoke_files", [])
-    for sf in smoke_files:
-        if not isinstance(sf, dict) or "file" not in sf or "reason" not in sf:
-            violations.append(f"Baseline error: malformed smoke_files entry: {sf}")
-            continue
-        if not sf["reason"] or not sf["reason"].strip():
-            violations.append(f"Baseline error: smoke_file '{sf.get('file')}' has empty reason.")
 
     return violations
 
@@ -242,7 +261,7 @@ def validate_repository(
 
 
 def run_self_tests() -> bool:
-    """Run comprehensive negative and positive self-tests for TSR-02 ratchet gate."""
+    """Run comprehensive negative and positive self-tests for TSR-02 and TSR-10 ratchet gate."""
     print("[*] Running validate_test_content_coupling self-tests...")
 
     # 1. Positive check: current repository must pass with current baseline
@@ -281,6 +300,14 @@ def run_self_tests() -> bool:
             encoding="utf-8",
         )
 
+        # File 2: Smoke file with content coupling (allowed by smoke_files declaration)
+        smoke_file = test_dir / "TestSmoke.cpp"
+        smoke_file.write_text(
+            '// Smoke test\n'
+            'const char* path = "/Game/Alpha/UI/WBP_Screen.WBP_Screen_C";\n',
+            encoding="utf-8",
+        )
+
         # Baseline JSON
         fake_baseline_path = fake_root / "baseline.json"
         baseline_data = {
@@ -299,6 +326,7 @@ def run_self_tests() -> bool:
                     "reason": "Legitimate smoke test"
                 }
             ],
+            "residual_couplings_gap": "STATUS-028",
             "allowed_couplings": [
                 {
                     "category": "class_1",
@@ -310,12 +338,12 @@ def run_self_tests() -> bool:
         }
         fake_baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
 
-        # Verify initial clean state in synthetic env
+        # Verify initial clean state in synthetic env (smoke file coupling is accepted without being in allowed_couplings)
         init_violations = validate_repository(fake_root, fake_baseline_path)
         if init_violations:
             print(f"FAILED: synthetic clean state had violations: {init_violations}")
             return False
-        print("  [+] Synthetic baseline matching verified.")
+        print("  [+] Synthetic baseline matching verified (smoke file exempt from contract coupling prohibitions).")
 
         # 2. Negative test: new coupling added to contract file (not in baseline)
         test_file1.write_text(
@@ -337,7 +365,20 @@ def run_self_tests() -> bool:
             encoding="utf-8",
         )
 
-        # 3. Negative test: baseline grown with phantom coupling (not in code)
+        # 3. Negative test: baseline without residual_couplings_gap when allowed_couplings is non-empty
+        gap_missing_baseline = dict(baseline_data)
+        del gap_missing_baseline["residual_couplings_gap"]
+        fake_baseline_path.write_text(json.dumps(gap_missing_baseline, indent=2), encoding="utf-8")
+        gap_violations = validate_repository(fake_root, fake_baseline_path)
+        if not any("residual_couplings_gap" in v for v in gap_violations):
+            print(f"FAILED: gate did not reject missing residual_couplings_gap: {gap_violations}")
+            return False
+        print("  [+] Negative self-test: gate rejects non-empty allowed_couplings without residual_couplings_gap.")
+
+        # Restore baseline
+        fake_baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
+
+        # 4. Negative test: baseline grown with phantom coupling (not in code)
         grown_baseline = dict(baseline_data)
         grown_baseline["allowed_couplings"] = list(baseline_data["allowed_couplings"]) + [
             {
@@ -357,7 +398,7 @@ def run_self_tests() -> bool:
         # Restore baseline
         fake_baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
 
-        # 4. Negative test: file size exceeds ceiling without exception
+        # 5. Negative test: file size exceeds ceiling without exception
         oversized_file = test_dir / "TestOversized.cpp"
         oversized_file.write_text("\n" * 60, encoding="utf-8")  # 61 lines > 50 ceiling
         size_violations = validate_repository(fake_root, fake_baseline_path)
@@ -366,7 +407,7 @@ def run_self_tests() -> bool:
             return False
         print("  [+] Negative self-test: gate rejects file exceeding max_file_lines ceiling.")
 
-        # 5. File size with exception is accepted
+        # 6. File size with exception is accepted
         oversized_file.unlink()
         excepted_file = test_dir / "TestLargeException.cpp"
         excepted_file.write_text("\n" * 60, encoding="utf-8")
@@ -377,7 +418,7 @@ def run_self_tests() -> bool:
         print("  [+] File size exception in baseline is honored.")
         excepted_file.unlink()
 
-        # 6. Negative test: RunTest method exceeds max_run_test_lines ceiling (TSR-09)
+        # 7. Negative test: RunTest method exceeds max_run_test_lines ceiling (TSR-09)
         oversized_run_test = test_dir / "TestOversizedRun.cpp"
         oversized_run_lines = [
             'IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTestOversizedRun, "Test.Oversized", EAutomationTestFlags::ApplicationContextMask)',
@@ -404,7 +445,7 @@ def run_self_tests() -> bool:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate test suite content coupling against baseline ratchet (TSR-02 / ADR-0046)."
+        description="Validate test suite content coupling against baseline ratchet (TSR-02 / TSR-10 / ADR-0046)."
     )
     parser.add_argument(
         "--self-test", action="store_true", help="Run self-tests and negative validation tests."

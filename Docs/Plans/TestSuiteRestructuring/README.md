@@ -89,9 +89,9 @@ Gate получает baseline фактических привязок и про
 Порядок не переставляется. Ratchet ставится **до** переноса, иначе перенос легализует 131 привязку в шести новых файлах. Перенос идёт **до** отвязки, потому что после него каждый change set M2 локален в файле на 1–2 тысячи строк, а не в 12-тысячном монстре. Дробление идёт **последним**, потому что отвязка схлопывает часть кода жирных тестов и дробить до неё — работа впустую.
 
 - [x] M0 — TSR-01…02 приняты по Done/Evidence.
-- [ ] M1 — TSR-03…05 приняты по Done/Evidence.
-- [ ] M2 — TSR-06…08 приняты по Done/Evidence.
-- [ ] M3 — TSR-09…10 приняты по Done/Evidence.
+- [x] M1 — TSR-03…05 приняты по Done/Evidence.
+- [x] M2 — TSR-06…08 приняты по Done/Evidence.
+- [x] M3 — TSR-09…10 приняты по Done/Evidence.
 
 ---
 
@@ -382,7 +382,7 @@ Gate получает baseline фактических привязок и про
 
 ### TSR-10 — Обнулить baseline и перенести правило в contracts
 
-- [ ] TSR-10 — Обнулить baseline и перенести правило в contracts
+- [x] TSR-10 — Обнулить baseline и перенести правило в contracts
 
 **Зависимость:** TSR-09. **Файлы:** `Tools/Testing/validate_test_content_coupling.py` и его baseline; `Tools/Content/validate_core_decoupling.py`; `Docs/Architecture/BuildAndTooling.md`; `Docs/Status/ImplementationStatus.md`.
 
