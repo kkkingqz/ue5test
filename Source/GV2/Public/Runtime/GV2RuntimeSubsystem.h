@@ -140,6 +140,7 @@ public:
     FGV2SessionCoordinator* GetCoordinatorForAutomationTest() const { return Coordinator.Get(); }
 
     static bool bTestForceDocumentSinkFailure;
+    static bool bTestForceRepositoryNotReady;
 #endif
 
 private:

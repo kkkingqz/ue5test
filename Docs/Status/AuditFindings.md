@@ -55,7 +55,7 @@ depends_on:
 
 **Область действия.** Продуктовые пути `RequestLoad` и `StartSession` при живой Ready-сессии сюда не попадают: `RequestLoad` при `bIsReady` уходит в `Coordinator->RequestLoad` раньше (`GV2RuntimeSubsystem.cpp:322-324`), а `StartSession` строит descriptor сам с валидным seed. Достижимость дефекта обеспечивает публичность `RequestSession` для Blueprint и любого native caller, а не внутренний сценарий.
 
-**Исход:** открыт.
+**Исход:** *(Закрыто задачей SAC-01)* Обе предварительные проверки удалены из UGV2RuntimeSubsystem::RequestSession с безусловной передачей в coordinator transition policy, возвратом operation id, сохранением Ready-сессии при отказе кандидата и проверкой check(!Status.bIsReady) в FailBootstrap.
 
 #### CFC-AF-20 — PKG-SNAP-R1 — P1 — `package.json5` читается второй раз после фиксации package set
 

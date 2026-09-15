@@ -1157,5 +1157,238 @@ bool FGV2SessionNativeRecoveryOnInitialApplyFailureTest::RunTest(const FString& 
     return true;
 }
 
+// SAC-01 (ADR-0044, CFC-AF-19): Ready session A survives a subsystem RequestSession call with an
+// invalid descriptor: generation, snapshot identity, active screen, working binding, and bIsReady
+// are preserved, and a non-zero operation id with Failed outcome is returned.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionPreservesReadySessionOnInvalidDescriptorRequestTest,
+    "GV2.Runtime.Session.PreservesReadySessionOnInvalidDescriptorRequest",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionPreservesReadySessionOnInvalidDescriptorRequestTest::RunTest(const FString& Parameters)
+{
+    const FGV2ScopedSamplePackageOverride SampleOverride;
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    // 1. Start initial session A
+    FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+    const FGV2SessionStatus StatusA = Runtime->GetSessionState();
+    TestTrue(TEXT("Initial session A is ready"), StatusA.bIsReady);
+    TestEqual(TEXT("Initial session A is in Ready state"), StatusA.SessionState, EGV2SessionState::Ready);
+    const int32 GenA = StatusA.SessionGeneration;
+
+    const FGV2SessionContentSnapshot* SnapshotA = Runtime->GetContentSnapshotForAutomationTest();
+    TestNotNull(TEXT("Session A snapshot exists"), SnapshotA);
+    const FString SnapshotHashA = SnapshotA ? SnapshotA->GetPresentationHash() : TEXT("");
+    TestFalse(TEXT("Session A snapshot hash is non-empty"), SnapshotHashA.IsEmpty());
+
+    UGV2GameShellWidgetBase* ShellA = Runtime->GetActiveGameShell();
+    UUserWidget* ScreenA = Runtime->GetActiveScreen();
+    TestNotNull(TEXT("Session A created an active GameShell"), ShellA);
+    TestNotNull(TEXT("Session A created an active Screen"), ScreenA);
+
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+    TestTrue(TEXT("Lua VM is started for session A"), Coordinator && Coordinator->IsLuaVmStarted());
+
+    // Publish a test binding on session A to verify working binding preservation
+    TArray<FGV2UiBindingDefinition> Definitions;
+    FGV2UiBindingDefinition Def;
+    Def.CommandId = TEXT("core:command.test.step");
+    Def.NodeKeyPath = { TEXT("main"), TEXT("test_action") };
+    Definitions.Add(Def);
+    TArray<FGV2UiBindingHandle> Handles;
+    TestTrue(TEXT("PublishScreenBindings succeeds"), Coordinator && Coordinator->PublishScreenBindings(Definitions, Handles));
+    TestEqual(TEXT("1 handle published"), Handles.Num(), 1);
+    const FGV2UiBindingHandle WorkingHandle = Handles.Num() > 0 ? Handles[0] : FGV2UiBindingHandle();
+    TestTrue(TEXT("Working handle is valid"), WorkingHandle.IsValid());
+    const int32 BindingsCountBefore = Coordinator ? Coordinator->GetBindingRegistry().Num() : 0;
+    TestTrue(TEXT("Session A has published bindings"), BindingsCountBefore > 0);
+    TestEqual(
+        TEXT("Working binding before request is Accepted"),
+        Runtime->SubmitUiInteraction(WorkingHandle, {}),
+        EGV2SubmitUiInteractionResult::Accepted);
+
+    // 2. Call subsystem RequestSession with invalid descriptor
+    FSessionStartDescriptor BadDesc;
+    BadDesc.Mode = ESessionStartMode::NewGame;
+    BadDesc.SeedHex = TEXT("not_a_valid_hex");
+
+    AddExpectedErrorPlain(
+        TEXT("GV2 Lua runtime fault: code=InvalidSessionDescriptor"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedErrorPlain(
+        TEXT("Failed to start GV2 session"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+
+    const int64 OpId = Runtime->RequestSession(BadDesc);
+
+    // 3. Assert non-zero operation id and Failed outcome
+    TestTrue(TEXT("RequestSession returns a non-zero operation id"), OpId > 0);
+    ESessionOperationOutcome Outcome;
+    TestTrue(TEXT("Outcome is recorded for OpId"), Runtime->GetSessionOperationOutcome(OpId, Outcome));
+    TestEqual(TEXT("Operation outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+
+    // 4. Assert session A is completely preserved
+    const FGV2SessionStatus StatusAfter = Runtime->GetSessionState();
+    TestTrue(TEXT("Session A remains ready after invalid descriptor request"), StatusAfter.bIsReady);
+    TestEqual(TEXT("Session A remains in Ready state"), StatusAfter.SessionState, EGV2SessionState::Ready);
+    TestEqual(TEXT("Session A generation is unchanged"), StatusAfter.SessionGeneration, GenA);
+
+    const FGV2SessionContentSnapshot* SnapshotAfter = Runtime->GetContentSnapshotForAutomationTest();
+    TestNotNull(TEXT("Session A snapshot still exists"), SnapshotAfter);
+    if (SnapshotAfter != nullptr)
+    {
+        TestEqual(TEXT("Snapshot identity is preserved"), SnapshotAfter->GetPresentationHash(), SnapshotHashA);
+    }
+
+    TestEqual(TEXT("Active GameShell is still the exact session A instance"), Runtime->GetActiveGameShell(), ShellA);
+    TestEqual(TEXT("Active Screen is still the exact session A instance"), Runtime->GetActiveScreen(), ScreenA);
+    TestNull(
+        TEXT("No recovery screen was shown since session A was preserved"),
+        Cast<UGV2RecoveryScreenWidget>(Runtime->GetActiveScreen()));
+
+    const int32 BindingsCountAfter = Coordinator ? Coordinator->GetBindingRegistry().Num() : 0;
+    TestEqual(TEXT("Binding registry count is unchanged"), BindingsCountAfter, BindingsCountBefore);
+    TestEqual(
+        TEXT("Working binding after request remains Accepted"),
+        Runtime->SubmitUiInteraction(WorkingHandle, {}),
+        EGV2SubmitUiInteractionResult::Accepted);
+    TestTrue(TEXT("Lua VM remains started"), Coordinator && Coordinator->IsLuaVmStarted());
+
+    // Clean up
+    Runtime->EndSession();
+    return true;
+}
+
+// SAC-01 (ADR-0044, CFC-AF-19): Ready session A survives a subsystem RequestSession call when the
+// repository is not ready / unpublishable: generation, snapshot identity, active screen, working
+// binding, and bIsReady are preserved, and a non-zero operation id with Failed outcome is returned.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionPreservesReadySessionOnUnreadyRepositoryRequestTest,
+    "GV2.Runtime.Session.PreservesReadySessionOnUnreadyRepositoryRequest",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionPreservesReadySessionOnUnreadyRepositoryRequestTest::RunTest(const FString& Parameters)
+{
+    const FGV2ScopedSamplePackageOverride SampleOverride;
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    // 1. Start initial session A
+    FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+    const FGV2SessionStatus StatusA = Runtime->GetSessionState();
+    TestTrue(TEXT("Initial session A is ready"), StatusA.bIsReady);
+    TestEqual(TEXT("Initial session A is in Ready state"), StatusA.SessionState, EGV2SessionState::Ready);
+    const int32 GenA = StatusA.SessionGeneration;
+
+    const FGV2SessionContentSnapshot* SnapshotA = Runtime->GetContentSnapshotForAutomationTest();
+    TestNotNull(TEXT("Session A snapshot exists"), SnapshotA);
+    const FString SnapshotHashA = SnapshotA ? SnapshotA->GetPresentationHash() : TEXT("");
+    TestFalse(TEXT("Session A snapshot hash is non-empty"), SnapshotHashA.IsEmpty());
+
+    UGV2GameShellWidgetBase* ShellA = Runtime->GetActiveGameShell();
+    UUserWidget* ScreenA = Runtime->GetActiveScreen();
+    TestNotNull(TEXT("Session A created an active GameShell"), ShellA);
+    TestNotNull(TEXT("Session A created an active Screen"), ScreenA);
+
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+    TestTrue(TEXT("Lua VM is started for session A"), Coordinator && Coordinator->IsLuaVmStarted());
+
+    // Publish a test binding on session A to verify working binding preservation
+    TArray<FGV2UiBindingDefinition> Definitions;
+    FGV2UiBindingDefinition Def;
+    Def.CommandId = TEXT("core:command.test.step");
+    Def.NodeKeyPath = { TEXT("main"), TEXT("test_action") };
+    Definitions.Add(Def);
+    TArray<FGV2UiBindingHandle> Handles;
+    TestTrue(TEXT("PublishScreenBindings succeeds"), Coordinator && Coordinator->PublishScreenBindings(Definitions, Handles));
+    TestEqual(TEXT("1 handle published"), Handles.Num(), 1);
+    const FGV2UiBindingHandle WorkingHandle = Handles.Num() > 0 ? Handles[0] : FGV2UiBindingHandle();
+    TestTrue(TEXT("Working handle is valid"), WorkingHandle.IsValid());
+    const int32 BindingsCountBefore = Coordinator ? Coordinator->GetBindingRegistry().Num() : 0;
+    TestTrue(TEXT("Session A has published bindings"), BindingsCountBefore > 0);
+    TestEqual(
+        TEXT("Working binding before request is Accepted"),
+        Runtime->SubmitUiInteraction(WorkingHandle, {}),
+        EGV2SubmitUiInteractionResult::Accepted);
+
+    // 2. Force repository not ready and call RequestSession with valid descriptor
+    UGV2RuntimeSubsystem::bTestForceRepositoryNotReady = true;
+
+    FSessionStartDescriptor NextDesc;
+    NextDesc.Mode = ESessionStartMode::NewGame;
+    NextDesc.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
+
+    AddExpectedErrorPlain(
+        TEXT("GV2 Lua runtime fault: code=RepositoryNotReady"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedErrorPlain(
+        TEXT("Failed to start GV2 session"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+
+    const int64 OpId = Runtime->RequestSession(NextDesc);
+
+    UGV2RuntimeSubsystem::bTestForceRepositoryNotReady = false;
+
+    // 3. Assert non-zero operation id and Failed outcome
+    TestTrue(TEXT("RequestSession returns a non-zero operation id"), OpId > 0);
+    ESessionOperationOutcome Outcome;
+    TestTrue(TEXT("Outcome is recorded for OpId"), Runtime->GetSessionOperationOutcome(OpId, Outcome));
+    TestEqual(TEXT("Operation outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+
+    // 4. Assert session A is completely preserved
+    const FGV2SessionStatus StatusAfter = Runtime->GetSessionState();
+    TestTrue(TEXT("Session A remains ready after unready repository request"), StatusAfter.bIsReady);
+    TestEqual(TEXT("Session A remains in Ready state"), StatusAfter.SessionState, EGV2SessionState::Ready);
+    TestEqual(TEXT("Session A generation is unchanged"), StatusAfter.SessionGeneration, GenA);
+
+    const FGV2SessionContentSnapshot* SnapshotAfter = Runtime->GetContentSnapshotForAutomationTest();
+    TestNotNull(TEXT("Session A snapshot still exists"), SnapshotAfter);
+    if (SnapshotAfter != nullptr)
+    {
+        TestEqual(TEXT("Snapshot identity is preserved"), SnapshotAfter->GetPresentationHash(), SnapshotHashA);
+    }
+
+    TestEqual(TEXT("Active GameShell is still the exact session A instance"), Runtime->GetActiveGameShell(), ShellA);
+    TestEqual(TEXT("Active Screen is still the exact session A instance"), Runtime->GetActiveScreen(), ScreenA);
+    TestNull(
+        TEXT("No recovery screen was shown since session A was preserved"),
+        Cast<UGV2RecoveryScreenWidget>(Runtime->GetActiveScreen()));
+
+    const int32 BindingsCountAfter = Coordinator ? Coordinator->GetBindingRegistry().Num() : 0;
+    TestEqual(TEXT("Binding registry count is unchanged"), BindingsCountAfter, BindingsCountBefore);
+    TestEqual(
+        TEXT("Working binding after request remains Accepted"),
+        Runtime->SubmitUiInteraction(WorkingHandle, {}),
+        EGV2SubmitUiInteractionResult::Accepted);
+    TestTrue(TEXT("Lua VM remains started"), Coordinator && Coordinator->IsLuaVmStarted());
+
+    // Clean up
+    Runtime->EndSession();
+    return true;
+}
 
 #endif // WITH_DEV_AUTOMATION_TESTS

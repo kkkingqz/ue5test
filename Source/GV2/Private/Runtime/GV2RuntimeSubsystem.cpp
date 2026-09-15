@@ -235,32 +235,29 @@ int64 UGV2RuntimeSubsystem::RequestSession(const FSessionStartDescriptor& Descri
     check(IsInGameThread());
     check(Coordinator);
 
-    FString ValidateError;
-    if (!Descriptor.IsValid(&ValidateError))
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("RequestSession rejected descriptor: %s"), *ValidateError);
-        Coordinator->FailBootstrap(TEXT("InvalidSessionDescriptor"), ValidateError);
-        return 0;
-    }
+    const bool bRepoAvailable = bRepositoryReady && RepositoryPublisher.IsValid() && RepositoryPublisher->HasCurrent()
+#if WITH_DEV_AUTOMATION_TESTS
+        && !bTestForceRepositoryNotReady
+#endif
+        ;
 
-    if (!bRepositoryReady || !RepositoryPublisher->HasCurrent())
-    {
-        UE_LOG(
-            LogGV2Runtime,
-            Error,
-            TEXT("RequestSession rejected: GameDataRepository is not ready: %s"),
-            *RepositoryBuildError);
-        Coordinator->FailBootstrap(
-            TEXT("RepositoryNotReady"),
-            RepositoryBuildError.IsEmpty() ? TEXT("No published GameDataRepository to pin.") : RepositoryBuildError);
-        return 0;
-    }
+    const GV2ContentCore::FRepositoryReadHandle RepoHandle =
+        bRepoAvailable
+            ? RepositoryPublisher->GetCurrent()
+            : GV2ContentCore::FRepositoryReadHandle();
+    const int64 RepoVersion =
+        (bRepoAvailable && RepositoryPublisher.IsValid())
+            ? RepositoryPublisher->GetVersion()
+            : 0;
+    static const GV2ContentHostSupport::FResolvedPackageSet EmptyPackageSet;
+    const GV2ContentHostSupport::FResolvedPackageSet& PackageSetToUse =
+        ResolvedPackageSet.IsSet() ? *ResolvedPackageSet : EmptyPackageSet;
 
     const uint64 OpId = Coordinator->RequestSession(
         Descriptor,
-        RepositoryPublisher->GetCurrent(),
-        RepositoryPublisher->GetVersion(),
-        *ResolvedPackageSet);
+        RepoHandle,
+        RepoVersion,
+        PackageSetToUse);
 
     const TOptional<ESessionOperationOutcome> Outcome = Coordinator->GetSessionOperationOutcome(OpId);
     if (Outcome.IsSet() && *Outcome == ESessionOperationOutcome::Failed)
@@ -647,6 +644,7 @@ void UGV2RuntimeSubsystem::ReplaceActiveScreen(UUserWidget* NewScreen)
 
 #if WITH_DEV_AUTOMATION_TESTS
 bool UGV2RuntimeSubsystem::bTestForceDocumentSinkFailure = false;
+bool UGV2RuntimeSubsystem::bTestForceRepositoryNotReady = false;
 
 const FGV2SessionContentSnapshot* UGV2RuntimeSubsystem::GetContentSnapshotForAutomationTest() const
 {

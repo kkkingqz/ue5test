@@ -879,6 +879,7 @@ bool FGV2SessionCoordinator::PublishReady(
 void FGV2SessionCoordinator::FailBootstrap(const FString& Code, const FString& Message)
 {
     check(IsInGameThread());
+    check(!Status.bIsReady);
     GV2RuntimeCore::FRuntimeFault Fault{
         TCHAR_TO_UTF8(*Code),
         TCHAR_TO_UTF8(*Message)};

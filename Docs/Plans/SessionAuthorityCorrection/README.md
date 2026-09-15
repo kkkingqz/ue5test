@@ -91,7 +91,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-01 — Убрать вторую валидацию из публичного входа
 
-- [ ] SAC-01 — Убрать вторую валидацию из публичного входа
+- [x] SAC-01 — Убрать вторую валидацию из публичного входа
 
 **Зависимость:** нет. **Файлы:** `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, `Source/GV2/Private/Application/GV2SessionCoordinator.cpp/.h`, тест в `Source/GV2/Private/Tests/`.
 
