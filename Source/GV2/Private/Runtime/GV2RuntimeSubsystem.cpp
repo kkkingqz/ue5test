@@ -52,7 +52,8 @@ FString ResolveRecoveryText(const FString& TextId, const FString& Fallback)
 // consume this ONE result; none of them re-discovers the package set independently
 // (PAH-R3: a second, independent discovery of the same closure is a second authority,
 // even when it returns the same order today).
-// PAH-04: pre_ready_discovery -- only called from Initialize(), before any session exists.
+// PAH-04: pre_ready_discovery callers=UGV2RuntimeSubsystem::Initialize
+// Only called from Initialize(), before any session exists.
 TOptional<GV2ContentHostSupport::FResolvedPackageSet> ResolveSessionPackageSet()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));

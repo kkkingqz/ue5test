@@ -16,8 +16,10 @@ FGV2UiSchemaCache::FGV2UiSchemaCache(TArray<FGV2SchemaPackageRoot> InPackageRoot
     DiscoverAll();
 }
 
-// PAH-04: pre_ready_discovery -- only called from this constructor, only called
-// from FGV2SessionContentCandidate::Build().
+// PAH-04: pre_ready_discovery callers=FGV2UiSchemaCache::FGV2UiSchemaCache
+// Called from constructor during FGV2SessionContentCandidate::Build.
+// Under ADR-0044, candidate preparation executes while a prior Ready session may remain active;
+// discovering schemas from candidate package roots builds the candidate schema cache before commit-to-replace.
 void FGV2UiSchemaCache::DiscoverAll()
 {
 #if !UE_BUILD_SHIPPING

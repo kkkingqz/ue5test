@@ -35,9 +35,11 @@ FString NormalizeContentRoot(const FString& RawRoot)
 // ComputePackageFingerprint (0F). Absence of the field is valid: zero declared roots,
 // not an error -- a package can own no UE-side widget/resource content at all (e.g.
 // "sample" today).
-// PAH-04: pre_ready_discovery -- only called from ResolveContentRootOwnershipFromGameData(),
-// only called from Build(), only called from LoadScreenRegistry(), only called from
-// Initialize(), before any session exists.
+// PAH-04: pre_ready_discovery callers=UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData
+// Reads package.json5 "ue_content_roots" during screen registry compilation.
+// Called from ResolveContentRootOwnershipFromGameData -> CompileResolvedRegistry -> FGV2SessionContentCandidate::Build.
+// Under ADR-0044, candidate preparation executes while a prior Ready session may remain active;
+// this candidate-scoped read is permitted before commit-to-replace.
 bool ReadUeContentRootsForPackage(const FString& PackageGameDataDir, TArray<FString>& OutRoots, FString& OutError)
 {
     OutRoots.Reset();
@@ -155,8 +157,10 @@ bool UGV2ScreenRegistry::BuildContentRootOwnership(
 // entry's own "ue_content_roots" field directly, which is not package-set discovery: the
 // portable descriptor parser deliberately never looks at that field (0F), so it cannot be
 // obtained any other way once the package set is already resolved.
-// PAH-04: pre_ready_discovery -- only called from Build(), only called from
-// LoadScreenRegistry(), only called from Initialize(), before any session exists.
+// PAH-04: pre_ready_discovery callers=UGV2ScreenRegistry::CompileResolvedRegistry
+// Called from CompileResolvedRegistry during FGV2SessionContentCandidate::Build.
+// Under ADR-0044, candidate preparation executes while a prior Ready session may remain active;
+// resolving content root ownership is candidate-scoped before commit-to-replace.
 bool UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(
     const TArray<GV2PackageClosure::FEntry>& ClosureEntries,
     TArray<FGV2ContentRootOwnership>& OutOwnership,

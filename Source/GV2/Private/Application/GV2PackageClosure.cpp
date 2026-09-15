@@ -11,8 +11,9 @@ namespace GV2PackageClosure
 {
 #if WITH_DEV_AUTOMATION_TESTS
 // Test-only projection fixture. Production receives FResolvedPackageSet from its host.
-// PAH-04: pre_ready_discovery -- automation uses the projection only while arranging
-// content before StartSession; the function is absent from non-automation builds.
+// PAH-04: pre_ready_discovery callers=none
+// Automation tests use this projection helper only while arranging content fixtures
+// before starting a session; it has no production callers and is absent from non-automation builds.
 TArray<FEntry> DiscoverFromGameData()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));

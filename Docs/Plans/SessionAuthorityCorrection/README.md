@@ -120,7 +120,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-03 — Сделать обоснование discovery-маркера проверяемым
 
-- [ ] SAC-03 — Сделать обоснование discovery-маркера проверяемым
+- [x] SAC-03 — Сделать обоснование discovery-маркера проверяемым
 
 **Зависимость:** SAC-01. **Файлы:** `Tools/Testing/validate_pre_ready_content_discovery.py` и его negative self-tests; маркеры в `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp`, `Source/GV2/Private/UI/GV2UiSchemaCache.cpp`.
 

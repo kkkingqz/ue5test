@@ -42,8 +42,10 @@ bool IsValidSaveSlotId(const FString& SlotId)
     return true;
 }
 
-// PAH-04: pre_ready_discovery -- only called from StartSession(), before this
-// session's Status.bIsReady is ever set true.
+// PAH-04: pre_ready_discovery callers=FGV2SessionCoordinator::ExecuteSessionStart
+// Called from FGV2SessionCoordinator::ExecuteSessionStart during candidate session start/replacement.
+// Under ADR-0044, candidate preparation occurs before commit-to-replace while a prior Ready session
+// may remain active; reading Lua sources and schema roots is scoped to the candidate session.
 // PSC-02 (ADR-0043 D1/D5): ResolvedPackageSet is the caller's single already-resolved
 // package set. This function reads PackageId/Root straight from it -- no
 // second discovery of the package set, not even a per-root re-parse of package.json5
@@ -238,8 +240,9 @@ void FGV2SessionCoordinator::ClearProjectionPublishSink()
 }
 
 #if WITH_DEV_AUTOMATION_TESTS
-// PAH-04: pre_ready_discovery -- this test-only overload resolves its fixture set before
-// delegating to the production StartSession overload; Status cannot yet be Ready.
+// PAH-04: pre_ready_discovery callers=none
+// Test-only overload that resolves its fixture set before delegating to the production
+// StartSession overload; it has no production callers and is absent from non-automation builds.
 bool FGV2SessionCoordinator::StartSession(
     const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
     const int64 InRepositoryVersion)

@@ -307,11 +307,8 @@ bool UGV2ImageResourceCatalog::TryMakeResourceIdForPackage(
     return true;
 }
 
-// PAH-04: pre_ready_discovery -- a generic, unscoped directory scan. PSC-07 stopped
-// routing production session bootstrap through this function (BuildFromPackageClosure
-// now calls the scoped BuildFromPackageResourceRoots() below instead, never this one) --
-// its only remaining callers are direct scanner tests (excluded from this gate) that
-// exercise the raw scan/decode grammar in isolation from package-closure scoping.
+// PAH-04: pre_ready_discovery callers=none
+// A generic, unscoped directory scan retained for direct scanner tests; has no production callers.
 bool UGV2ImageResourceCatalog::BuildFromDirectory(
     const FString& RootDirectory,
     FString& OutError)
@@ -530,9 +527,10 @@ bool UGV2ImageResourceCatalog::Resolve(
     return true;
 }
 
-// PAH-04: pre_ready_discovery -- only called from BuildFromPackageClosure(), only called
-// from FGV2SessionContentCandidate::Build() (PSC-07/PSC-10C: the sole production discovery
-// path for image resources; never reached after a session reaches Ready).
+// PAH-04: pre_ready_discovery callers=UGV2ImageResourceCatalog::BuildFromPackageClosure
+// Called from BuildFromPackageClosure during FGV2SessionContentCandidate::Build.
+// Under ADR-0044, candidate preparation executes while a prior Ready session may remain active;
+// package-scoped resource scanning builds the candidate catalog before commit-to-replace.
 bool UGV2ImageResourceCatalog::BuildFromPackageResourceRoots(
     const TArray<FGV2ImagePackageResourceRoot>& PackageResourceRoots,
     FString& OutError)
