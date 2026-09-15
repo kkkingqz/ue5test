@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 4.0
-updated: 2026-09-14
+version: 4.1
+updated: 2026-09-15
 depends_on:
   - ../README.md
 ---
@@ -29,7 +29,6 @@ depends_on:
 
 ## Активные планы
 
-- [Test Suite Restructuring](TestSuiteRestructuring/README.md) — граница между contract-тестом движка и smoke-тестом контента: декомпозиция монолитного suite, отвязка от конкретных локаций и порог на размер теста.
 - [Session Authority Correction](SessionAuthorityCorrection/README.md) — исходы находок повторного ревью: публичный вход не разрушает живую сессию, manifest читается один раз, тема становится значением внутри идентичности сессии, terminal outcome несёт typed fault.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
