@@ -14,7 +14,7 @@ depends_on:
 
 > **Показывает:** внешнее повторное ревью session/presentation boundaries после закрытия плана C++ Foundation Closure и результат проверки каждого его утверждения по коду.
 > **Не является нормативным:** правила задают owner contracts и accepted ADR. Формулировки ревью не являются нормой; нормой является contract, на который они ссылаются.
-> **Исход:** раунд открыт. Пять заявленных находок подтверждены, две из них с существенным уточнением; сверх ревью найдены три сопутствующие проблемы. Ни одна находка пока не получила исход.
+> **Исход:** раунд открыт. Пять заявленных находок подтверждены, две из них с существенным уточнением; сверх ревью найдены три сопутствующие проблемы. CFC-AF-19, CFC-AF-24 и CFC-AF-26 разрешены; CFC-AF-20…23 и CFC-AF-25 возвращены в неразрешённое состояние (открыт).
 
 ## Состояние и метод
 
@@ -67,7 +67,7 @@ depends_on:
 
 Расхождение наблюдаемо без гонки: достаточно отредактировать `ue_content_roots` в работающем приложении и запустить новую сессию — `package_set_fingerprint` останется прежним, а ownership контентных корней будет построен по новому содержимому файла. При этом `ue_content_roots` входит в `CanonicalManifestHash` (`PackageDiscovery.h:95-100`, negative case `case13_ue_content_roots_did_not_change_fingerprint` в `PackageDiscoveryAndOrderConformance.cpp:826-851`) — то есть поле признано семантическим, но проверка его неизменности на втором чтении отсутствует.
 
-**Исход:** *(Закрыто задачей SAC-02)* `ue_content_roots` захватывается в `FResolvedPackageSource` при `ResolvePackageSet*`, `ReadUeContentRootsForPackage` удалён, Screen Registry получает корни из памяти без повторного чтения manifest с диска.
+**Исход:** открыт.
 
 #### CFC-AF-21 — SNAP-R2 — P1 — Theme в snapshot остаётся mutable authoring `UObject`
 
@@ -77,7 +77,7 @@ depends_on:
 
 **Уточнение — сильнее, чем заявлено.** Ревью говорит, что `PresentationHash` «не изменяется» после правки темы. Фактически содержимое темы в идентичность не входит вовсе: `GV2SessionContentSnapshot.cpp:211` кладёт в presentation-хэш `ResolvedTheme->GetPathName()` — путь ассета. Соседние ресурсы в том же хэше участвуют содержательно (`resource_id`, путь текстуры, `render_mode`, `:200-208`), а Screen Registry скомпилирован в значения. То есть дело не в моменте вычисления хэша, а в том, что ни одна семантическая величина темы никогда не участвует ни в `PresentationHash`, ни в `SessionContentId` (`:236-241`). Две сессии с разными значениями темы неотличимы по идентичности содержимого.
 
-**Исход:** *(Закрыто задачей SAC-04)* `FGV2ResolvedUiTheme` скомпилирована в семантическое значение без сохранения ссылок на authoring-ассеты (кроме `TStrongObjectPtr<UClass>`), `PresentationHash` и `SessionContentId` динамически включают канонический хэш всех 38 свойств темы через `TFieldIterator<FProperty>`, `PrepareContext` отдаёт только `FGV2ResolvedUiTheme`, а неизменяемость и динамическое отрицательное по-польное покрытие подтверждены тестами.
+**Исход:** открыт.
 
 #### CFC-AF-22 — LIFE-R2 — P2 — `Failed` operation не несёт typed fault
 
@@ -87,7 +87,7 @@ depends_on:
 
 Это прямое расхождение contract и реализации, а не пожелание к API.
 
-**Исход:** *(Закрыто задачей SAC-05)* Запись `Failed` без typed fault запрещена compile-time сигнатурой (`RecordFailure(...)`, `RecordOutcome(..., ESessionOperationOutcome)` удалён), public read `GetSessionOperationOutcome` возвращает `FGV2OperationFault`/`FGV2SessionOperationResult`, а все достижимые fault codes покрыты тестами и перечисляются из объявления `FGV2SessionFaultCodes::GetAllDeclaredFaultCodes()`.
+**Исход:** открыт.
 
 #### CFC-AF-23 — LIFE-R3 — P3 — terminal operation outcomes не имеют bounded retention
 
@@ -97,7 +97,7 @@ depends_on:
 
 Практический вес остаётся низким — запись это `uint64` плюс enum, и заметный рост требует очень длинной сессии, — но `Reset()` без вызывающих является и самостоятельным дефектом: код, выглядящий как реализованная policy, ею не является.
 
-**Исход:** *(Закрыто задачей SAC-06)* Лимит истории `DefaultMaxRetainedOutcomes = 160` рассчитан по операционному профилю 2-часовой сессии (16 переходов + 144 сохранения), реализовано детерминированное вытеснение по наименьшему `OperationId`, вытесненная операция различима через `IsOperationEvicted` и `QueryOutcome`, а dead метод `Reset()` удалён и запрещён гейтом.
+**Исход:** открыт.
 
 ## Находки сверх ревью
 
@@ -125,7 +125,7 @@ depends_on:
 
 Выделено из `CFC-AF-23` отдельно, потому что это разные решения: одно — какой должна быть retention policy, другое — что в коде уже есть неиспользуемый метод очистки, который создаёт впечатление существующей policy.
 
-**Исход:** *(Закрыто задачей SAC-06)* Метод `FGV2SessionTransitionPolicy::Reset()` удалён, а гейт `validate_session_transition_ownership.py` проверяет отсутствие невызываемых методов очистки на `FGV2SessionTransitionPolicy` с negative self-test.
+**Исход:** открыт.
 
 #### CFC-AF-26 — закрытие `STATUS-011` осталось без своего regression check
 
