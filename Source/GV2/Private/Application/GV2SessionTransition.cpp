@@ -633,6 +633,7 @@ void FGV2SessionTransitionPolicy::RecordOutcome(const uint64 OperationId, const 
 
 void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const FGV2OperationFault& Fault)
 {
+    checkf(Fault.IsSet(), TEXT("RecordFailure requires an initialized fault with non-empty Code"));
     RecordResultInternal(OperationId, FGV2SessionOperationResult::MakeFailure(Fault));
     if (ActiveOperation.IsSet() && ActiveOperation->OperationId == OperationId)
     {
@@ -642,9 +643,8 @@ void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const 
 
 void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const GV2RuntimeCore::FRuntimeFault& Fault)
 {
-    FGV2OperationFault OpFault;
-    OpFault.Code = Fault.Code.empty() ? TEXT("RuntimeFault") : UTF8_TO_TCHAR(Fault.Code.c_str());
-    OpFault.Message = UTF8_TO_TCHAR(Fault.Message.c_str());
+    checkf(!Fault.Code.empty(), TEXT("RecordFailure requires non-empty runtime fault code"));
+    const FGV2OperationFault OpFault(UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str()));
     RecordFailure(OperationId, OpFault);
 }
 

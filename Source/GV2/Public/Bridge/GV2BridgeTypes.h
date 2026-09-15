@@ -82,6 +82,24 @@ struct GV2_API FGV2OperationFault
     UPROPERTY(BlueprintReadOnly, Category = "GV2|Runtime")
     FString Message;
 
+    FGV2OperationFault() = default;
+
+    template <size_t N>
+    FGV2OperationFault(const TCHAR (&InCode)[N], FString InMessage)
+        : Code(InCode)
+        , Message(MoveTemp(InMessage))
+    {
+        static_assert(N > 1, "Fault Code literal must not be empty");
+        checkf(!Code.IsEmpty(), TEXT("FGV2OperationFault Code cannot be empty"));
+    }
+
+    FGV2OperationFault(FString InCode, FString InMessage)
+        : Code(MoveTemp(InCode))
+        , Message(MoveTemp(InMessage))
+    {
+        checkf(!Code.IsEmpty(), TEXT("FGV2OperationFault Code cannot be empty"));
+    }
+
     bool IsSet() const { return !Code.IsEmpty(); }
 
     static FGV2OperationFault None()
@@ -127,6 +145,7 @@ struct GV2_API FGV2SessionOperationResult
 
     static FGV2SessionOperationResult MakeFailure(const FGV2OperationFault& InFault)
     {
+        checkf(InFault.IsSet(), TEXT("MakeFailure requires an initialized fault with non-empty Code"));
         FGV2SessionOperationResult Result;
         Result.Outcome = ESessionOperationOutcome::Failed;
         Result.Fault = InFault;
@@ -194,53 +213,51 @@ inline FString LexToString(ESessionOperationQueryStatus Status)
     return TEXT("Unknown");
 }
 
+#define GV2_SESSION_FAULT_CODES(OP) \
+    OP(RepositoryNotReady) \
+    OP(InvalidSessionDescriptor) \
+    OP(SessionNotReady) \
+    OP(InvalidSaveSlotId) \
+    OP(SaveSlotStorageUnavailable) \
+    OP(SaveSlotNotFound) \
+    OP(SaveSlotUnreadable) \
+    OP(RepositoryVersionChanged) \
+    OP(LuaRuntimeSourceMissing) \
+    OP(LuaRuntimeSourceInvalid) \
+    OP(UiSchemaNotReady) \
+    OP(ScreenRegistryNotReady) \
+    OP(ImageCatalogNotReady) \
+    OP(ThemeNotReady) \
+    OP(SessionCandidateBuildFailed) \
+    OP(InitialPresentationMissing) \
+    OP(InitialPresentationInvalid) \
+    OP(InitialPresentationApplyFailed) \
+    OP(InitialPresentationCommitFailed) \
+    OP(PublishReadyFailed) \
+    OP(SessionShutdown) \
+    OP(NoPendingStartContext) \
+    OP(LuaExecutionFailed) \
+    OP(RuntimeFault)
+
 struct GV2_API FGV2SessionFaultCodes
 {
-    inline static const FString RepositoryNotReady = TEXT("RepositoryNotReady");
-    inline static const FString InvalidSessionDescriptor = TEXT("InvalidSessionDescriptor");
-    inline static const FString SessionNotReady = TEXT("SessionNotReady");
-    inline static const FString InvalidSaveSlotId = TEXT("InvalidSaveSlotId");
-    inline static const FString SaveSlotStorageUnavailable = TEXT("SaveSlotStorageUnavailable");
-    inline static const FString SaveSlotNotFound = TEXT("SaveSlotNotFound");
-    inline static const FString SaveSlotUnreadable = TEXT("SaveSlotUnreadable");
-    inline static const FString RepositoryVersionChanged = TEXT("RepositoryVersionChanged");
-    inline static const FString LuaRuntimeSourceMissing = TEXT("LuaRuntimeSourceMissing");
-    inline static const FString LuaRuntimeSourceInvalid = TEXT("LuaRuntimeSourceInvalid");
-    inline static const FString ScreenRegistryNotReady = TEXT("ScreenRegistryNotReady");
-    inline static const FString ImageCatalogNotReady = TEXT("ImageCatalogNotReady");
-    inline static const FString ThemeNotReady = TEXT("ThemeNotReady");
-    inline static const FString InitialPresentationMissing = TEXT("InitialPresentationMissing");
-    inline static const FString InitialPresentationInvalid = TEXT("InitialPresentationInvalid");
-    inline static const FString InitialPresentationApplyFailed = TEXT("InitialPresentationApplyFailed");
-    inline static const FString InitialPresentationCommitFailed = TEXT("InitialPresentationCommitFailed");
-    inline static const FString PublishReadyFailed = TEXT("PublishReadyFailed");
-    inline static const FString SessionShutdown = TEXT("SessionShutdown");
-    inline static const FString NoPendingStartContext = TEXT("NoPendingStartContext");
+#define GV2_EXPAND_FAULT_CODE_MEMBER(Name) inline static const FString Name = TEXT(#Name);
+    GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_CODE_MEMBER)
+#undef GV2_EXPAND_FAULT_CODE_MEMBER
 
     static TArray<FString> GetAllDeclaredFaultCodes()
     {
         return {
-            RepositoryNotReady,
-            InvalidSessionDescriptor,
-            SessionNotReady,
-            InvalidSaveSlotId,
-            SaveSlotStorageUnavailable,
-            SaveSlotNotFound,
-            SaveSlotUnreadable,
-            RepositoryVersionChanged,
-            LuaRuntimeSourceMissing,
-            LuaRuntimeSourceInvalid,
-            ScreenRegistryNotReady,
-            ImageCatalogNotReady,
-            ThemeNotReady,
-            InitialPresentationMissing,
-            InitialPresentationInvalid,
-            InitialPresentationApplyFailed,
-            InitialPresentationCommitFailed,
-            PublishReadyFailed,
-            SessionShutdown,
-            NoPendingStartContext
+#define GV2_EXPAND_FAULT_CODE_ARRAY(Name) Name,
+            GV2_SESSION_FAULT_CODES(GV2_EXPAND_FAULT_CODE_ARRAY)
+#undef GV2_EXPAND_FAULT_CODE_ARRAY
         };
+    }
+
+    static bool IsDeclared(const FString& Code)
+    {
+        const TArray<FString> Declared = GetAllDeclaredFaultCodes();
+        return Declared.Contains(Code);
     }
 };
 

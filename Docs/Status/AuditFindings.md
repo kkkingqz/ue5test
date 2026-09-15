@@ -87,7 +87,7 @@ depends_on:
 
 Это прямое расхождение contract и реализации, а не пожелание к API.
 
-**Исход:** открыт.
+**Исход:** *(Закрыто задачей SAC-05)* Добавлен единый каталог кодов сбоев через X-macro `GV2_SESSION_FAULT_CODES`, пустые fault запрещены на уровне компиляции (`static_assert`) и конструирования (`checkf`), `RecordFailure` и `MakeFailure` требуют обязательный непустой fault, публичный API (`GetSessionOperationOutcome` и `QuerySessionOperation`) возвращает typed fault, покрыто тестом `PublicSubsystemReachableFaultCodesTest` через публичный runtime subsystem.
 
 #### CFC-AF-23 — LIFE-R3 — P3 — terminal operation outcomes не имеют bounded retention
 

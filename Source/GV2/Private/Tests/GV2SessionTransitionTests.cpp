@@ -12,6 +12,10 @@
 #include "GV2RuntimeCore/GV2HostServices.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
+#include "Runtime/GV2RuntimeSubsystem.h"
+#include "Tests/GV2PresentationTestFixtures.h"
+#include "UI/GV2UiTheme.h"
+#include "UI/GV2ScreenRegistry.h"
 
 #include <vector>
 #include <string>
@@ -836,6 +840,223 @@ bool FGV2SessionOperationFaultPropagationTest::RunTest(const FString& Parameters
         TestEqual(TEXT("Fault code is RepositoryNotReady"), BadRepoRes->Fault.Code, FGV2SessionFaultCodes::RepositoryNotReady);
     }
 
+    return true;
+}
+
+// SAC-05: Verifies that reachable session failure paths produce typed fault codes
+// observable through the public UGV2RuntimeSubsystem API, and all fault codes
+// belong to the structural FGV2SessionFaultCodes single source of truth.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PublicSubsystemReachableFaultCodesTest,
+    "GV2.Runtime.Session.PublicSubsystemReachableFaultCodes",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PublicSubsystemReachableFaultCodesTest::RunTest(const FString& Parameters)
+{
+    // 1. Prohibit empty faults at construction/compile time
+    {
+        FGV2OperationFault DefaultFault;
+        TestFalse(TEXT("Default constructed fault is not set"), DefaultFault.IsSet());
+        TestTrue(TEXT("Default constructed fault Code is empty"), DefaultFault.Code.IsEmpty());
+
+        const FGV2OperationFault ValidFault(TEXT("CustomTestCode"), TEXT("Custom message"));
+        TestTrue(TEXT("Explicitly constructed fault is set"), ValidFault.IsSet());
+        TestEqual(TEXT("Fault Code matches"), ValidFault.Code, TEXT("CustomTestCode"));
+    }
+
+    // 2. Structural single source of truth: verify all declared fault codes
+    const TArray<FString> AllCodes = FGV2SessionFaultCodes::GetAllDeclaredFaultCodes();
+    TestTrue(TEXT("Declared fault codes catalog is populated"), AllCodes.Num() >= 20);
+    for (const FString& Code : AllCodes)
+    {
+        TestTrue(*FString::Printf(TEXT("Code '%s' is recognized by IsDeclared"), *Code),
+            FGV2SessionFaultCodes::IsDeclared(Code));
+    }
+    TestTrue(TEXT("UiSchemaNotReady is declared"), FGV2SessionFaultCodes::IsDeclared(FGV2SessionFaultCodes::UiSchemaNotReady));
+    TestTrue(TEXT("ScreenRegistryNotReady is declared"), FGV2SessionFaultCodes::IsDeclared(FGV2SessionFaultCodes::ScreenRegistryNotReady));
+    TestTrue(TEXT("ImageCatalogNotReady is declared"), FGV2SessionFaultCodes::IsDeclared(FGV2SessionFaultCodes::ImageCatalogNotReady));
+    TestTrue(TEXT("ThemeNotReady is declared"), FGV2SessionFaultCodes::IsDeclared(FGV2SessionFaultCodes::ThemeNotReady));
+
+    // 3. Test reachable codes through public UGV2RuntimeSubsystem paths
+    const GV2PresentationTestFixtures::FGV2ScopedSamplePackageOverride SampleOverride;
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance ? GameInstance->GetSubsystem<UGV2RuntimeSubsystem>() : nullptr;
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    // Path 1: RequestSave when unready -> SessionNotReady
+    {
+        const int64 OpId = Runtime->RequestSave(TEXT("unready_slot"));
+        TestTrue(TEXT("RequestSave returns valid operation id"), OpId > 0);
+        ESessionOperationOutcome Outcome;
+        FGV2OperationFault Fault;
+        TestTrue(TEXT("Outcome available"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
+        TestEqual(TEXT("Outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is SessionNotReady"), Fault.Code, FGV2SessionFaultCodes::SessionNotReady);
+        TestTrue(TEXT("Fault code is declared"), FGV2SessionFaultCodes::IsDeclared(Fault.Code));
+
+        FGV2SessionOperationResult QueryRes;
+        const ESessionOperationQueryStatus QStatus = Runtime->QuerySessionOperation(OpId, QueryRes);
+        TestEqual(TEXT("Query status is Found"), QStatus, ESessionOperationQueryStatus::Found);
+        TestTrue(TEXT("Query result is failed"), QueryRes.IsFailed());
+        TestEqual(TEXT("Query result fault code is SessionNotReady"), QueryRes.Fault.Code, FGV2SessionFaultCodes::SessionNotReady);
+    }
+
+    // Start session A so subsystem becomes Ready
+    FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+    TestTrue(TEXT("Session A is ready"), Runtime->GetSessionState().bIsReady);
+
+    // Path 2: RequestSave with invalid slot id -> InvalidSaveSlotId
+    {
+        const int64 OpId = Runtime->RequestSave(TEXT("invalid/slash/slot"));
+        TestTrue(TEXT("RequestSave returns valid operation id"), OpId > 0);
+        ESessionOperationOutcome Outcome;
+        FGV2OperationFault Fault;
+        TestTrue(TEXT("Outcome available"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
+        TestEqual(TEXT("Outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is InvalidSaveSlotId"), Fault.Code, FGV2SessionFaultCodes::InvalidSaveSlotId);
+        TestTrue(TEXT("Fault code is declared"), FGV2SessionFaultCodes::IsDeclared(Fault.Code));
+    }
+
+    // Path 3: RequestLoad with non-existent slot id -> SaveSlotNotFound
+    {
+        AddExpectedErrorPlain(
+            TEXT("GV2 Lua runtime fault: code=SaveSlotNotFound"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+
+        const int64 OpId = Runtime->RequestLoad(TEXT("nonexistent_slot_404"));
+        TestTrue(TEXT("RequestLoad returns valid operation id"), OpId > 0);
+        ESessionOperationOutcome Outcome;
+        FGV2OperationFault Fault;
+        TestTrue(TEXT("Outcome available"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
+        TestEqual(TEXT("Outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is SaveSlotNotFound"), Fault.Code, FGV2SessionFaultCodes::SaveSlotNotFound);
+        TestTrue(TEXT("Fault code is declared"), FGV2SessionFaultCodes::IsDeclared(Fault.Code));
+    }
+
+    // Path 4: RequestSession with invalid descriptor -> InvalidSessionDescriptor
+    {
+        AddExpectedErrorPlain(
+            TEXT("GV2 Lua runtime fault: code=InvalidSessionDescriptor"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+        AddExpectedErrorPlain(
+            TEXT("Failed to start GV2 session"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+
+        FSessionStartDescriptor BadDesc;
+        BadDesc.Mode = ESessionStartMode::NewGame;
+        BadDesc.SeedHex = TEXT("not_valid_hex_string");
+
+        const int64 OpId = Runtime->RequestSession(BadDesc);
+        TestTrue(TEXT("RequestSession returns valid operation id"), OpId > 0);
+        ESessionOperationOutcome Outcome;
+        FGV2OperationFault Fault;
+        TestTrue(TEXT("Outcome available"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
+        TestEqual(TEXT("Outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is InvalidSessionDescriptor"), Fault.Code, FGV2SessionFaultCodes::InvalidSessionDescriptor);
+        TestTrue(TEXT("Fault code is declared"), FGV2SessionFaultCodes::IsDeclared(Fault.Code));
+    }
+
+    // Path 5: RequestSession with repository forced not ready -> RepositoryNotReady
+    {
+        AddExpectedErrorPlain(
+            TEXT("GV2 Lua runtime fault: code=RepositoryNotReady"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+        AddExpectedErrorPlain(
+            TEXT("Failed to start GV2 session"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+
+        UGV2RuntimeSubsystem::bTestForceRepositoryNotReady = true;
+
+        FSessionStartDescriptor ValidDesc;
+        ValidDesc.Mode = ESessionStartMode::NewGame;
+        ValidDesc.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
+
+        const int64 OpId = Runtime->RequestSession(ValidDesc);
+        UGV2RuntimeSubsystem::bTestForceRepositoryNotReady = false;
+
+        TestTrue(TEXT("RequestSession returns valid operation id"), OpId > 0);
+        ESessionOperationOutcome Outcome;
+        FGV2OperationFault Fault;
+        TestTrue(TEXT("Outcome available"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
+        TestEqual(TEXT("Outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is RepositoryNotReady"), Fault.Code, FGV2SessionFaultCodes::RepositoryNotReady);
+        TestTrue(TEXT("Fault code is declared"), FGV2SessionFaultCodes::IsDeclared(Fault.Code));
+    }
+
+    // Path 6: RequestSession with missing ThemeAsset -> ThemeNotReady
+    {
+        AddExpectedErrorPlain(
+            TEXT("GV2 Lua runtime fault: code=ThemeNotReady"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+        AddExpectedErrorPlain(
+            TEXT("Failed to start GV2 session"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+
+        UGV2UiThemeSettings* ThemeSettings = GetMutableDefault<UGV2UiThemeSettings>();
+        const TSoftObjectPtr<UGV2UiTheme> SavedTheme = ThemeSettings->ThemeAsset;
+        ThemeSettings->ThemeAsset = nullptr;
+
+        FSessionStartDescriptor ValidDesc;
+        ValidDesc.Mode = ESessionStartMode::NewGame;
+        ValidDesc.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
+
+        const int64 OpId = Runtime->RequestSession(ValidDesc);
+        ThemeSettings->ThemeAsset = SavedTheme;
+
+        TestTrue(TEXT("RequestSession returns valid operation id"), OpId > 0);
+        ESessionOperationOutcome Outcome;
+        FGV2OperationFault Fault;
+        TestTrue(TEXT("Outcome available"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
+        TestEqual(TEXT("Outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is ThemeNotReady"), Fault.Code, FGV2SessionFaultCodes::ThemeNotReady);
+        TestTrue(TEXT("Fault code is declared"), FGV2SessionFaultCodes::IsDeclared(Fault.Code));
+    }
+
+    // Path 7: RequestSession with missing RegistryAsset -> ScreenRegistryNotReady
+    {
+        AddExpectedErrorPlain(
+            TEXT("GV2 Lua runtime fault: code=ScreenRegistryNotReady"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+        AddExpectedErrorPlain(
+            TEXT("Failed to start GV2 session"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+
+        UGV2ScreenRegistrySettings* RegSettings = GetMutableDefault<UGV2ScreenRegistrySettings>();
+        const TSoftObjectPtr<UGV2ScreenRegistry> SavedReg = RegSettings->RegistryAsset;
+        RegSettings->RegistryAsset = nullptr;
+
+        FSessionStartDescriptor ValidDesc;
+        ValidDesc.Mode = ESessionStartMode::NewGame;
+        ValidDesc.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
+
+        const int64 OpId = Runtime->RequestSession(ValidDesc);
+        RegSettings->RegistryAsset = SavedReg;
+
+        TestTrue(TEXT("RequestSession returns valid operation id"), OpId > 0);
+        ESessionOperationOutcome Outcome;
+        FGV2OperationFault Fault;
+        TestTrue(TEXT("Outcome available"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
+        TestEqual(TEXT("Outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is ScreenRegistryNotReady"), Fault.Code, FGV2SessionFaultCodes::ScreenRegistryNotReady);
+        TestTrue(TEXT("Fault code is declared"), FGV2SessionFaultCodes::IsDeclared(Fault.Code));
+    }
+
+    Runtime->EndSession();
     return true;
 }
 
