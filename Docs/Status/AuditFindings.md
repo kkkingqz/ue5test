@@ -161,7 +161,7 @@ depends_on:
 
 После объединения чтения и разбора `package.json5` ветка извлечения `ue_content_roots` обрабатывает только корректный массив. Поле другого типа молча становится пустым списком, а элементы нестрокового типа пропускаются. Оба случая воспроизводятся через публичный `gv2-content validate` с exit code `0`; до `SAC-02` они возвращали `core:diagnostic.package.manifest.invalid_ue_content_roots`.
 
-**Исход:** открыт.
+**Исход:** *(Закрыто задачей SAC-02)* Строгая проверка сохранена в единственном parse-пути: поле другого типа и нестроковый элемент возвращают `core:diagnostic.package.manifest.invalid_ue_content_roots`; conformance выполняется через portable и UE production-host, а source gate с negative mutations запрещает второй typed read и direct bypass.
 
 #### CFC-AF-28 — effective fallback Theme не входит в presentation identity
 

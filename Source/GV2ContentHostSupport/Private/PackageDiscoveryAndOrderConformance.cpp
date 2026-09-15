@@ -2,6 +2,7 @@
 
 #include "GV2ContentHostSupport/ModsLock.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
+#include "GV2ContentHostSupport/Testing/PackageDiscoveryTestHooks.h"
 #include "GV2ContentCore/BuildResult.h"
 #include "GV2ContentCore/RepositoryBuilder.h"
 
@@ -1168,6 +1169,64 @@ std::string RunPackageDiscoveryAndOrderConformance()
         if (GV2ContentHostSupport::TestHooks::GetManifestReadCount() != 3)
         {
             return "discovery_order.case16_locked_container_manifest_not_single_read";
+        }
+    }
+
+    // 17. SAC-02 regression: absence alone means an empty root list. A present field
+    // with the wrong shape must fail the same single manifest parse instead of being
+    // silently projected to an empty or truncated list.
+    {
+        const auto HasInvalidRootsDiagnostic = [](const std::vector<FDiagnostic>& Diagnostics)
+        {
+            return std::any_of(
+                Diagnostics.begin(),
+                Diagnostics.end(),
+                [](const FDiagnostic& Diagnostic)
+                {
+                    return Diagnostic.Code == "core:diagnostic.package.manifest.invalid_ue_content_roots";
+                });
+        };
+
+        const std::filesystem::path NonArrayRoot = TempDir.Dir / "case17_non_array";
+        WritePackage(NonArrayRoot, R"json5({
+            package_id: "core",
+            namespace: "core",
+            version: "1.0.0",
+            ue_content_roots: "/Game/Core",
+        })json5");
+
+        GV2ContentHostSupport::TestHooks::ResetManifestReadCount();
+        std::vector<FDiagnostic> NonArrayDiagnostics;
+        const std::optional<FResolvedPackageSet> NonArraySet =
+            ResolvePackageSetFromDirectories({NonArrayRoot}, NonArrayDiagnostics);
+        if (NonArraySet.has_value() || !HasInvalidRootsDiagnostic(NonArrayDiagnostics))
+        {
+            return "discovery_order.case17_non_array_ue_content_roots_accepted";
+        }
+        if (GV2ContentHostSupport::TestHooks::GetManifestReadCount() != 1)
+        {
+            return "discovery_order.case17_non_array_manifest_not_single_read";
+        }
+
+        const std::filesystem::path MixedArrayRoot = TempDir.Dir / "case17_mixed_array";
+        WritePackage(MixedArrayRoot, R"json5({
+            package_id: "core",
+            namespace: "core",
+            version: "1.0.0",
+            ue_content_roots: ["/Game/Core", 17],
+        })json5");
+
+        GV2ContentHostSupport::TestHooks::ResetManifestReadCount();
+        std::vector<FDiagnostic> MixedArrayDiagnostics;
+        const std::optional<FResolvedPackageSet> MixedArraySet =
+            ResolvePackageSetFromDirectories({MixedArrayRoot}, MixedArrayDiagnostics);
+        if (MixedArraySet.has_value() || !HasInvalidRootsDiagnostic(MixedArrayDiagnostics))
+        {
+            return "discovery_order.case17_non_string_ue_content_root_accepted";
+        }
+        if (GV2ContentHostSupport::TestHooks::GetManifestReadCount() != 1)
+        {
+            return "discovery_order.case17_mixed_array_manifest_not_single_read";
         }
     }
 

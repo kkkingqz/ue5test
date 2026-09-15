@@ -468,6 +468,34 @@ std::optional<FDiscoveredPackageArtifact> DiscoverPackageArtifactFromDirectory(
         }
     }
 
+    std::vector<std::string> UeContentRoots;
+    const FValue* UeContentRootsField = ParsedManifest->FindField("ue_content_roots");
+    if (UeContentRootsField != nullptr)
+    {
+        if (!UeContentRootsField->IsArray())
+        {
+            LocalDiagnostics.push_back(MakeManifestDiagnostic(
+                "core:diagnostic.package.manifest.invalid_ue_content_roots",
+                "ue_content_roots must be an array of strings",
+                ResolvedPackageId));
+        }
+        else
+        {
+            for (const FValue& RootVal : UeContentRootsField->AsArray())
+            {
+                if (!RootVal.IsString())
+                {
+                    LocalDiagnostics.push_back(MakeManifestDiagnostic(
+                        "core:diagnostic.package.manifest.invalid_ue_content_roots",
+                        "ue_content_roots entries must be strings",
+                        ResolvedPackageId));
+                    break;
+                }
+                UeContentRoots.push_back(RootVal.AsString());
+            }
+        }
+    }
+
     if (!LocalDiagnostics.empty())
     {
         std::sort(LocalDiagnostics.begin(), LocalDiagnostics.end());
@@ -476,18 +504,6 @@ std::optional<FDiscoveredPackageArtifact> DiscoverPackageArtifactFromDirectory(
         return std::nullopt;
     }
 
-    std::vector<std::string> UeContentRoots;
-    const FValue* UeContentRootsField = ParsedManifest->FindField("ue_content_roots");
-    if (UeContentRootsField != nullptr && UeContentRootsField->IsArray())
-    {
-        for (const FValue& RootVal : UeContentRootsField->AsArray())
-        {
-            if (RootVal.IsString())
-            {
-                UeContentRoots.push_back(RootVal.AsString());
-            }
-        }
-    }
     std::string CanonicalManifestHash = ComputeCanonicalHash(*ParsedManifest);
 
     FPackageDescriptor Descriptor(

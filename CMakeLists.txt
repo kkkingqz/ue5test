@@ -335,6 +335,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_pre_ready_content_discovery.py"
             "--self-test"
     )
+    # SAC-02: package.json5 has one typed read owned by artifact discovery. The
+    # companion unittest mutates the source shape with a second and direct read.
+    add_test(
+        NAME manifest_single_read_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_manifest_single_read.py"
+    )
+    add_test(
+        NAME manifest_single_read_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/test_manifest_single_read_gate.py"
+    )
     # PSC-02 (ADR-0043 D1/D5): FResolvedPackageSet may be constructed only by the two
     # blessed host-bootstrap factories -- a second, independently declared factory
     # anywhere in the tree would be a second package-set authority (PAH-R3).
