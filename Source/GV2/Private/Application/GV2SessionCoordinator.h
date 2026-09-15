@@ -59,6 +59,8 @@ public:
     ESessionCancellationResult CancelSessionRequest(uint64 OperationId);
 
     TOptional<FGV2SessionOperationResult> GetSessionOperationOutcome(uint64 OperationId) const;
+    ESessionOperationQueryStatus QuerySessionOperationOutcome(uint64 OperationId, FGV2SessionOperationResult* OutResult = nullptr) const;
+    bool IsSessionOperationEvicted(uint64 OperationId) const;
 
     // CFC-09: Save control requests & storage
     void SetSaveSlotStorage(GV2RuntimeCore::ISaveSlotStorage* InStorage);

@@ -115,6 +115,27 @@ Terminal operation outcome имеет закрытое множество `Compl
 По [Compatibility Policy](CompatibilityPolicy.md) расширение сигнатуры чтения исхода типизированным fault до версии `1.0.0` является классифицированным breaking change публичного C++/Blueprint downstream API: метод больше не отдаёт только `ESessionOperationOutcome` в обход typed fault, а compatibility alias без fault запрещён правилом полноты диагностики.
 Operation ID value-only и не содержит callback/Lua reference.
 
+### Ограничение истории операций и retention semantics
+
+История terminal operation outcomes ограничена детерминированным FIFO-вытеснением по `OperationId` с лимитом `DefaultMaxRetainedOutcomes = 160`.
+Размер истории обоснован операционным профилем сессии игры:
+- Сессионные переходы: \(N_{\text{trans}} \le 16\) за полный цикл (Cold Start Menu $\to$ New Game $\to$ до 10 загрузок/чекпоинтов $\to$ Restart $\to$ Shutdown).
+- Запросы сохранения (`RequestSave`): при минимальном интервале автосохранения \(T_{\text{auto}} = 60\,\text{с}\) за 2 часа непрерывной игры совершается 120 автосохранений плюс до 24 ручных сохранений (\(N_{\text{save}} \le 144\)).
+- Полное расчётное число операций за 2-часовую сессию: \(16 + 144 = 160\).
+- При объёме записи ~48–64 байт лимит 160 записей фиксирует расход памяти $\le 10\,\text{КБ}$ на всё время жизни `GameInstance`, предотвращая неконтролируемый рост долгоживущего процесса.
+- Downstream-потребители (UI-нотификации, индикаторы сохранения, Blueprint/Automation polling) опрашивают исход в пределах первых тиков ($W \le 16$ операций), поэтому лимит 160 даёт запас по времени $\ge 10\times$ даже для редкого опроса.
+
+Момент вытеснения: при фиксации terminal outcome (`RecordOutcome` / `RecordFailure`), если число сохранённых записей достигает лимита, из карты немедленно удаляется запись с наименьшим `OperationId` (самая ранняя), а наивысший вытесненный ID обновляется (`HighestEvictedOperationId = max(HighestEvictedOperationId, EvictedId)`).
+
+Наблюдаемое различие между вытесненной и неизвестной операцией:
+- Запрос исхода через `QueryOutcome(OpId)` возвращает статус `ESessionOperationQueryStatus`:
+  - `Found`: запись находится в ограниченной истории, результат (`Outcome`, `Fault`) возвращается;
+  - `Evicted`: операция была зафиксирована и завершена, но её запись была вытеснена по превышению лимита истории (\(1 \le \text{OpId} \le \text{HighestEvictedOperationId}\) и отсутствует в карте). Метод `IsOperationEvicted(OpId)` возвращает `true`;
+  - `InProgress`: операция выделена/поставлена в очередь (`ActiveOperation`, `PendingSlot` или safe-point save), но ещё не завершена;
+  - `Unknown`: идентификатор никогда не выделялся данным хостом (\(\text{OpId} = 0\) либо \(\text{OpId} \ge \text{NextOperationId}\)). Метод `IsOperationEvicted(OpId)` возвращает `false`.
+- Вытесненная операция не маскируется под `Unknown` или тихий пропуск.
+- Ручные невызываемые методы очистки (такие как `FGV2SessionTransitionPolicy::Reset()`) запрещены; retention является строго автоматическим и ограниченным.
+
 ## Session replacement protocol
 
 [ADR-0044](../ADR/0044-session-replacement-and-registry-sealing.md) задаёт две границы.

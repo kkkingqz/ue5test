@@ -368,6 +368,24 @@ TOptional<FGV2SessionOperationResult> UGV2RuntimeSubsystem::GetSessionOperationO
     return Coordinator ? Coordinator->GetSessionOperationOutcome(OperationId) : TOptional<FGV2SessionOperationResult>();
 }
 
+bool UGV2RuntimeSubsystem::IsSessionOperationEvicted(const int64 OperationId) const
+{
+    if (!Coordinator || OperationId <= 0)
+    {
+        return false;
+    }
+    return Coordinator->IsSessionOperationEvicted(static_cast<uint64>(OperationId));
+}
+
+ESessionOperationQueryStatus UGV2RuntimeSubsystem::QuerySessionOperation(const int64 OperationId, FGV2SessionOperationResult& OutResult) const
+{
+    if (!Coordinator || OperationId <= 0)
+    {
+        return ESessionOperationQueryStatus::Unknown;
+    }
+    return Coordinator->QuerySessionOperationOutcome(static_cast<uint64>(OperationId), &OutResult);
+}
+
 void UGV2RuntimeSubsystem::StartSession()
 {
     check(IsInGameThread());

@@ -79,6 +79,12 @@ public:
     TOptional<FGV2SessionOperationResult> GetSessionOperationOutcome(uint64 OperationId) const;
 
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    bool IsSessionOperationEvicted(int64 OperationId) const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    ESessionOperationQueryStatus QuerySessionOperation(int64 OperationId, FGV2SessionOperationResult& OutResult) const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
     void StartSession();
 
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")

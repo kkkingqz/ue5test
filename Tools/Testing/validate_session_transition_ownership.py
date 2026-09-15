@@ -417,6 +417,16 @@ def validate_transition_policy_interface(
                         f"GV2SessionTransition.h: FGV2SessionTransitionPolicy missing structural member declaration for '{method}'."
                     )
 
+            forbidden_dead_methods = [
+                "Reset",
+            ]
+            for method in forbidden_dead_methods:
+                if re.search(rf"(?<![.\->])\b(?:void\s+)?{re.escape(method)}\s*\([^)]*\)\s*;", class_body):
+                    errors.append(
+                        f"GV2SessionTransition.h: FGV2SessionTransitionPolicy contains forbidden dead cleanup method '{method}()'. "
+                        "Operation outcomes must have bounded automatic retention, not uncalled manual resets."
+                    )
+
     # Exhaustive switch check for transition header and implementation
     errors.extend(validate_exhaustive_transition_switches({
         "GV2SessionTransition.h": header_content,
@@ -838,6 +848,28 @@ def run_self_tests() -> bool:
     errs = validate_state_mutation_encapsulation({"GV2SessionCoordinator.h": mock_bad_coord_policy})
     if not any("Forbidden non-const FGV2SessionTransitionPolicy& getter" in e for e in errs):
         print("FAIL: Expected error for non-const FGV2SessionTransitionPolicy& getter", file=sys.stderr)
+        all_passed = False
+
+    # Test 24: Negative - Forbidden dead Reset() method in FGV2SessionTransitionPolicy
+    mock_header_with_dead_reset = """
+    enum class ESessionTransitionKind { Menu, NewGame, LoadSave, Shutdown };
+    inline constexpr uint8 SessionTransitionKindCount = 4;
+    inline constexpr ESessionTransitionKind AllSessionTransitionKinds[4] = {};
+    struct GV2_API FGV2SessionTransitionOracle {};
+    class GV2_API FGV2SessionTransitionPolicy {
+    public:
+        void EnqueueRequest();
+        void EnqueueShutdown();
+        void CancelRequest();
+        void GetOutcome();
+        void DequeuePendingOperation();
+        void GetActiveOperation();
+        void Reset();
+    };
+    """
+    errs = validate_transition_policy_interface(mock_header_with_dead_reset, "void Foo() {}")
+    if not any("forbidden dead cleanup method 'Reset()'" in e for e in errs):
+        print("FAIL: Expected error for forbidden dead Reset() method", file=sys.stderr)
         all_passed = False
 
     if all_passed:

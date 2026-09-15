@@ -839,4 +839,145 @@ bool FGV2SessionOperationFaultPropagationTest::RunTest(const FString& Parameters
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionOperationRetentionAndEvictionTest,
+    "GV2.Runtime.Session.OperationRetentionAndEviction",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionOperationRetentionAndEvictionTest::RunTest(const FString& Parameters)
+{
+    // 1. Verify default capacity constant is 160 based on 2-hour session profile calculation
+    TestEqual(TEXT("DefaultMaxRetainedOutcomes is 160"), FGV2SessionTransitionPolicy::DefaultMaxRetainedOutcomes, 160);
+    {
+        FGV2SessionTransitionPolicy DefaultPolicy;
+        TestEqual(TEXT("Default constructed policy capacity is 160"), DefaultPolicy.GetMaxRetainedOutcomes(), 160);
+        TestEqual(TEXT("Initial retained count is 0"), DefaultPolicy.GetRetainedOutcomesCount(), 0);
+        TestEqual(TEXT("Initial highest evicted ID is 0"), DefaultPolicy.GetHighestEvictedOperationId(), static_cast<uint64>(0));
+    }
+
+    // 2. Bounded retention with capacity = 3
+    FGV2SessionTransitionPolicy Policy(3);
+    TestEqual(TEXT("Configured capacity is 3"), Policy.GetMaxRetainedOutcomes(), 3);
+
+    // Initial state: unknown operations
+    TestEqual(TEXT("Op 0 is Unknown"), Policy.QueryOutcome(0), ESessionOperationQueryStatus::Unknown);
+    TestEqual(TEXT("Op 1 before allocation is Unknown"), Policy.QueryOutcome(1), ESessionOperationQueryStatus::Unknown);
+    TestEqual(TEXT("Op 999 is Unknown"), Policy.QueryOutcome(999), ESessionOperationQueryStatus::Unknown);
+    TestFalse(TEXT("Op 0 is not evicted"), Policy.IsOperationEvicted(0));
+    TestFalse(TEXT("Op 1 is not evicted"), Policy.IsOperationEvicted(1));
+    TestFalse(TEXT("Op 999 is not evicted"), Policy.IsOperationEvicted(999));
+    TestFalse(TEXT("Op 0 is not known"), Policy.IsOperationKnown(0));
+    TestFalse(TEXT("Op 1 is not known"), Policy.IsOperationKnown(1));
+
+    // Allocate Op 1, 2, 3
+    const uint64 Op1 = Policy.AllocateOperationId();
+    const uint64 Op2 = Policy.AllocateOperationId();
+    const uint64 Op3 = Policy.AllocateOperationId();
+    TestEqual(TEXT("Op1 is 1"), Op1, static_cast<uint64>(1));
+    TestEqual(TEXT("Op2 is 2"), Op2, static_cast<uint64>(2));
+    TestEqual(TEXT("Op3 is 3"), Op3, static_cast<uint64>(3));
+
+    // Allocated but not recorded -> InProgress
+    TestEqual(TEXT("Op1 before recording is InProgress"), Policy.QueryOutcome(Op1), ESessionOperationQueryStatus::InProgress);
+    TestEqual(TEXT("Op2 before recording is InProgress"), Policy.QueryOutcome(Op2), ESessionOperationQueryStatus::InProgress);
+    TestEqual(TEXT("Op3 before recording is InProgress"), Policy.QueryOutcome(Op3), ESessionOperationQueryStatus::InProgress);
+    TestTrue(TEXT("Op1 is known"), Policy.IsOperationKnown(Op1));
+    TestFalse(TEXT("Op1 is not evicted"), Policy.IsOperationEvicted(Op1));
+
+    // Record outcomes for Op1, Op2, Op3
+    Policy.RecordOutcome(Op1, ESessionNonFailureOutcome::Completed);
+    Policy.RecordFailure(Op2, FGV2OperationFault{FGV2SessionFaultCodes::InvalidSessionDescriptor, TEXT("Bad descriptor")});
+    Policy.RecordOutcome(Op3, ESessionNonFailureOutcome::Cancelled);
+
+    TestEqual(TEXT("Retained count is 3"), Policy.GetRetainedOutcomesCount(), 3);
+    TestEqual(TEXT("Highest evicted ID is still 0"), Policy.GetHighestEvictedOperationId(), static_cast<uint64>(0));
+
+    // Check all 3 are Found and readable
+    FGV2SessionOperationResult Res1, Res2, Res3;
+    TestEqual(TEXT("Op1 is Found"), Policy.QueryOutcome(Op1, &Res1), ESessionOperationQueryStatus::Found);
+    TestEqual(TEXT("Res1 is Completed"), Res1.Outcome, ESessionOperationOutcome::Completed);
+    TestFalse(TEXT("Res1 has no fault"), Res1.Fault.IsSet());
+
+    TestEqual(TEXT("Op2 is Found"), Policy.QueryOutcome(Op2, &Res2), ESessionOperationQueryStatus::Found);
+    TestEqual(TEXT("Res2 is Failed"), Res2.Outcome, ESessionOperationOutcome::Failed);
+    TestEqual(TEXT("Res2 has fault code"), Res2.Fault.Code, FGV2SessionFaultCodes::InvalidSessionDescriptor);
+
+    TestEqual(TEXT("Op3 is Found"), Policy.QueryOutcome(Op3, &Res3), ESessionOperationQueryStatus::Found);
+    TestEqual(TEXT("Res3 is Cancelled"), Res3.Outcome, ESessionOperationOutcome::Cancelled);
+    TestFalse(TEXT("Res3 has no fault"), Res3.Fault.IsSet());
+
+    // 3. Overflow boundary: record Op4 -> Op1 (earliest by OperationId) MUST be evicted
+    const uint64 Op4 = Policy.AllocateOperationId();
+    Policy.RecordOutcome(Op4, ESessionNonFailureOutcome::Completed);
+
+    TestEqual(TEXT("Retained count remains capped at 3"), Policy.GetRetainedOutcomesCount(), 3);
+    TestEqual(TEXT("Highest evicted ID is Op1"), Policy.GetHighestEvictedOperationId(), Op1);
+
+    // Op1 is now Evicted (observable distinction!)
+    TestTrue(TEXT("Op1 is evicted"), Policy.IsOperationEvicted(Op1));
+    TestTrue(TEXT("Op1 is still known"), Policy.IsOperationKnown(Op1));
+    TestEqual(TEXT("Op1 query status is Evicted"), Policy.QueryOutcome(Op1), ESessionOperationQueryStatus::Evicted);
+    TestFalse(TEXT("Op1 GetOutcome is unset"), Policy.GetOutcome(Op1).IsSet());
+
+    // Op2, Op3, Op4 remain Found and readable
+    TestFalse(TEXT("Op2 is not evicted"), Policy.IsOperationEvicted(Op2));
+    TestEqual(TEXT("Op2 query status is Found"), Policy.QueryOutcome(Op2, &Res2), ESessionOperationQueryStatus::Found);
+    TestEqual(TEXT("Res2 is Failed"), Res2.Outcome, ESessionOperationOutcome::Failed);
+
+    TestFalse(TEXT("Op3 is not evicted"), Policy.IsOperationEvicted(Op3));
+    TestEqual(TEXT("Op3 query status is Found"), Policy.QueryOutcome(Op3, &Res3), ESessionOperationQueryStatus::Found);
+    TestEqual(TEXT("Res3 is Cancelled"), Res3.Outcome, ESessionOperationOutcome::Cancelled);
+
+    TestFalse(TEXT("Op4 is not evicted"), Policy.IsOperationEvicted(Op4));
+    FGV2SessionOperationResult Res4;
+    TestEqual(TEXT("Op4 query status is Found"), Policy.QueryOutcome(Op4, &Res4), ESessionOperationQueryStatus::Found);
+    TestEqual(TEXT("Res4 is Completed"), Res4.Outcome, ESessionOperationOutcome::Completed);
+
+    // Unknown operation comparison: Op999 is NOT evicted, it is Unknown
+    TestFalse(TEXT("Op999 is not evicted"), Policy.IsOperationEvicted(999));
+    TestFalse(TEXT("Op999 is not known"), Policy.IsOperationKnown(999));
+    TestEqual(TEXT("Op999 query status is Unknown"), Policy.QueryOutcome(999), ESessionOperationQueryStatus::Unknown);
+
+    // 4. Out-of-order completion: allocate Op5, Op6. Complete Op6 first, then Op5.
+    const uint64 Op5 = Policy.AllocateOperationId();
+    const uint64 Op6 = Policy.AllocateOperationId();
+
+    // Map currently holds {2, 3, 4}. Capacity is 3.
+    // Recording Op6 will evict lowest OpId in map, which is Op2!
+    Policy.RecordOutcome(Op6, ESessionNonFailureOutcome::Completed);
+    TestEqual(TEXT("Retained count remains capped at 3"), Policy.GetRetainedOutcomesCount(), 3);
+    TestTrue(TEXT("Op2 is evicted"), Policy.IsOperationEvicted(Op2));
+    TestEqual(TEXT("Op2 is Evicted status"), Policy.QueryOutcome(Op2), ESessionOperationQueryStatus::Evicted);
+    TestEqual(TEXT("Highest evicted ID is Op2"), Policy.GetHighestEvictedOperationId(), Op2);
+
+    // Now record Op5. Map currently holds {3, 4, 6}.
+    // Adding Op5 (ID 5) will evict lowest OpId in map, which is Op3!
+    Policy.RecordOutcome(Op5, ESessionNonFailureOutcome::Completed);
+    TestEqual(TEXT("Retained count remains capped at 3"), Policy.GetRetainedOutcomesCount(), 3);
+    TestTrue(TEXT("Op3 is evicted"), Policy.IsOperationEvicted(Op3));
+    TestEqual(TEXT("Op3 is Evicted status"), Policy.QueryOutcome(Op3), ESessionOperationQueryStatus::Evicted);
+    TestEqual(TEXT("Highest evicted ID is Op3"), Policy.GetHighestEvictedOperationId(), Op3);
+
+    // Retained must be {4, 5, 6}
+    TestEqual(TEXT("Op4 is Found"), Policy.QueryOutcome(Op4), ESessionOperationQueryStatus::Found);
+    TestEqual(TEXT("Op5 is Found"), Policy.QueryOutcome(Op5), ESessionOperationQueryStatus::Found);
+    TestEqual(TEXT("Op6 is Found"), Policy.QueryOutcome(Op6), ESessionOperationQueryStatus::Found);
+
+    // 5. Coordinator integration
+    {
+        FGV2SessionCoordinator Coordinator;
+        const uint64 UnreadyOp = Coordinator.RequestSave(TEXT("any_slot"));
+        TestTrue(TEXT("Coordinator recorded outcome"), Coordinator.GetSessionOperationOutcome(UnreadyOp).IsSet());
+        TestFalse(TEXT("Coordinator op is not evicted"), Coordinator.IsSessionOperationEvicted(UnreadyOp));
+        FGV2SessionOperationResult CoordRes;
+        TestEqual(TEXT("Coordinator query status is Found"), Coordinator.QuerySessionOperationOutcome(UnreadyOp, &CoordRes), ESessionOperationQueryStatus::Found);
+        TestEqual(TEXT("Coordinator op is Failed"), CoordRes.Outcome, ESessionOperationOutcome::Failed);
+
+        TestFalse(TEXT("Unknown op 999 is not evicted on coordinator"), Coordinator.IsSessionOperationEvicted(999));
+        TestEqual(TEXT("Unknown op 999 is Unknown on coordinator"), Coordinator.QuerySessionOperationOutcome(999), ESessionOperationQueryStatus::Unknown);
+    }
+
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

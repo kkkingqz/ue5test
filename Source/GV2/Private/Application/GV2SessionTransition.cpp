@@ -429,6 +429,11 @@ bool TryTransitionApplicationState(
     return false;
 }
 
+FGV2SessionTransitionPolicy::FGV2SessionTransitionPolicy(const int32 InMaxRetainedOutcomes)
+    : MaxRetainedOutcomes(InMaxRetainedOutcomes)
+{
+}
+
 uint64 FGV2SessionTransitionPolicy::EnqueueRequest(
     const FSessionStartDescriptor& Descriptor,
     bool& bOutJoined,
@@ -448,7 +453,7 @@ uint64 FGV2SessionTransitionPolicy::EnqueueRequest(
     }
     if (PendingSlot.IsSet())
     {
-        OperationOutcomes.Add(PendingSlot->OperationId, FGV2SessionOperationResult::MakeSuccess(ESessionNonFailureOutcome::Superseded));
+        RecordOutcome(PendingSlot->OperationId, ESessionNonFailureOutcome::Superseded);
         PendingSlot.Reset();
     }
 
@@ -480,7 +485,7 @@ uint64 FGV2SessionTransitionPolicy::EnqueueShutdown(
 
     if (PendingSlot.IsSet())
     {
-        OperationOutcomes.Add(PendingSlot->OperationId, FGV2SessionOperationResult::MakeSuccess(ESessionNonFailureOutcome::Superseded));
+        RecordOutcome(PendingSlot->OperationId, ESessionNonFailureOutcome::Superseded);
         PendingSlot.Reset();
     }
 
@@ -508,7 +513,7 @@ ESessionCancellationResult FGV2SessionTransitionPolicy::CancelRequest(const uint
     if (PendingSlot.IsSet() && PendingSlot->OperationId == OperationId)
     {
         PendingSlot.Reset();
-        OperationOutcomes.Add(OperationId, FGV2SessionOperationResult::MakeSuccess(ESessionNonFailureOutcome::Cancelled));
+        RecordOutcome(OperationId, ESessionNonFailureOutcome::Cancelled);
         return ESessionCancellationResult::Accepted;
     }
 
@@ -534,6 +539,50 @@ TOptional<FGV2SessionOperationResult> FGV2SessionTransitionPolicy::GetOutcome(co
     return TOptional<FGV2SessionOperationResult>();
 }
 
+bool FGV2SessionTransitionPolicy::IsOperationKnown(const uint64 OperationId) const
+{
+    return OperationId > 0 && OperationId < NextOperationId;
+}
+
+bool FGV2SessionTransitionPolicy::IsOperationEvicted(const uint64 OperationId) const
+{
+    if (OperationId == 0 || OperationId >= NextOperationId)
+    {
+        return false;
+    }
+    if (OperationOutcomes.Contains(OperationId))
+    {
+        return false;
+    }
+    return OperationId <= HighestEvictedOperationId;
+}
+
+ESessionOperationQueryStatus FGV2SessionTransitionPolicy::QueryOutcome(
+    const uint64 OperationId,
+    FGV2SessionOperationResult* OutResult) const
+{
+    if (OperationId == 0 || OperationId >= NextOperationId)
+    {
+        return ESessionOperationQueryStatus::Unknown;
+    }
+
+    if (const FGV2SessionOperationResult* Found = OperationOutcomes.Find(OperationId))
+    {
+        if (OutResult)
+        {
+            *OutResult = *Found;
+        }
+        return ESessionOperationQueryStatus::Found;
+    }
+
+    if (OperationId <= HighestEvictedOperationId)
+    {
+        return ESessionOperationQueryStatus::Evicted;
+    }
+
+    return ESessionOperationQueryStatus::InProgress;
+}
+
 TOptional<FSessionOperationRecord> FGV2SessionTransitionPolicy::DequeuePendingOperation()
 {
     if (!PendingSlot.IsSet())
@@ -545,9 +594,37 @@ TOptional<FSessionOperationRecord> FGV2SessionTransitionPolicy::DequeuePendingOp
     return ActiveOperation;
 }
 
+void FGV2SessionTransitionPolicy::RecordResultInternal(const uint64 OperationId, FGV2SessionOperationResult Result)
+{
+    if (OperationOutcomes.Contains(OperationId))
+    {
+        OperationOutcomes[OperationId] = MoveTemp(Result);
+        return;
+    }
+
+    if (MaxRetainedOutcomes > 0 && OperationOutcomes.Num() >= MaxRetainedOutcomes)
+    {
+        uint64 EarliestId = TNumericLimits<uint64>::Max();
+        for (const auto& Pair : OperationOutcomes)
+        {
+            if (Pair.Key < EarliestId)
+            {
+                EarliestId = Pair.Key;
+            }
+        }
+        if (EarliestId != TNumericLimits<uint64>::Max())
+        {
+            OperationOutcomes.Remove(EarliestId);
+            HighestEvictedOperationId = FMath::Max(HighestEvictedOperationId, EarliestId);
+        }
+    }
+
+    OperationOutcomes.Add(OperationId, MoveTemp(Result));
+}
+
 void FGV2SessionTransitionPolicy::RecordOutcome(const uint64 OperationId, const ESessionNonFailureOutcome Outcome)
 {
-    OperationOutcomes.Add(OperationId, FGV2SessionOperationResult::MakeSuccess(Outcome));
+    RecordResultInternal(OperationId, FGV2SessionOperationResult::MakeSuccess(Outcome));
     if (ActiveOperation.IsSet() && ActiveOperation->OperationId == OperationId)
     {
         ActiveOperation.Reset();
@@ -556,7 +633,7 @@ void FGV2SessionTransitionPolicy::RecordOutcome(const uint64 OperationId, const 
 
 void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const FGV2OperationFault& Fault)
 {
-    OperationOutcomes.Add(OperationId, FGV2SessionOperationResult::MakeFailure(Fault));
+    RecordResultInternal(OperationId, FGV2SessionOperationResult::MakeFailure(Fault));
     if (ActiveOperation.IsSet() && ActiveOperation->OperationId == OperationId)
     {
         ActiveOperation.Reset();
@@ -574,11 +651,4 @@ void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const 
 uint64 FGV2SessionTransitionPolicy::AllocateOperationId()
 {
     return NextOperationId++;
-}
-
-void FGV2SessionTransitionPolicy::Reset()
-{
-    ActiveOperation.Reset();
-    PendingSlot.Reset();
-    OperationOutcomes.Empty();
 }

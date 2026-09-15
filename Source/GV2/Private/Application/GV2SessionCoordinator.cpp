@@ -450,6 +450,16 @@ TOptional<FGV2SessionOperationResult> FGV2SessionCoordinator::GetSessionOperatio
     return TransitionPolicy.GetOutcome(OperationId);
 }
 
+ESessionOperationQueryStatus FGV2SessionCoordinator::QuerySessionOperationOutcome(const uint64 OperationId, FGV2SessionOperationResult* OutResult) const
+{
+    return TransitionPolicy.QueryOutcome(OperationId, OutResult);
+}
+
+bool FGV2SessionCoordinator::IsSessionOperationEvicted(const uint64 OperationId) const
+{
+    return TransitionPolicy.IsOperationEvicted(OperationId);
+}
+
 void FGV2SessionCoordinator::ProcessNextTransition()
 {
     if (bProcessingTransition)

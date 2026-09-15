@@ -90,7 +90,9 @@ namespace GV2RuntimeCore { struct FRuntimeFault; }
 class GV2_API FGV2SessionTransitionPolicy
 {
 public:
-    FGV2SessionTransitionPolicy() = default;
+    static constexpr int32 DefaultMaxRetainedOutcomes = 160;
+
+    explicit FGV2SessionTransitionPolicy(int32 InMaxRetainedOutcomes = DefaultMaxRetainedOutcomes);
 
     // Returns operation ID and whether request was joined with existing
     uint64 EnqueueRequest(const FSessionStartDescriptor& Descriptor, bool& bOutJoined, uint64& OutJoinedOpId);
@@ -107,6 +109,13 @@ public:
     ESessionCancellationResult CancelRequest(uint64 OperationId);
 
     TOptional<FGV2SessionOperationResult> GetOutcome(uint64 OperationId) const;
+    ESessionOperationQueryStatus QueryOutcome(uint64 OperationId, FGV2SessionOperationResult* OutResult = nullptr) const;
+    bool IsOperationEvicted(uint64 OperationId) const;
+    bool IsOperationKnown(uint64 OperationId) const;
+
+    int32 GetMaxRetainedOutcomes() const { return MaxRetainedOutcomes; }
+    int32 GetRetainedOutcomesCount() const { return OperationOutcomes.Num(); }
+    uint64 GetHighestEvictedOperationId() const { return HighestEvictedOperationId; }
 
     bool HasPendingOperation() const { return PendingSlot.IsSet(); }
     const TOptional<FSessionOperationRecord>& GetPendingOperation() const { return PendingSlot; }
@@ -125,10 +134,12 @@ public:
 
     uint64 AllocateOperationId();
 
-    void Reset();
-
 private:
+    void RecordResultInternal(uint64 OperationId, FGV2SessionOperationResult Result);
+
+    int32 MaxRetainedOutcomes = DefaultMaxRetainedOutcomes;
     uint64 NextOperationId = 1;
+    uint64 HighestEvictedOperationId = 0;
     TOptional<FSessionOperationRecord> ActiveOperation;
     TOptional<FSessionOperationRecord> PendingSlot;
     TMap<uint64, FGV2SessionOperationResult> OperationOutcomes;

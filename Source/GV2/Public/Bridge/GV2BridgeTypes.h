@@ -168,6 +168,32 @@ inline FString LexToString(const FGV2OperationFault& Fault)
     return FString::Printf(TEXT("%s: %s"), *Fault.Code, *Fault.Message);
 }
 
+UENUM(BlueprintType)
+enum class ESessionOperationQueryStatus : uint8
+{
+    Unknown,
+    InProgress,
+    Found,
+    Evicted
+};
+using EGV2SessionOperationQueryStatus = ESessionOperationQueryStatus;
+
+inline FString LexToString(ESessionOperationQueryStatus Status)
+{
+    switch (Status)
+    {
+    case ESessionOperationQueryStatus::Unknown:
+        return TEXT("Unknown");
+    case ESessionOperationQueryStatus::InProgress:
+        return TEXT("InProgress");
+    case ESessionOperationQueryStatus::Found:
+        return TEXT("Found");
+    case ESessionOperationQueryStatus::Evicted:
+        return TEXT("Evicted");
+    }
+    return TEXT("Unknown");
+}
+
 struct GV2_API FGV2SessionFaultCodes
 {
     inline static const FString RepositoryNotReady = TEXT("RepositoryNotReady");
