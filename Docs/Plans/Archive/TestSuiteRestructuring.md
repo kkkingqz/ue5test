@@ -1,8 +1,8 @@
 ---
 title: Test Suite Restructuring Plan — Archive
 status: archived
-version: 1.0
-updated: 2026-09-15
+version: 1.1
+updated: 2026-09-16
 depends_on:
   - ../../Architecture/BuildAndTooling.md
   - ../../Architecture/RuntimeFacadeAndRegistries.md
@@ -62,7 +62,7 @@ decisions:
 | `GV2.Runtime.UI.LocationCompositeContract` | `RhStartOpensLocationScreen` (композиты `scene`/`commands`/`player_status` найдены в дереве, schema-required свойства имеют committed-значения) |
 | `GV2.Runtime.UI.LocationCompositeSemantics` | там же |
 | `GV2.Runtime.UI.LocationScreenTransitionContract` | там же (переход между локациями, id экранов читаются из репозитория контента) |
-| `GV2.Runtime.Presentation.LocationSceneDiagnostic` | там же; диагностический тест на `AddInfo`, см. [`CFC-AF-26`](../../Status/AuditFindings.md) |
+| `GV2.Runtime.Presentation.LocationSceneDiagnostic` | там же; диагностический тест на `AddInfo`, см. [`CFC-AF-26`](../../Status/Archive/CppFoundationReReview2026-09-16.md#находки-и-исходы) |
 
 Разделено `TSR-09` (`3abc0cf`) — один id заменён несколькими, утверждения сохранены:
 

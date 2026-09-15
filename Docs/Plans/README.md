@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 4.2
-updated: 2026-09-15
+version: 4.3
+updated: 2026-09-16
 depends_on:
   - ../README.md
 ---
@@ -29,7 +29,6 @@ depends_on:
 
 ## Активные планы
 
-- [Session Authority Correction](SessionAuthorityCorrection/README.md) — исходы находок повторного ревью: публичный вход не разрушает живую сессию, manifest читается один раз, тема становится значением внутри идентичности сессии, terminal outcome несёт typed fault.
 - [Presentation Effect Pipeline](PresentationEffectPipeline/README.md) — один механизм одноразовых эффектов с двумя источниками; всплывающее окно как обычный ui-блок в `overlay_stack`; плавное появление и отменяемый уход, интерактивный до конца.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
