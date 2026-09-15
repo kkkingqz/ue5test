@@ -2,6 +2,7 @@
 #include "CommonButtonBase.h"
 #include "CommonTextBlock.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "Curves/RichCurve.h"
 #include "UObject/UnrealType.h"
 
 UGV2UiTheme::UGV2UiTheme()
@@ -136,6 +137,107 @@ bool UGV2UiTheme::CompileResolvedTheme(
 // FGV2ResolvedUiTheme
 // -----------------------------------------------------------------------------
 
+namespace
+{
+void ExportPropertyValueCanonical(FString& OutText, const FProperty* Prop, const void* ValuePtr, UObject* Owner)
+{
+    if (Prop == nullptr || ValuePtr == nullptr)
+    {
+        return;
+    }
+
+    if (const FMapProperty* MapProp = CastField<FMapProperty>(Prop))
+    {
+        FScriptMapHelper MapHelper(MapProp, ValuePtr);
+        struct FExportedPair
+        {
+            FString KeyStr;
+            FString ValStr;
+        };
+        TArray<FExportedPair> Pairs;
+        Pairs.Reserve(MapHelper.Num());
+
+        for (int32 i = 0; i < MapHelper.GetMaxIndex(); ++i)
+        {
+            if (MapHelper.IsValidIndex(i))
+            {
+                FString KeyStr;
+                ExportPropertyValueCanonical(KeyStr, MapProp->KeyProp, MapHelper.GetKeyPtr(i), Owner);
+                FString ValStr;
+                ExportPropertyValueCanonical(ValStr, MapProp->ValueProp, MapHelper.GetValuePtr(i), Owner);
+                Pairs.Add({MoveTemp(KeyStr), MoveTemp(ValStr)});
+            }
+        }
+
+        Pairs.Sort([](const FExportedPair& A, const FExportedPair& B)
+        {
+            return A.KeyStr < B.KeyStr;
+        });
+
+        OutText += TEXT("(");
+        for (int32 i = 0; i < Pairs.Num(); ++i)
+        {
+            if (i > 0)
+            {
+                OutText += TEXT(",");
+            }
+            OutText += FString::Printf(TEXT("(%s,%s)"), *Pairs[i].KeyStr, *Pairs[i].ValStr);
+        }
+        OutText += TEXT(")");
+        return;
+    }
+
+    if (const FSetProperty* SetProp = CastField<FSetProperty>(Prop))
+    {
+        FScriptSetHelper SetHelper(SetProp, ValuePtr);
+        TArray<FString> Elements;
+        Elements.Reserve(SetHelper.Num());
+
+        for (int32 i = 0; i < SetHelper.GetMaxIndex(); ++i)
+        {
+            if (SetHelper.IsValidIndex(i))
+            {
+                FString ElemStr;
+                ExportPropertyValueCanonical(ElemStr, SetProp->ElementProp, SetHelper.GetElementPtr(i), Owner);
+                Elements.Add(MoveTemp(ElemStr));
+            }
+        }
+
+        Elements.Sort();
+
+        OutText += TEXT("(");
+        for (int32 i = 0; i < Elements.Num(); ++i)
+        {
+            if (i > 0)
+            {
+                OutText += TEXT(",");
+            }
+            OutText += Elements[i];
+        }
+        OutText += TEXT(")");
+        return;
+    }
+
+    if (const FStructProperty* StructProp = CastField<FStructProperty>(Prop))
+    {
+        if (StructProp->Struct == FRuntimeFloatCurve::StaticStruct())
+        {
+            const FRuntimeFloatCurve* CurvePtr = static_cast<const FRuntimeFloatCurve*>(ValuePtr);
+            const FRichCurve* RichCurve = CurvePtr ? CurvePtr->GetRichCurveConst() : nullptr;
+            if (RichCurve != nullptr)
+            {
+                FString CurveText;
+                TBaseStructure<FRichCurve>::Get()->ExportText(CurveText, RichCurve, nullptr, Owner, PPF_None, nullptr);
+                OutText += FString::Printf(TEXT("(EditorCurveData=%s)"), *CurveText);
+                return;
+            }
+        }
+    }
+
+    Prop->ExportTextItem_Direct(OutText, ValuePtr, nullptr, Owner, PPF_None);
+}
+} // namespace
+
 GV2ContentCore::FValue FGV2ResolvedUiTheme::ComputeThemeCanonicalValue(const UGV2UiTheme* InTheme)
 {
     if (InTheme == nullptr)
@@ -164,12 +266,11 @@ GV2ContentCore::FValue FGV2ResolvedUiTheme::ComputeThemeCanonicalValue(const UGV
     for (const FProperty* Prop : Properties)
     {
         FString ExportedText;
-        Prop->ExportTextItem_Direct(
+        ExportPropertyValueCanonical(
             ExportedText,
+            Prop,
             Prop->ContainerPtrToValuePtr<void>(InTheme),
-            nullptr,
-            const_cast<UGV2UiTheme*>(InTheme),
-            PPF_None);
+            const_cast<UGV2UiTheme*>(InTheme));
 
         Fields.emplace_back(
             TCHAR_TO_UTF8(*Prop->GetName()),
@@ -195,8 +296,17 @@ bool FGV2ResolvedUiTheme::Compile(
     OutResolved = FGV2ResolvedUiTheme();
     OutResolved.bIsValid = true;
 
-    // Typography scaling
-    OutResolved.TextScaleCurve = InTheme->TextScaleCurve;
+    // Typography scaling: deep copy rich curve data into EditorCurveData and disconnect ExternalCurve pointer
+    const FRichCurve* SourceRichCurve = InTheme->TextScaleCurve.GetRichCurveConst();
+    if (SourceRichCurve != nullptr)
+    {
+        OutResolved.TextScaleCurve.EditorCurveData = *SourceRichCurve;
+    }
+    else
+    {
+        OutResolved.TextScaleCurve.EditorCurveData = InTheme->TextScaleCurve.EditorCurveData;
+    }
+    OutResolved.TextScaleCurve.ExternalCurve = nullptr;
     OutResolved.MinReadableFontSize = InTheme->MinReadableFontSize;
     OutResolved.ReferenceViewportHeight = InTheme->ReferenceViewportHeight;
 

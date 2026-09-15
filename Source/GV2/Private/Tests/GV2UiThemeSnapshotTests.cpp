@@ -5,7 +5,10 @@
 #include "Application/GV2SessionContentSnapshot.h"
 #include "GV2ContentCore/RepositorySnapshot.h"
 #include "GV2ContentCore/Value.h"
+#include "GV2ContentCore/CanonicalHash.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
+#include "Curves/CurveFloat.h"
+#include "Curves/RichCurve.h"
 #include "Misc/Paths.h"
 #include "Tests/GV2PresentationTestFixtures.h"
 #include "UI/GV2TextPipeline.h"
@@ -443,6 +446,11 @@ bool FGV2SnapshotThemeImmutabilityTest::RunTest(const FString& Parameters)
     AuthoredTheme->DefaultTextStyleToken = TEXT("authored_default");
     AuthoredTheme->TextCatalog.Add(TEXT("core:text.authored.sample"), FText::FromString(TEXT("Original Sample")));
 
+    // Assign an external curve asset to TextScaleCurve
+    UCurveFloat* ExternalCurve = NewObject<UCurveFloat>(GetTransientPackage());
+    ExternalCurve->FloatCurve.AddKey(1080.0f, 2.5f);
+    AuthoredTheme->TextScaleCurve.ExternalCurve = ExternalCurve;
+
     // 2. Publish Session Content Snapshot A
     FGV2SessionContentSnapshot SnapshotA;
     FString ErrorA;
@@ -454,6 +462,10 @@ bool FGV2SnapshotThemeImmutabilityTest::RunTest(const FString& Parameters)
         SnapshotA.GetTheme().SeparatorThickness, 4.0f);
     TestEqual(TEXT("Snapshot A theme default text token matches initial authored value"),
         SnapshotA.GetTheme().DefaultTextStyleToken, FName(TEXT("authored_default")));
+    TestNull(TEXT("Snapshot A severed ExternalCurve pointer to guarantee immutability"),
+        SnapshotA.GetTheme().TextScaleCurve.ExternalCurve.Get());
+    TestEqual(TEXT("Snapshot A evaluates text scale from snapshotted curve data"),
+        SnapshotA.GetTheme().EvaluateTextScale(1080.0f), 2.5f);
     const FText* FoundTextA = SnapshotA.GetTheme().FindText(TEXT("core:text.authored.sample"));
     TestNotNull(TEXT("Snapshot A resolves original sample text"), FoundTextA);
     if (FoundTextA != nullptr)
@@ -466,6 +478,9 @@ bool FGV2SnapshotThemeImmutabilityTest::RunTest(const FString& Parameters)
     AuthoredTheme->DefaultTextStyleToken = TEXT("mutated_after_publication");
     AuthoredTheme->TextCatalog.Add(TEXT("core:text.authored.sample"), FText::FromString(TEXT("Mutated Text Value")));
     AuthoredTheme->TextCatalog.Add(TEXT("core:text.injected.key"), FText::FromString(TEXT("Injected Later")));
+    // Mutate the external curve asset in-place
+    ExternalCurve->FloatCurve.Reset();
+    ExternalCurve->FloatCurve.AddKey(1080.0f, 5.0f);
 
     // 4. Verify Snapshot A is completely unaffected (immutability of published session)
     TestEqual(TEXT("Snapshot A theme separator thickness remains 4.0f"),
@@ -481,6 +496,8 @@ bool FGV2SnapshotThemeImmutabilityTest::RunTest(const FString& Parameters)
     }
     TestNull(TEXT("Snapshot A does not see text injected after publication"),
         SnapshotA.GetTheme().FindText(TEXT("core:text.injected.key")));
+    TestEqual(TEXT("Snapshot A text scale remains 2.5f despite ExternalCurve mutation"),
+        SnapshotA.GetTheme().EvaluateTextScale(1080.0f), 2.5f);
     TestEqual(TEXT("Snapshot A presentation hash is completely unaffected"),
         SnapshotA.GetPresentationHash(), InitialHashA);
     TestEqual(TEXT("Snapshot A session content id is completely unaffected"),
@@ -497,7 +514,7 @@ bool FGV2SnapshotThemeImmutabilityTest::RunTest(const FString& Parameters)
             PreparedTextOriginal,
             TextError));
     TestEqual(TEXT("Prepared text font size is unaffected by subsequent theme asset mutation"),
-        SnapshotA.GetTheme().EvaluateTextScale(1080.0f), 1.0f);
+        SnapshotA.GetTheme().EvaluateTextScale(1080.0f), 2.5f);
 
     // 5. Build Snapshot B from the mutated theme asset
     FGV2SessionContentSnapshot SnapshotB;
@@ -509,6 +526,8 @@ bool FGV2SnapshotThemeImmutabilityTest::RunTest(const FString& Parameters)
         SnapshotB.GetTheme().SeparatorThickness, 42.0f);
     TestEqual(TEXT("Snapshot B sees mutated default text token"),
         SnapshotB.GetTheme().DefaultTextStyleToken, FName(TEXT("mutated_after_publication")));
+    TestEqual(TEXT("Snapshot B observes mutated external curve text scale 5.0f"),
+        SnapshotB.GetTheme().EvaluateTextScale(1080.0f), 5.0f);
     const FText* FoundTextB = SnapshotB.GetTheme().FindText(TEXT("core:text.injected.key"));
     TestNotNull(TEXT("Snapshot B resolves newly injected text"), FoundTextB);
     if (FoundTextB != nullptr)
@@ -525,4 +544,85 @@ bool FGV2SnapshotThemeImmutabilityTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// SAC-04: Deterministic canonical hashing test on UGV2UiTheme.
+// Verifies that two UGV2UiTheme instances with identical keys and values in maps
+// inserted in different/reverse orders produce identical canonical Value and presentation hash.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiThemeMapInsertionOrderTest,
+    "GV2.Runtime.Presentation.UiThemeMapInsertionOrder",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiThemeMapInsertionOrderTest::RunTest(const FString& Parameters)
+{
+    TStrongObjectPtr<UGV2UiTheme> Theme1(NewObject<UGV2UiTheme>(GetTransientPackage()));
+    TStrongObjectPtr<UGV2UiTheme> Theme2(NewObject<UGV2UiTheme>(GetTransientPackage()));
+
+    // Insert keys in order A, B, C, D into Theme1
+    Theme1->TextCatalog.Add(TEXT("alpha"), FText::FromString(TEXT("ValAlpha")));
+    Theme1->TextCatalog.Add(TEXT("beta"), FText::FromString(TEXT("ValBeta")));
+    Theme1->TextCatalog.Add(TEXT("gamma"), FText::FromString(TEXT("ValGamma")));
+    Theme1->TextCatalog.Add(TEXT("delta"), FText::FromString(TEXT("ValDelta")));
+
+    Theme1->FallbackTextCatalog.Add(TEXT("fallback.first"), FText::FromString(TEXT("FB1")));
+    Theme1->FallbackTextCatalog.Add(TEXT("fallback.second"), FText::FromString(TEXT("FB2")));
+
+    Theme1->TextStyleTokens.FindOrAdd(TEXT("token_a"));
+    Theme1->TextStyleTokens.FindOrAdd(TEXT("token_b"));
+    Theme1->TextStyleTokens.FindOrAdd(TEXT("token_c"));
+
+    Theme1->TextColorTokens.Add(TEXT("red"), FLinearColor::Red);
+    Theme1->TextColorTokens.Add(TEXT("green"), FLinearColor::Green);
+    Theme1->TextColorTokens.Add(TEXT("blue"), FLinearColor::Blue);
+
+    Theme1->TextSizeTokens.Add(TEXT("small"), 12.0f);
+    Theme1->TextSizeTokens.Add(TEXT("medium"), 16.0f);
+    Theme1->TextSizeTokens.Add(TEXT("large"), 24.0f);
+
+    // Insert keys in reverse order into Theme2
+    Theme2->TextCatalog.Add(TEXT("delta"), FText::FromString(TEXT("ValDelta")));
+    Theme2->TextCatalog.Add(TEXT("gamma"), FText::FromString(TEXT("ValGamma")));
+    Theme2->TextCatalog.Add(TEXT("beta"), FText::FromString(TEXT("ValBeta")));
+    Theme2->TextCatalog.Add(TEXT("alpha"), FText::FromString(TEXT("ValAlpha")));
+
+    Theme2->FallbackTextCatalog.Add(TEXT("fallback.second"), FText::FromString(TEXT("FB2")));
+    Theme2->FallbackTextCatalog.Add(TEXT("fallback.first"), FText::FromString(TEXT("FB1")));
+
+    Theme2->TextStyleTokens.FindOrAdd(TEXT("token_c"));
+    Theme2->TextStyleTokens.FindOrAdd(TEXT("token_b"));
+    Theme2->TextStyleTokens.FindOrAdd(TEXT("token_a"));
+
+    Theme2->TextColorTokens.Add(TEXT("blue"), FLinearColor::Blue);
+    Theme2->TextColorTokens.Add(TEXT("green"), FLinearColor::Green);
+    Theme2->TextColorTokens.Add(TEXT("red"), FLinearColor::Red);
+
+    Theme2->TextSizeTokens.Add(TEXT("large"), 24.0f);
+    Theme2->TextSizeTokens.Add(TEXT("medium"), 16.0f);
+    Theme2->TextSizeTokens.Add(TEXT("small"), 12.0f);
+
+    const GV2ContentCore::FValue Val1 = FGV2ResolvedUiTheme::ComputeThemeCanonicalValue(Theme1.Get());
+    const GV2ContentCore::FValue Val2 = FGV2ResolvedUiTheme::ComputeThemeCanonicalValue(Theme2.Get());
+
+    const std::string Hash1 = GV2ContentCore::ComputeCanonicalHash(Val1);
+    const std::string Hash2 = GV2ContentCore::ComputeCanonicalHash(Val2);
+
+    TestEqual(TEXT("Canonical hash is invariant under map insertion order"),
+        FString(UTF8_TO_TCHAR(Hash1.c_str())), FString(UTF8_TO_TCHAR(Hash2.c_str())));
+
+    FGV2ResolvedUiTheme Resolved1;
+    FGV2ResolvedUiTheme Resolved2;
+    FString Error1;
+    FString Error2;
+    TestTrue(TEXT("Resolved1 compiled successfully"), FGV2ResolvedUiTheme::Compile(Theme1.Get(), nullptr, Resolved1, Error1));
+    TestTrue(TEXT("Resolved2 compiled successfully"), FGV2ResolvedUiTheme::Compile(Theme2.Get(), nullptr, Resolved2, Error2));
+
+    const std::string ResolvedHash1 = GV2ContentCore::ComputeCanonicalHash(Resolved1.GetCanonicalValue());
+    const std::string ResolvedHash2 = GV2ContentCore::ComputeCanonicalHash(Resolved2.GetCanonicalValue());
+
+    TestEqual(TEXT("Resolved theme canonical hash is invariant under map insertion order"),
+        FString(UTF8_TO_TCHAR(ResolvedHash1.c_str())), FString(UTF8_TO_TCHAR(ResolvedHash2.c_str())));
+
+    return true;
+}
+
 #endif
+
