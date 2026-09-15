@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.27
-updated: 2026-09-12
+version: 1.28
+updated: 2026-09-15
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -17,6 +17,7 @@ decisions:
   - ../ADR/0042-presentation-authority-and-publication.md
   - ../ADR/0043-presentation-apply-boundary.md
   - ../ADR/0044-session-replacement-and-registry-sealing.md
+  - ../ADR/0048-widget-exit-lifecycle-and-input-gating.md
 ---
 
 # UI Document and Reconciliation
@@ -243,7 +244,16 @@ Publication является atomic: registry сначала валидируе�
    3. Закоммитить `ActiveScreens` — достигается только если каждый слой выше успешно реконсилирован.
    4. Layer Rules & Modal Interactivity (UIF-20): применить `SetLayerInteractive` по approved layers, либо (если есть модали) заблокировать все нижние слои и оставить интерактивным только верхний модальный.
 
-`FGV2LayeredUiReconciler` не коммитит биндинги ревизии сам: это делает вызывающий `FGV2SessionCoordinator` отдельным вызовом `FGV2UiBindingRegistry::CommitPreparedBindings` после успешного `Reconcile`. Enter/exit animation экрана в текущем коде не реализованы (`STATUS-003`) — ни `FGV2LayeredUiReconciler`, ни вызывающий runtime не содержат animation-гейтинга; detach/attach выполняются синхронно.
+`FGV2LayeredUiReconciler` не коммитит биндинги ревизии сам: это делает вызывающий `FGV2SessionCoordinator` отдельным вызовом `FGV2UiBindingRegistry::CommitPreparedBindings` после успешного `Reconcile`.
+
+**Уход элемента со сцены** ([ADR-0048](../ADR/0048-widget-exit-lifecycle-and-input-gating.md)) — состояние жизненного цикла, а не отсутствие виджета. Элемент в уходе не участвует в реконсиляции: не переиспользуется, не отвечает на свой ключ и не входит в desired-множество слоя.
+
+- **Stale-удаление** — элемент убран реконсиляцией (исчез из desired-документа, слот сменил `screen_id`, заменена сессия, снята оболочка). Приём ввода прекращается в момент логического удаления — когда план определил, что элемент не входит в новое desired-множество, — а не когда виджет снят с дерева. Handles элемента инвалидируются тем же моментом, раньше публикации нового набора через `CommitPreparedBindings`. Физическое снятие вправе отстать; на правило ввода это не влияет.
+- **Self-dismissal** — элемент уводит себя по собственному таймеру при живом показанном состоянии. Остаётся полноценным интерактивным виджетом до конца ухода; взаимодействие отменяет уход, не создавая второго экземпляра и продолжая от текущего визуального состояния. Решением реконсиляции не является и в desired-документе не отражается.
+
+Откат коммита ([ADR-0041](../ADR/0041-ui-commit-rollback-model.md)) возвращает в сцену элемент, переведённый в уход этим же коммитом: отменяется решение — отменяется и его следствие. Замена сессии ([ADR-0044](../ADR/0044-session-replacement-and-registry-sealing.md)) уничтожает уходящие виджеты сессии A немедленно, без доигрывания: косметическая длительность не вправе влиять на границу lifecycle.
+
+Enter/exit animation в текущем коде не реализованы (`STATUS-003`); detach/attach выполняются синхронно, поэтому промежутка между логическим и физическим снятием пока не существует.
 
 В случае отказа на стадии Prepare физическое дерево виджетов и активные биндинги вообще не затрагиваются; компенсирующий откат устранён физически. Failed candidate не оставляет частично обновлённый interactive screen.
 
@@ -316,7 +326,7 @@ TextSpec:
 
 Interactive fragment использует `<interactive id="market">…</interactive>` внутри localized message. `span_id` является local deterministic identity и разрешает отдельный span descriptor; tag никогда не содержит `command_id`, callback name, `resource_id` или raw asset path. Translator может перемещать complete tag и менять его visible content. Position offsets и post-localization word search запрещены.
 
-Span descriptor содержит optional UE-local hover payload и optional Command binding. Presentation разрешает `TextSpec` и `resource_id`, создаёт opaque handle для clickable span и передаёт Widget только values/handle. Hover state/popover не входит в document identity или save. Добавление/удаление span участвует в full reconciliation и инвалидирует удалённый handle до exit animation.
+Span descriptor содержит optional UE-local hover payload и optional Command binding. Presentation разрешает `TextSpec` и `resource_id`, создаёт opaque handle для clickable span и передаёт Widget только values/handle. Hover state/popover не входит в document identity или save. Добавление/удаление span участвует в full reconciliation; удалённый span — stale-удаление, поэтому его handle инвалидируется в момент логического удаления, независимо от того, сколько ещё виден виджет.
 
 ## Implementation and architecture
 

@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 0.2
+version: 0.3
 updated: 2026-09-15
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -15,6 +15,7 @@ decisions:
   - ../../ADR/0043-presentation-apply-boundary.md
   - ../../ADR/0044-session-replacement-and-registry-sealing.md
   - ../../ADR/0047-one-shot-effect-pipeline-and-origins.md
+  - ../../ADR/0048-widget-exit-lifecycle-and-input-gating.md
 ---
 
 # Presentation Effect Pipeline: план реализации
@@ -106,7 +107,7 @@ decisions:
 
 Порядок не переставляется. Оба ADR идут **до** кода, потому что обе задачи меняют архитектурный инвариант: первая — состав канала Lua → UE, вторая — модель владения виджетами и правило ввода [ADR-0041](../../ADR/0041-ui-commit-rollback-model.md). Механизм эффектов идёт **до** переезда окна, иначе переезд не на чем проверять и окно временно получает собственный таймер — ровно тот второй механизм, который план запрещает. Переезд окна идёт **до** затухания, потому что затухание требует виджета, переживающего собственное логическое удаление, а тултип им быть не может.
 
-- [ ] M0 — PEP-01…02 приняты по Done/Evidence.
+- [x] M0 — PEP-01…02 приняты по Done/Evidence.
 - [ ] M1 — PEP-03…04 приняты по Done/Evidence.
 - [ ] M2 — PEP-05…07 приняты по Done/Evidence.
 - [ ] M3 — PEP-08…09 приняты по Done/Evidence.
@@ -146,9 +147,9 @@ decisions:
 
 ### PEP-02 — Зафиксировать жизненный цикл уходящего виджета и правило ввода
 
-- [ ] PEP-02 — Зафиксировать жизненный цикл уходящего виджета и правило ввода
+- [x] PEP-02 — Зафиксировать жизненный цикл уходящего виджета и правило ввода
 
-**Зависимость:** PEP-01. **Файлы:** `Docs/ADR/0048-*.md` — следующий свободный номер; `Docs/UI/UIDocumentAndReconciliation.md`, `Docs/UI/README.md`.
+**Зависимость:** PEP-01. **Файлы:** [`ADR-0048`](../../ADR/0048-widget-exit-lifecycle-and-input-gating.md); `Docs/UI/UIDocumentAndReconciliation.md`, `Docs/UI/README.md`.
 
 **Инвариант:** [ADR-0041](../../ADR/0041-ui-commit-rollback-model.md) — модель commit/rollback реконсиляции, и владение виджетами, которое перечисляет `validate_session_snapshot_ownership.py`. Виджет, живущий после логического удаления, сегодня не принадлежит ни дереву слоя, ни кандидату; без явного владельца он становится untraced owning-указателем, и гейт с 13 негативными мутациями это обнаружит. Второе следствие: при откате коммита ([ADR-0041](../../ADR/0041-ui-commit-rollback-model.md)) и при замене сессии ([ADR-0044](../../ADR/0044-session-replacement-and-registry-sealing.md)) уходящий виджет обязан иметь определённую судьбу, иначе она окажется разной в разных ветках.
 

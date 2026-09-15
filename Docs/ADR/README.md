@@ -1,7 +1,7 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.10
+version: 2.11
 updated: 2026-09-15
 ---
 
@@ -59,6 +59,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0045](0045-atomic-save-slot-generation-publication.md) | accepted | Atomic Save Slot Generation Publication: immutable generations, atomic head `Current`/`Previous`, single writer и явный выбор revision |
 | [0046](0046-test-content-coupling-boundary.md) | accepted | Граница привязки тестов к контенту: две категории тестов (contract vs smoke), отмена исключения Tests, baseline ratchet и потолок размера файлов |
 | [0047](0047-one-shot-effect-pipeline-and-origins.md) | accepted | Единый pipeline одноразовых эффектов: источник не входит в identity эффекта, один `sequence` и apply path для Lua-published и host-local, проверяемый критерий допустимости host-local |
+| [0048](0048-widget-exit-lifecycle-and-input-gating.md) | accepted | Два вида ухода виджета: stale-удаление гасит ввод в момент логического удаления, self-dismissal остаётся интерактивным до конца; интерактивный stale невыразим |
 
 ## Template
 

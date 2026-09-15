@@ -1,8 +1,8 @@
 ---
 title: UI Documentation Index
 status: normative
-version: 2.0
-updated: 2026-09-09
+version: 2.1
+updated: 2026-09-15
 ---
 
 # UI Documentation
@@ -31,7 +31,7 @@ UI является перестраиваемой presentation projection. Lua 
 - Physical Widget публикует opaque `binding_handle`; Semantic Input Adapter резолвит его и пересекает Lua boundary только с current bound `command_id`.
 - UI-document передаётся целиком; patch protocol отсутствует.
 - Reconciliation может переиспользовать physical Screen Widget по stable `instance_key` при неизменном `screen_id`.
-- Removed/stale screen/element перестаёт принимать input до завершения exit animation.
+- Уход элемента со сцены имеет два вида ([ADR-0048](../ADR/0048-widget-exit-lifecycle-and-input-gating.md)). **Stale-удаление** — реконсиляция убрала элемент, показанное им состояние исчезло: приём ввода прекращается в момент логического удаления, до и независимо от физического снятия; интерактивный stale невыразим структурно. **Self-dismissal** — элемент уводит себя сам при живом состоянии: остаётся интерактивным до конца ухода, и взаимодействие уход отменяет.
 - Text использует `text_id`/arguments, assets — `resource_id`.
 - Image resources используют только `fixed_aspect`, `nine_slice` или `tile`; physical rendering metadata не пересекает Lua boundary.
 - Hover, pressed, focus, tooltip и cosmetic animation остаются UE-local.
