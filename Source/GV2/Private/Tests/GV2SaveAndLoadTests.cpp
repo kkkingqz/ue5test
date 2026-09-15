@@ -364,9 +364,11 @@ bool FGV2SaveAndLoadProductionRequestSaveTest::RunTest(const FString& Parameters
     TestTrue(TEXT("RequestSave returned non-zero operation ID"), OpId > 0);
 
     ESessionOperationOutcome Outcome = ESessionOperationOutcome::Superseded;
-    const bool bGotOutcome = Runtime->GetSessionOperationOutcome(OpId, Outcome);
+    FGV2OperationFault Fault;
+    const bool bGotOutcome = Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault);
     TestTrue(TEXT("Save outcome is available"), bGotOutcome);
     TestEqual(TEXT("Save completed successfully"), Outcome, ESessionOperationOutcome::Completed);
+    TestTrue(TEXT("Completed outcome has no fault"), Fault.Code.IsEmpty());
 
     // 4. Verify save container on disk
     TestTrue(TEXT("Head file exists on disk"), IFileManager::Get().FileExists(*HeadFile));
@@ -780,8 +782,10 @@ bool FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest::RunTest(const FStrin
     // First save: generation 1 (State 1: Tavern)
     const int64 Op1 = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome Outcome1;
-    TestTrue(TEXT("Outcome 1 available"), Runtime->GetSessionOperationOutcome(Op1, Outcome1));
+    FGV2OperationFault Fault1;
+    TestTrue(TEXT("Outcome 1 available"), Runtime->GetSessionOperationOutcome(Op1, Outcome1, Fault1));
     TestEqual(TEXT("Save 1 completed"), Outcome1, ESessionOperationOutcome::Completed);
+    TestTrue(TEXT("Completed outcome 1 has no fault"), Fault1.Code.IsEmpty());
 
     FString Head1;
     TestTrue(TEXT("Head 1 exists"), FFileHelper::LoadFileToString(Head1, *HeadFile));
@@ -829,8 +833,10 @@ bool FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest::RunTest(const FStrin
     // Second save: generation 2 (State 2: Market)
     const int64 Op2 = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome Outcome2;
-    TestTrue(TEXT("Outcome 2 available"), Runtime->GetSessionOperationOutcome(Op2, Outcome2));
+    FGV2OperationFault Fault2;
+    TestTrue(TEXT("Outcome 2 available"), Runtime->GetSessionOperationOutcome(Op2, Outcome2, Fault2));
     TestEqual(TEXT("Save 2 completed"), Outcome2, ESessionOperationOutcome::Completed);
+    TestTrue(TEXT("Completed outcome 2 has no fault"), Fault2.Code.IsEmpty());
 
     FString Head2;
     TestTrue(TEXT("Head 2 exists"), FFileHelper::LoadFileToString(Head2, *HeadFile));
@@ -895,8 +901,10 @@ bool FGV2SaveAndLoadRequestSaveErrorCasesTest::RunTest(const FString& Parameters
     const int64 UnreadyOp = Runtime->RequestSave(TEXT("any_slot"));
     TestTrue(TEXT("Unready RequestSave returns op ID"), UnreadyOp > 0);
     ESessionOperationOutcome UnreadyOutcome;
-    TestTrue(TEXT("Unready outcome available"), Runtime->GetSessionOperationOutcome(UnreadyOp, UnreadyOutcome));
+    FGV2OperationFault UnreadyFault;
+    TestTrue(TEXT("Unready outcome available"), Runtime->GetSessionOperationOutcome(UnreadyOp, UnreadyOutcome, UnreadyFault));
     TestEqual(TEXT("Unready outcome is Failed"), UnreadyOutcome, ESessionOperationOutcome::Failed);
+    TestEqual(TEXT("Unready fault code is SessionNotReady"), UnreadyFault.Code, FGV2SessionFaultCodes::SessionNotReady);
 
     Runtime->StartSession();
     TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
@@ -914,8 +922,10 @@ bool FGV2SaveAndLoadRequestSaveErrorCasesTest::RunTest(const FString& Parameters
         const int64 BadOp = Runtime->RequestSave(BadSlot);
         TestTrue(TEXT("Bad slot returns op ID"), BadOp > 0);
         ESessionOperationOutcome BadOutcome;
-        TestTrue(TEXT("Bad slot outcome available"), Runtime->GetSessionOperationOutcome(BadOp, BadOutcome));
+        FGV2OperationFault BadFault;
+        TestTrue(TEXT("Bad slot outcome available"), Runtime->GetSessionOperationOutcome(BadOp, BadOutcome, BadFault));
         TestEqual(TEXT("Invalid slot name outcome is Failed"), BadOutcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Bad slot fault code is InvalidSaveSlotId"), BadFault.Code, FGV2SessionFaultCodes::InvalidSaveSlotId);
     }
 
     // 3. Cancellation before execution
@@ -959,9 +969,10 @@ bool FGV2SaveAndLoadRequestSaveErrorCasesTest::RunTest(const FString& Parameters
     TestTrue(TEXT("QueuedOpId was set"), QueuedOpId > 0);
     TestEqual(TEXT("Cancellation of queued save was accepted"), CancelResult, ESessionCancellationResult::Accepted);
 
-    TOptional<ESessionOperationOutcome> CancelOutcome = Coordinator->GetSessionOperationOutcome(QueuedOpId);
+    TOptional<FGV2SessionOperationResult> CancelOutcome = Coordinator->GetSessionOperationOutcome(QueuedOpId);
     TestTrue(TEXT("CancelOutcome is set"), CancelOutcome.IsSet());
-    TestEqual(TEXT("Outcome is Cancelled"), *CancelOutcome, ESessionOperationOutcome::Cancelled);
+    TestEqual(TEXT("Outcome is Cancelled"), CancelOutcome->Outcome, ESessionOperationOutcome::Cancelled);
+    TestTrue(TEXT("Cancelled outcome has no fault"), CancelOutcome->Fault.Code.IsEmpty());
 
     // Reset interaction sink
     Coordinator->SetInteractionSink(nullptr);
@@ -1055,7 +1066,8 @@ bool FGV2SaveAndLoadProductionRequestLoadTest::RunTest(const FString& Parameters
     const int64 SaveOpId = Runtime->RequestSave(SaveSlot);
     TestTrue(TEXT("RequestSave returned non-zero operation ID"), SaveOpId > 0);
     ESessionOperationOutcome SaveOutcome;
-    TestTrue(TEXT("Save outcome is available"), Runtime->GetSessionOperationOutcome(SaveOpId, SaveOutcome));
+    FGV2OperationFault SaveFault;
+    TestTrue(TEXT("Save outcome is available"), Runtime->GetSessionOperationOutcome(SaveOpId, SaveOutcome, SaveFault));
     TestEqual(TEXT("Save completed successfully"), SaveOutcome, ESessionOperationOutcome::Completed);
 
     // 4. Submit gameplay command 2 in Session A (post-save mutation): travel back to Tavern
@@ -1085,7 +1097,8 @@ bool FGV2SaveAndLoadProductionRequestLoadTest::RunTest(const FString& Parameters
     const int64 LoadOpId = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
     TestTrue(TEXT("RequestLoad returned non-zero operation ID"), LoadOpId > 0);
     ESessionOperationOutcome LoadOutcome;
-    TestTrue(TEXT("Load outcome is available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome));
+    FGV2OperationFault LoadFault;
+    TestTrue(TEXT("Load outcome is available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome, LoadFault));
     TestEqual(TEXT("Load completed successfully"), LoadOutcome, ESessionOperationOutcome::Completed);
 
     // 6. Assert replacement session B lifecycle state
@@ -1178,7 +1191,8 @@ bool FGV2SaveAndLoadUiAuthoredLoadButtonTest::RunTest(const FString& Parameters)
     // Save slot first
     const int64 SaveOp = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome SaveOutcome;
-    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
+    FGV2OperationFault SaveFault;
+    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome, SaveFault));
     TestEqual(TEXT("Save completed"), SaveOutcome, ESessionOperationOutcome::Completed);
 
     FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
@@ -1272,8 +1286,10 @@ bool FGV2SaveAndLoadPreflightFailurePreservesSessionATest::RunTest(const FString
     TestTrue(TEXT("RequestLoad returned non-zero operation ID"), LoadOpId > 0);
 
     ESessionOperationOutcome LoadOutcome;
-    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome));
+    FGV2OperationFault LoadFault;
+    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome, LoadFault));
     TestEqual(TEXT("Load outcome is Failed"), LoadOutcome, ESessionOperationOutcome::Failed);
+    TestEqual(TEXT("Load fault code is SaveContainerCorrupt"), LoadFault.Code, TEXT("SaveContainerCorrupt"));
 
     // Assert session A is preserved
     const FGV2SessionStatus StatusAfterFail = Runtime->GetSessionState();
@@ -1320,7 +1336,8 @@ bool FGV2SaveAndLoadCapturedBytesImmunityToFileOverwriteTest::RunTest(const FStr
 
     const int64 SaveOp = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome SaveOutcome;
-    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
+    FGV2OperationFault SaveFault;
+    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome, SaveFault));
     TestEqual(TEXT("Save completed"), SaveOutcome, ESessionOperationOutcome::Completed);
 
     FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
@@ -1350,7 +1367,8 @@ bool FGV2SaveAndLoadCapturedBytesImmunityToFileOverwriteTest::RunTest(const FStr
     TestTrue(TEXT("Hook was fired during ExecuteSessionStart"), bHookFired);
 
     ESessionOperationOutcome LoadOutcome;
-    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome));
+    FGV2OperationFault LoadFault;
+    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome, LoadFault));
     TestEqual(TEXT("Load completed successfully despite disk corruption"), LoadOutcome, ESessionOperationOutcome::Completed);
 
     const FGV2SessionStatus StatusB = Runtime->GetSessionState();
@@ -1407,7 +1425,8 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
     // Save 1 (Rev 1: Tavern)
     const int64 SaveOp1 = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome Outcome1;
-    TestTrue(TEXT("Save 1 outcome available"), Runtime->GetSessionOperationOutcome(SaveOp1, Outcome1));
+    FGV2OperationFault Fault1;
+    TestTrue(TEXT("Save 1 outcome available"), Runtime->GetSessionOperationOutcome(SaveOp1, Outcome1, Fault1));
     TestEqual(TEXT("Save 1 completed"), Outcome1, ESessionOperationOutcome::Completed);
 
     // Mutate state with command: travel to Market
@@ -1436,7 +1455,8 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
     // Save 2 (Rev 2: now current; Rev 1 is now previous)
     const int64 SaveOp2 = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome Outcome2;
-    TestTrue(TEXT("Save 2 outcome available"), Runtime->GetSessionOperationOutcome(SaveOp2, Outcome2));
+    FGV2OperationFault Fault2;
+    TestTrue(TEXT("Save 2 outcome available"), Runtime->GetSessionOperationOutcome(SaveOp2, Outcome2, Fault2));
     TestEqual(TEXT("Save 2 completed"), Outcome2, ESessionOperationOutcome::Completed);
 
     // Verify .head has both current and previous
@@ -1455,7 +1475,8 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("RequestLoad returned op ID"), LoadOp > 0);
 
     ESessionOperationOutcome LoadOutcome;
-    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome));
+    FGV2OperationFault LoadFault;
+    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome, LoadFault));
     TestEqual(TEXT("Load previous completed"), LoadOutcome, ESessionOperationOutcome::Completed);
 
     const FGV2SessionStatus StatusAfterLoad = Runtime->GetSessionState();
@@ -1593,7 +1614,8 @@ bool FGV2SaveAndLoadPrngStreamContinuationTest::RunTest(const FString& Parameter
 
     const int64 NewGameOp = Runtime->RequestSession(FixedDesc);
     ESessionOperationOutcome NewGameOutcome;
-    TestTrue(TEXT("NewGame outcome available"), Runtime->GetSessionOperationOutcome(NewGameOp, NewGameOutcome));
+    FGV2OperationFault NewGameFault;
+    TestTrue(TEXT("NewGame outcome available"), Runtime->GetSessionOperationOutcome(NewGameOp, NewGameOutcome, NewGameFault));
     TestEqual(TEXT("NewGame completed"), NewGameOutcome, ESessionOperationOutcome::Completed);
     TestTrue(TEXT("Session A is ready"), Runtime->GetSessionState().bIsReady);
     TestEqual(TEXT("Active seed is canonical"), Runtime->GetActiveSeedHex(), FString(TEXT("ffffffffffffffff")));
@@ -1612,7 +1634,8 @@ bool FGV2SaveAndLoadPrngStreamContinuationTest::RunTest(const FString& Parameter
     // Save Session A at draw #3
     const int64 SaveOp = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome SaveOutcome;
-    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
+    FGV2OperationFault SaveFault;
+    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome, SaveFault));
     TestEqual(TEXT("Save completed"), SaveOutcome, ESessionOperationOutcome::Completed);
 
     // Continued draws in Session A match golden outputs #4 and #5:
@@ -1625,7 +1648,8 @@ bool FGV2SaveAndLoadPrngStreamContinuationTest::RunTest(const FString& Parameter
     // Perform load into Session B
     const int64 LoadOpB = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
     ESessionOperationOutcome LoadOutcomeB;
-    TestTrue(TEXT("Load B outcome available"), Runtime->GetSessionOperationOutcome(LoadOpB, LoadOutcomeB));
+    FGV2OperationFault LoadFaultB;
+    TestTrue(TEXT("Load B outcome available"), Runtime->GetSessionOperationOutcome(LoadOpB, LoadOutcomeB, LoadFaultB));
     TestEqual(TEXT("Load B completed"), LoadOutcomeB, ESessionOperationOutcome::Completed);
     TestTrue(TEXT("Session B is ready after load"), Runtime->GetSessionState().bIsReady);
 
@@ -1640,7 +1664,8 @@ bool FGV2SaveAndLoadPrngStreamContinuationTest::RunTest(const FString& Parameter
     // Repeatedly load into Session C to prove deterministic reproduction of the continuation sequence
     const int64 LoadOpC = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
     ESessionOperationOutcome LoadOutcomeC;
-    TestTrue(TEXT("Load C outcome available"), Runtime->GetSessionOperationOutcome(LoadOpC, LoadOutcomeC));
+    FGV2OperationFault LoadFaultC;
+    TestTrue(TEXT("Load C outcome available"), Runtime->GetSessionOperationOutcome(LoadOpC, LoadOutcomeC, LoadFaultC));
     TestEqual(TEXT("Load C completed"), LoadOutcomeC, ESessionOperationOutcome::Completed);
     TestTrue(TEXT("Session C is ready after reload"), Runtime->GetSessionState().bIsReady);
 
@@ -1741,7 +1766,8 @@ bool FGV2SaveAndLoadAnotherSaveAndRestartTest::RunTest(const FString& Parameters
     {
         TestTrue(*FString::Printf(TEXT("%s returned a non-zero operation ID"), What), OpId > 0);
         ESessionOperationOutcome Outcome;
-        TestTrue(*FString::Printf(TEXT("%s outcome is available"), What), Runtime->GetSessionOperationOutcome(OpId, Outcome));
+        FGV2OperationFault Fault;
+        TestTrue(*FString::Printf(TEXT("%s outcome is available"), What), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
         TestEqual(*FString::Printf(TEXT("%s completed"), What), Outcome, ESessionOperationOutcome::Completed);
     };
 
@@ -1888,7 +1914,8 @@ bool FGV2SaveAndLoadGameplaySliceTest::RunTest(const FString& Parameters)
 
     const int64 NewGameOp = Runtime->RequestSession(FixedDesc);
     ESessionOperationOutcome NewGameOutcome;
-    TestTrue(TEXT("NewGame outcome available"), Runtime->GetSessionOperationOutcome(NewGameOp, NewGameOutcome));
+    FGV2OperationFault NewGameFault;
+    TestTrue(TEXT("NewGame outcome available"), Runtime->GetSessionOperationOutcome(NewGameOp, NewGameOutcome, NewGameFault));
     TestEqual(TEXT("NewGame completed"), NewGameOutcome, ESessionOperationOutcome::Completed);
     TestTrue(TEXT("Session A is ready"), Runtime->GetSessionState().bIsReady);
     const int32 GenA = Runtime->GetSessionState().SessionGeneration;
@@ -1957,7 +1984,8 @@ bool FGV2SaveAndLoadGameplaySliceTest::RunTest(const FString& Parameters)
     const int64 SaveOpId = Runtime->RequestSave(SaveSlot);
     TestTrue(TEXT("RequestSave returned non-zero operation ID"), SaveOpId > 0);
     ESessionOperationOutcome SaveOutcome;
-    TestTrue(TEXT("Save outcome is available"), Runtime->GetSessionOperationOutcome(SaveOpId, SaveOutcome));
+    FGV2OperationFault SaveFault;
+    TestTrue(TEXT("Save outcome is available"), Runtime->GetSessionOperationOutcome(SaveOpId, SaveOutcome, SaveFault));
     TestEqual(TEXT("Save completed successfully"), SaveOutcome, ESessionOperationOutcome::Completed);
 
     // 7. Post-save mutation in Session A: travel to East Wing via UI interaction
@@ -1985,7 +2013,8 @@ bool FGV2SaveAndLoadGameplaySliceTest::RunTest(const FString& Parameters)
     const int64 LoadOpId = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
     TestTrue(TEXT("RequestLoad returned non-zero operation ID"), LoadOpId > 0);
     ESessionOperationOutcome LoadOutcome;
-    TestTrue(TEXT("Load outcome is available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome));
+    FGV2OperationFault LoadFault;
+    TestTrue(TEXT("Load outcome is available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome, LoadFault));
     TestEqual(TEXT("Load completed successfully"), LoadOutcome, ESessionOperationOutcome::Completed);
 
     // Assert replacement session B lifecycle state
@@ -2097,13 +2126,15 @@ bool FGV2SaveAndLoadLifecycleStressTest::RunTest(const FString& Parameters)
         const int64 SaveOp = Runtime->RequestSave(SaveSlot);
         TestTrue(TEXT("Stress save op issued"), SaveOp > 0);
         ESessionOperationOutcome SaveOutcome;
-        TestTrue(TEXT("Stress save completed"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
+        FGV2OperationFault SaveFault;
+        TestTrue(TEXT("Stress save completed"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome, SaveFault));
         TestEqual(TEXT("Stress save outcome ok"), SaveOutcome, ESessionOperationOutcome::Completed);
 
         const int64 LoadOp = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
         TestTrue(TEXT("Stress load op issued"), LoadOp > 0);
         ESessionOperationOutcome LoadOutcome;
-        TestTrue(TEXT("Stress load completed"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome));
+        FGV2OperationFault LoadFault;
+        TestTrue(TEXT("Stress load completed"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome, LoadFault));
         TestEqual(TEXT("Stress load outcome ok"), LoadOutcome, ESessionOperationOutcome::Completed);
 
         const FGV2SessionStatus Status = Runtime->GetSessionState();

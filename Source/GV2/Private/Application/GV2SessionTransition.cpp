@@ -1,4 +1,5 @@
 #include "Application/GV2SessionTransition.h"
+#include "GV2RuntimeCore/GV2RuntimeSession.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2SessionTransition, Log, All);
 
@@ -447,7 +448,7 @@ uint64 FGV2SessionTransitionPolicy::EnqueueRequest(
     }
     if (PendingSlot.IsSet())
     {
-        OperationOutcomes.Add(PendingSlot->OperationId, ESessionOperationOutcome::Superseded);
+        OperationOutcomes.Add(PendingSlot->OperationId, FGV2SessionOperationResult::MakeSuccess(ESessionNonFailureOutcome::Superseded));
         PendingSlot.Reset();
     }
 
@@ -479,7 +480,7 @@ uint64 FGV2SessionTransitionPolicy::EnqueueShutdown(
 
     if (PendingSlot.IsSet())
     {
-        OperationOutcomes.Add(PendingSlot->OperationId, ESessionOperationOutcome::Superseded);
+        OperationOutcomes.Add(PendingSlot->OperationId, FGV2SessionOperationResult::MakeSuccess(ESessionNonFailureOutcome::Superseded));
         PendingSlot.Reset();
     }
 
@@ -507,7 +508,7 @@ ESessionCancellationResult FGV2SessionTransitionPolicy::CancelRequest(const uint
     if (PendingSlot.IsSet() && PendingSlot->OperationId == OperationId)
     {
         PendingSlot.Reset();
-        OperationOutcomes.Add(OperationId, ESessionOperationOutcome::Cancelled);
+        OperationOutcomes.Add(OperationId, FGV2SessionOperationResult::MakeSuccess(ESessionNonFailureOutcome::Cancelled));
         return ESessionCancellationResult::Accepted;
     }
 
@@ -524,13 +525,13 @@ ESessionCancellationResult FGV2SessionTransitionPolicy::CancelRequest(const uint
     return ESessionCancellationResult::Stale;
 }
 
-TOptional<ESessionOperationOutcome> FGV2SessionTransitionPolicy::GetOutcome(const uint64 OperationId) const
+TOptional<FGV2SessionOperationResult> FGV2SessionTransitionPolicy::GetOutcome(const uint64 OperationId) const
 {
-    if (const ESessionOperationOutcome* Found = OperationOutcomes.Find(OperationId))
+    if (const FGV2SessionOperationResult* Found = OperationOutcomes.Find(OperationId))
     {
         return *Found;
     }
-    return TOptional<ESessionOperationOutcome>();
+    return TOptional<FGV2SessionOperationResult>();
 }
 
 TOptional<FSessionOperationRecord> FGV2SessionTransitionPolicy::DequeuePendingOperation()
@@ -544,13 +545,30 @@ TOptional<FSessionOperationRecord> FGV2SessionTransitionPolicy::DequeuePendingOp
     return ActiveOperation;
 }
 
-void FGV2SessionTransitionPolicy::RecordOutcome(const uint64 OperationId, const ESessionOperationOutcome Outcome)
+void FGV2SessionTransitionPolicy::RecordOutcome(const uint64 OperationId, const ESessionNonFailureOutcome Outcome)
 {
-    OperationOutcomes.Add(OperationId, Outcome);
+    OperationOutcomes.Add(OperationId, FGV2SessionOperationResult::MakeSuccess(Outcome));
     if (ActiveOperation.IsSet() && ActiveOperation->OperationId == OperationId)
     {
         ActiveOperation.Reset();
     }
+}
+
+void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const FGV2OperationFault& Fault)
+{
+    OperationOutcomes.Add(OperationId, FGV2SessionOperationResult::MakeFailure(Fault));
+    if (ActiveOperation.IsSet() && ActiveOperation->OperationId == OperationId)
+    {
+        ActiveOperation.Reset();
+    }
+}
+
+void FGV2SessionTransitionPolicy::RecordFailure(const uint64 OperationId, const GV2RuntimeCore::FRuntimeFault& Fault)
+{
+    FGV2OperationFault OpFault;
+    OpFault.Code = Fault.Code.empty() ? TEXT("RuntimeFault") : UTF8_TO_TCHAR(Fault.Code.c_str());
+    OpFault.Message = UTF8_TO_TCHAR(Fault.Message.c_str());
+    RecordFailure(OperationId, OpFault);
 }
 
 uint64 FGV2SessionTransitionPolicy::AllocateOperationId()

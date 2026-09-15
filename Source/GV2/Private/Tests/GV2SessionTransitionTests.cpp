@@ -298,9 +298,9 @@ bool FGV2SessionTransitionPendingSupersededTest::RunTest(const FString& Paramete
     TestEqual(TEXT("Pending Op is OpC"), Policy.GetPendingOperation()->OperationId, OpC);
 
     // Verify OpB outcome is immediately Superseded
-    const TOptional<ESessionOperationOutcome> OutcomeB = Policy.GetOutcome(OpB);
+    const TOptional<FGV2SessionOperationResult> OutcomeB = Policy.GetOutcome(OpB);
     TestTrue(TEXT("Outcome for OpB exists"), OutcomeB.IsSet());
-    TestEqual(TEXT("Outcome for OpB is Superseded"), *OutcomeB, ESessionOperationOutcome::Superseded);
+    TestEqual(TEXT("Outcome for OpB is Superseded"), OutcomeB->Outcome, ESessionOperationOutcome::Superseded);
 
     return true;
 }
@@ -336,7 +336,7 @@ bool FGV2SessionTransitionCancellationTest::RunTest(const FString& Parameters)
     const ESessionCancellationResult ResultB = Policy.CancelRequest(OpB);
     TestEqual(TEXT("Pending cancellation accepted"), ResultB, ESessionCancellationResult::Accepted);
     TestFalse(TEXT("Pending slot cleared after cancellation"), Policy.HasPendingOperation());
-    TestEqual(TEXT("OpB outcome is Cancelled"), *Policy.GetOutcome(OpB), ESessionOperationOutcome::Cancelled);
+    TestEqual(TEXT("OpB outcome is Cancelled"), Policy.GetOutcome(OpB)->Outcome, ESessionOperationOutcome::Cancelled);
 
     // 2. Cancel active request OpA before point of no return -> Accepted, bCancellationRequested set
     const ESessionCancellationResult ResultA = Policy.CancelRequest(OpA);
@@ -386,7 +386,7 @@ bool FGV2SessionTransitionShutdownPriorityTest::RunTest(const FString& Parameter
     TestTrue(TEXT("Shutdown gets valid OpId"), OpShutdown > 0);
 
     // OpB was in pending slot: must be superseded!
-    TestEqual(TEXT("Pending OpB superseded by shutdown"), *Policy.GetOutcome(OpB), ESessionOperationOutcome::Superseded);
+    TestEqual(TEXT("Pending OpB superseded by shutdown"), Policy.GetOutcome(OpB)->Outcome, ESessionOperationOutcome::Superseded);
 
     // Active OpA must have cancellation requested
     TestTrue(TEXT("Active OpA marked for cancellation by shutdown"), Policy.GetActiveOperation()->bCancellationRequested);
@@ -572,7 +572,7 @@ bool FGV2SessionSingleVmInvariantTest::RunTest(const FString& Parameters)
 
         const uint64 OpMenu1 = Coordinator.RequestSession(MenuDesc, ReadHandle, 1, *Resolved);
         TestEqual(TEXT("Menu session 1 outcome is Completed"),
-            *Coordinator.GetSessionOperationOutcome(OpMenu1), ESessionOperationOutcome::Completed);
+            Coordinator.GetSessionOperationOutcome(OpMenu1)->Outcome, ESessionOperationOutcome::Completed);
         TestEqual(TEXT("Single VM invariant: LiveVmCount is exactly 1"), GV2RuntimeCore::FRuntimeSession::GetLiveVmCount(), 1);
         TestEqual(TEXT("Session state is Ready"), Coordinator.GetStatus().SessionState, EGV2SessionState::Ready);
         TestEqual(TEXT("Session generation is 1"), Coordinator.GetStatus().SessionGeneration, 1);
@@ -588,7 +588,7 @@ bool FGV2SessionSingleVmInvariantTest::RunTest(const FString& Parameters)
 
         const uint64 OpGame = Coordinator.RequestSession(GameDesc, ReadHandle, 1, *Resolved);
         TestEqual(TEXT("Game session outcome is Completed"),
-            *Coordinator.GetSessionOperationOutcome(OpGame), ESessionOperationOutcome::Completed);
+            Coordinator.GetSessionOperationOutcome(OpGame)->Outcome, ESessionOperationOutcome::Completed);
         TestEqual(TEXT("Single VM invariant maintained: LiveVmCount is exactly 1"), GV2RuntimeCore::FRuntimeSession::GetLiveVmCount(), 1);
         TestEqual(TEXT("Session state is Ready"), Coordinator.GetStatus().SessionState, EGV2SessionState::Ready);
         TestEqual(TEXT("Session generation incremented to 2"), Coordinator.GetStatus().SessionGeneration, 2);
@@ -604,7 +604,7 @@ bool FGV2SessionSingleVmInvariantTest::RunTest(const FString& Parameters)
 
         const uint64 OpMenu3 = Coordinator.RequestSession(MenuDesc3, ReadHandle, 1, *Resolved);
         TestEqual(TEXT("Menu session 3 outcome is Completed"),
-            *Coordinator.GetSessionOperationOutcome(OpMenu3), ESessionOperationOutcome::Completed);
+            Coordinator.GetSessionOperationOutcome(OpMenu3)->Outcome, ESessionOperationOutcome::Completed);
         TestEqual(TEXT("Single VM invariant maintained: LiveVmCount is exactly 1"), GV2RuntimeCore::FRuntimeSession::GetLiveVmCount(), 1);
         TestEqual(TEXT("Session state is Ready"), Coordinator.GetStatus().SessionState, EGV2SessionState::Ready);
         TestEqual(TEXT("Session generation incremented to 3"), Coordinator.GetStatus().SessionGeneration, 3);
@@ -683,7 +683,7 @@ bool FGV2SessionPreCommitCancellationTest::RunTest(const FString& Parameters)
     DescA.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
 
     const uint64 OpA = Coordinator.RequestSession(DescA, ReadHandle, 1, *Resolved);
-    TestEqual(TEXT("Session A completed"), *Coordinator.GetSessionOperationOutcome(OpA), ESessionOperationOutcome::Completed);
+    TestEqual(TEXT("Session A completed"), Coordinator.GetSessionOperationOutcome(OpA)->Outcome, ESessionOperationOutcome::Completed);
     TestEqual(TEXT("Session A is Ready"), Coordinator.GetStatus().SessionState, EGV2SessionState::Ready);
     TestEqual(TEXT("Session A generation is 1"), Coordinator.GetStatus().SessionGeneration, 1);
     TestTrue(TEXT("Session A is ready flag"), Coordinator.GetStatus().bIsReady);
@@ -712,6 +712,130 @@ bool FGV2SessionPreCommitCancellationTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Session A is still ready flag"), Coordinator.GetStatus().bIsReady);
 
     Coordinator.EndSession(EGV2SessionState::Destroyed);
+    return true;
+}
+
+// SAC-05: Typed fault propagation to terminal operation outcomes
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionOperationFaultPropagationTest,
+    "GV2.Runtime.SessionTransition.FaultPropagation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionOperationFaultPropagationTest::RunTest(const FString& Parameters)
+{
+    // 1. Non-failure outcomes never carry a fault
+    {
+        FGV2SessionTransitionPolicy Policy;
+        FSessionStartDescriptor Desc;
+        Desc.Mode = ESessionStartMode::Menu;
+        Desc.RepositoryVersion = TEXT("1");
+        Desc.RepositoryContentHash = TEXT("testhash");
+        Desc.SeedHex = TEXT("0123456789abcdef");
+
+        bool bJoined = false;
+        uint64 JoinedId = 0;
+        const uint64 Op1 = Policy.EnqueueRequest(Desc, bJoined, JoinedId);
+        Policy.RecordOutcome(Op1, ESessionNonFailureOutcome::Completed);
+        const TOptional<FGV2SessionOperationResult> Res1 = Policy.GetOutcome(Op1);
+        TestTrue(TEXT("Op1 outcome is set"), Res1.IsSet());
+        TestEqual(TEXT("Op1 is Completed"), Res1->Outcome, ESessionOperationOutcome::Completed);
+        TestFalse(TEXT("Completed has no fault"), Res1->Fault.IsSet());
+        TestTrue(TEXT("Completed fault code empty"), Res1->Fault.Code.IsEmpty());
+
+        const uint64 Op2 = Policy.EnqueueRequest(Desc, bJoined, JoinedId);
+        const ESessionCancellationResult CancelRes = Policy.CancelRequest(Op2);
+        TestEqual(TEXT("Cancel accepted"), CancelRes, ESessionCancellationResult::Accepted);
+        const TOptional<FGV2SessionOperationResult> Res2 = Policy.GetOutcome(Op2);
+        TestTrue(TEXT("Op2 outcome is set"), Res2.IsSet());
+        TestEqual(TEXT("Op2 is Cancelled"), Res2->Outcome, ESessionOperationOutcome::Cancelled);
+        TestFalse(TEXT("Cancelled has no fault"), Res2->Fault.IsSet());
+        TestTrue(TEXT("Cancelled fault code empty"), Res2->Fault.Code.IsEmpty());
+
+        // Test Superseded
+        const uint64 Op3 = Policy.EnqueueRequest(Desc, bJoined, JoinedId);
+        FSessionStartDescriptor DescOther = Desc;
+        DescOther.SeedHex = TEXT("fedcba9876543210");
+        const uint64 Op4 = Policy.EnqueueRequest(DescOther, bJoined, JoinedId);
+        const TOptional<FGV2SessionOperationResult> Res3 = Policy.GetOutcome(Op3);
+        TestTrue(TEXT("Op3 outcome is set"), Res3.IsSet());
+        TestEqual(TEXT("Op3 is Superseded"), Res3->Outcome, ESessionOperationOutcome::Superseded);
+        TestFalse(TEXT("Superseded has no fault"), Res3->Fault.IsSet());
+        TestTrue(TEXT("Superseded fault code empty"), Res3->Fault.Code.IsEmpty());
+    }
+
+    // 2. Fault catalog enumerator: GetAllDeclaredFaultCodes() provides all declared codes
+    const TArray<FString> DeclaredCodes = FGV2SessionFaultCodes::GetAllDeclaredFaultCodes();
+    TestTrue(TEXT("Declared fault codes list is non-empty"), DeclaredCodes.Num() > 0);
+    TSet<FString> UniqueCodes;
+    for (const FString& Code : DeclaredCodes)
+    {
+        TestFalse(TEXT("Code is not empty"), Code.IsEmpty());
+        TestFalse(*FString::Printf(TEXT("Code %s is unique"), *Code), UniqueCodes.Contains(Code));
+        UniqueCodes.Add(Code);
+
+        // Every declared code recorded via RecordFailure preserves code and message
+        FGV2SessionTransitionPolicy Policy;
+        const uint64 TestOp = Policy.AllocateOperationId();
+        const FString TestMsg = FString::Printf(TEXT("Error detail for %s"), *Code);
+        Policy.RecordFailure(TestOp, FGV2OperationFault{Code, TestMsg});
+        const TOptional<FGV2SessionOperationResult> FaultRes = Policy.GetOutcome(TestOp);
+        TestTrue(TEXT("FaultRes is set"), FaultRes.IsSet());
+        TestEqual(TEXT("Outcome is Failed"), FaultRes->Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(*FString::Printf(TEXT("Fault code matches %s"), *Code), FaultRes->Fault.Code, Code);
+        TestEqual(*FString::Printf(TEXT("Fault message matches %s"), *Code), FaultRes->Fault.Message, TestMsg);
+    }
+
+    // 3. Coordinator achievable failure paths: each path produces typed fault matching declared codes
+    {
+        FGV2SessionCoordinator Coordinator;
+
+        // Path A: RequestSave when !Status.bIsReady -> SessionNotReady
+        const uint64 UnreadySaveOp = Coordinator.RequestSave(TEXT("myslot"));
+        const TOptional<FGV2SessionOperationResult> UnreadySaveRes = Coordinator.GetSessionOperationOutcome(UnreadySaveOp);
+        TestTrue(TEXT("UnreadySaveRes is set"), UnreadySaveRes.IsSet());
+        TestEqual(TEXT("Unready save is Failed"), UnreadySaveRes->Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is SessionNotReady"), UnreadySaveRes->Fault.Code, FGV2SessionFaultCodes::SessionNotReady);
+
+        // Path B: RequestLoad when Repo/Pkg is not set -> RepositoryNotReady
+        const uint64 UnreadyLoadOp = Coordinator.RequestLoad(TEXT("myslot"), ESaveSlotRevision::Current);
+        const TOptional<FGV2SessionOperationResult> UnreadyLoadRes = Coordinator.GetSessionOperationOutcome(UnreadyLoadOp);
+        TestTrue(TEXT("UnreadyLoadRes is set"), UnreadyLoadRes.IsSet());
+        TestEqual(TEXT("Unready load is Failed"), UnreadyLoadRes->Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is RepositoryNotReady"), UnreadyLoadRes->Fault.Code, FGV2SessionFaultCodes::RepositoryNotReady);
+
+        // Path C: RequestSession with invalid descriptor -> InvalidSessionDescriptor
+        AddExpectedError(
+            TEXT("GV2 Lua runtime fault: code=InvalidSessionDescriptor"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+        FSessionStartDescriptor BadDesc;
+        BadDesc.Mode = ESessionStartMode::Menu;
+        BadDesc.RepositoryVersion = TEXT(""); // invalid
+        GV2ContentCore::FRepositoryReadHandle DummyHandle;
+        GV2ContentHostSupport::FResolvedPackageSet DummySet;
+        const uint64 BadDescOp = Coordinator.RequestSession(BadDesc, DummyHandle, 1, DummySet);
+        const TOptional<FGV2SessionOperationResult> BadDescRes = Coordinator.GetSessionOperationOutcome(BadDescOp);
+        TestTrue(TEXT("BadDescRes is set"), BadDescRes.IsSet());
+        TestEqual(TEXT("Bad desc is Failed"), BadDescRes->Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is InvalidSessionDescriptor"), BadDescRes->Fault.Code, FGV2SessionFaultCodes::InvalidSessionDescriptor);
+
+        // Path D: RequestSession with valid descriptor but invalid repo handle -> RepositoryNotReady
+        AddExpectedError(
+            TEXT("GV2 Lua runtime fault: code=RepositoryNotReady"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+        FSessionStartDescriptor ValidDesc;
+        ValidDesc.Mode = ESessionStartMode::Menu;
+        ValidDesc.RepositoryVersion = TEXT("1");
+        ValidDesc.RepositoryContentHash = TEXT("testhash");
+        ValidDesc.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
+        const uint64 BadRepoOp = Coordinator.RequestSession(ValidDesc, DummyHandle, 1, DummySet);
+        const TOptional<FGV2SessionOperationResult> BadRepoRes = Coordinator.GetSessionOperationOutcome(BadRepoOp);
+        TestTrue(TEXT("BadRepoRes is set"), BadRepoRes.IsSet());
+        TestEqual(TEXT("Bad repo is Failed"), BadRepoRes->Outcome, ESessionOperationOutcome::Failed);
+        TestEqual(TEXT("Fault code is RepositoryNotReady"), BadRepoRes->Fault.Code, FGV2SessionFaultCodes::RepositoryNotReady);
+    }
+
     return true;
 }
 

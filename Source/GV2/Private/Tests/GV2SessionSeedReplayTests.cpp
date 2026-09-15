@@ -169,7 +169,7 @@ bool FGV2SessionNewGameSeedsAndPrngTest::RunTest(const FString& Parameters)
 
     const uint64 Op1 = Coordinator.RequestSession(Desc1, ReadHandle, 1, *Resolved);
     TestEqual(TEXT("Session 1 outcome is Completed"),
-        *Coordinator.GetSessionOperationOutcome(Op1), ESessionOperationOutcome::Completed);
+        Coordinator.GetSessionOperationOutcome(Op1)->Outcome, ESessionOperationOutcome::Completed);
     TestEqual(TEXT("Session 1 active seed matches descriptor"), Coordinator.GetActiveSeedHex(), Desc1.SeedHex);
 
     const uint32 Val1 = SampleSessionPrng(*this, Coordinator.GetRuntimeSession(), Desc1.SeedHex);
@@ -187,7 +187,7 @@ bool FGV2SessionNewGameSeedsAndPrngTest::RunTest(const FString& Parameters)
 
     const uint64 Op2 = Coordinator.RequestSession(Desc2, ReadHandle, 2, *Resolved);
     TestEqual(TEXT("Session 2 outcome is Completed"),
-        *Coordinator.GetSessionOperationOutcome(Op2), ESessionOperationOutcome::Completed);
+        Coordinator.GetSessionOperationOutcome(Op2)->Outcome, ESessionOperationOutcome::Completed);
     TestEqual(TEXT("Session 2 active seed matches descriptor"), Coordinator.GetActiveSeedHex(), Desc2.SeedHex);
 
     const uint32 Val2 = SampleSessionPrng(*this, Coordinator.GetRuntimeSession(), Desc2.SeedHex);
@@ -249,7 +249,7 @@ bool FGV2SessionManifestReplayReproducesSessionPrngTest::RunTest(const FString& 
 
     const uint64 Op = Coordinator.RequestSession(Desc, ReadHandle, 1, *Resolved);
     TestEqual(TEXT("Session outcome is Completed"),
-        *Coordinator.GetSessionOperationOutcome(Op), ESessionOperationOutcome::Completed);
+        Coordinator.GetSessionOperationOutcome(Op)->Outcome, ESessionOperationOutcome::Completed);
 
     const uint32 OriginalPrngVal = SampleSessionPrng(*this, Coordinator.GetRuntimeSession(), FixedSeedHex);
     const std::string OriginalStateHash = Coordinator.GetRuntimeSession().GetCanonicalStateHash();
@@ -286,7 +286,7 @@ bool FGV2SessionManifestReplayReproducesSessionPrngTest::RunTest(const FString& 
     ReplayCoordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
     const uint64 ReplayOp = ReplayCoordinator.RequestSession(Desc, ReadHandle, 2, *Resolved);
     TestEqual(TEXT("Coordinator replay outcome is Completed"),
-        *ReplayCoordinator.GetSessionOperationOutcome(ReplayOp), ESessionOperationOutcome::Completed);
+        ReplayCoordinator.GetSessionOperationOutcome(ReplayOp)->Outcome, ESessionOperationOutcome::Completed);
     const uint32 CoordReplayVal = SampleSessionPrng(*this, ReplayCoordinator.GetRuntimeSession(), FixedSeedHex);
     const std::string CoordReplayStateHash = ReplayCoordinator.GetRuntimeSession().GetCanonicalStateHash();
     ReplayCoordinator.EndSession(EGV2SessionState::Destroyed);
@@ -326,7 +326,7 @@ bool FGV2SessionUninitializedDescriptorSeedRejectedTest::RunTest(const FString& 
     AddExpectedErrorPlain(TEXT("InvalidSessionDescriptor"), EAutomationExpectedErrorFlags::Contains, 1);
     const uint64 Op = Coordinator.RequestSession(BadDesc, EmptyHandle, 1, EmptySet);
     TestEqual(TEXT("Coordinator rejects session with uninitialized seed"),
-        *Coordinator.GetSessionOperationOutcome(Op), ESessionOperationOutcome::Failed);
+        Coordinator.GetSessionOperationOutcome(Op)->Outcome, ESessionOperationOutcome::Failed);
 
     return true;
 }

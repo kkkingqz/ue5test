@@ -1235,8 +1235,10 @@ bool FGV2SessionPreservesReadySessionOnInvalidDescriptorRequestTest::RunTest(con
     // 3. Assert non-zero operation id and Failed outcome
     TestTrue(TEXT("RequestSession returns a non-zero operation id"), OpId > 0);
     ESessionOperationOutcome Outcome;
-    TestTrue(TEXT("Outcome is recorded for OpId"), Runtime->GetSessionOperationOutcome(OpId, Outcome));
+    FGV2OperationFault Fault;
+    TestTrue(TEXT("Outcome is recorded for OpId"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
     TestEqual(TEXT("Operation outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+    TestEqual(TEXT("Fault code is InvalidSessionDescriptor"), Fault.Code, FGV2SessionFaultCodes::InvalidSessionDescriptor);
 
     // 4. Assert session A is completely preserved
     const FGV2SessionStatus StatusAfter = Runtime->GetSessionState();
@@ -1354,8 +1356,10 @@ bool FGV2SessionPreservesReadySessionOnUnreadyRepositoryRequestTest::RunTest(con
     // 3. Assert non-zero operation id and Failed outcome
     TestTrue(TEXT("RequestSession returns a non-zero operation id"), OpId > 0);
     ESessionOperationOutcome Outcome;
-    TestTrue(TEXT("Outcome is recorded for OpId"), Runtime->GetSessionOperationOutcome(OpId, Outcome));
+    FGV2OperationFault Fault;
+    TestTrue(TEXT("Outcome is recorded for OpId"), Runtime->GetSessionOperationOutcome(OpId, Outcome, Fault));
     TestEqual(TEXT("Operation outcome is Failed"), Outcome, ESessionOperationOutcome::Failed);
+    TestEqual(TEXT("Fault code is RepositoryNotReady"), Fault.Code, FGV2SessionFaultCodes::RepositoryNotReady);
 
     // 4. Assert session A is completely preserved
     const FGV2SessionStatus StatusAfter = Runtime->GetSessionState();

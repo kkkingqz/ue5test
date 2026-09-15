@@ -85,6 +85,8 @@ struct FSessionOperationRecord
     bool bCommitted = false; // true once BeginReplace has completed
 };
 
+namespace GV2RuntimeCore { struct FRuntimeFault; }
+
 class GV2_API FGV2SessionTransitionPolicy
 {
 public:
@@ -104,7 +106,7 @@ public:
 
     ESessionCancellationResult CancelRequest(uint64 OperationId);
 
-    TOptional<ESessionOperationOutcome> GetOutcome(uint64 OperationId) const;
+    TOptional<FGV2SessionOperationResult> GetOutcome(uint64 OperationId) const;
 
     bool HasPendingOperation() const { return PendingSlot.IsSet(); }
     const TOptional<FSessionOperationRecord>& GetPendingOperation() const { return PendingSlot; }
@@ -116,7 +118,10 @@ public:
     void SetActiveOperation(FSessionOperationRecord InOp) { ActiveOperation = MoveTemp(InOp); }
     void ClearActiveOperation() { ActiveOperation.Reset(); }
 
-    void RecordOutcome(uint64 OperationId, ESessionOperationOutcome Outcome);
+    void RecordOutcome(uint64 OperationId, ESessionNonFailureOutcome Outcome);
+    void RecordOutcome(uint64 OperationId, ESessionOperationOutcome Outcome) = delete;
+    void RecordFailure(uint64 OperationId, const FGV2OperationFault& Fault);
+    void RecordFailure(uint64 OperationId, const GV2RuntimeCore::FRuntimeFault& Fault);
 
     uint64 AllocateOperationId();
 
@@ -126,5 +131,5 @@ private:
     uint64 NextOperationId = 1;
     TOptional<FSessionOperationRecord> ActiveOperation;
     TOptional<FSessionOperationRecord> PendingSlot;
-    TMap<uint64, ESessionOperationOutcome> OperationOutcomes;
+    TMap<uint64, FGV2SessionOperationResult> OperationOutcomes;
 };

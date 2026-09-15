@@ -87,7 +87,7 @@ depends_on:
 
 Это прямое расхождение contract и реализации, а не пожелание к API.
 
-**Исход:** открыт.
+**Исход:** *(Закрыто задачей SAC-05)* Запись `Failed` без typed fault запрещена compile-time сигнатурой (`RecordFailure(...)`, `RecordOutcome(..., ESessionOperationOutcome)` удалён), public read `GetSessionOperationOutcome` возвращает `FGV2OperationFault`/`FGV2SessionOperationResult`, а все достижимые fault codes покрыты тестами и перечисляются из объявления `FGV2SessionFaultCodes::GetAllDeclaredFaultCodes()`.
 
 #### CFC-AF-23 — LIFE-R3 — P3 — terminal operation outcomes не имеют bounded retention
 

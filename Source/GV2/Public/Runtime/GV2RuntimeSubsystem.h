@@ -74,9 +74,9 @@ public:
     ESessionCancellationResult CancelSessionRequest(int64 OperationId);
 
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
-    bool GetSessionOperationOutcome(int64 OperationId, ESessionOperationOutcome& OutOutcome) const;
+    bool GetSessionOperationOutcome(int64 OperationId, ESessionOperationOutcome& OutOutcome, FGV2OperationFault& OutFault) const;
 
-    TOptional<ESessionOperationOutcome> GetSessionOperationOutcome(uint64 OperationId) const;
+    TOptional<FGV2SessionOperationResult> GetSessionOperationOutcome(uint64 OperationId) const;
 
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
     void StartSession();

@@ -95,6 +95,9 @@ INFRA_STRUCT_ALLOWLIST = {
     "FGV2SessionStatus",
     "FSessionStartDescriptor",
     "FGV2SessionStartDescriptor",
+    "FGV2OperationFault",
+    "FGV2SessionOperationResult",
+    "FGV2SessionFaultCodes",
 }
 
 

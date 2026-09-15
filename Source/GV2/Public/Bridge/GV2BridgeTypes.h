@@ -53,6 +53,15 @@ enum class ESessionStartMode : uint8
 using EGV2SessionStartMode = ESessionStartMode;
 
 UENUM(BlueprintType)
+enum class ESessionNonFailureOutcome : uint8
+{
+    Completed,
+    Cancelled,
+    Superseded
+};
+using EGV2SessionNonFailureOutcome = ESessionNonFailureOutcome;
+
+UENUM(BlueprintType)
 enum class ESessionOperationOutcome : uint8
 {
     Completed,
@@ -61,6 +70,153 @@ enum class ESessionOperationOutcome : uint8
     Superseded
 };
 using EGV2SessionOperationOutcome = ESessionOperationOutcome;
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2OperationFault
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "GV2|Runtime")
+    FString Code;
+
+    UPROPERTY(BlueprintReadOnly, Category = "GV2|Runtime")
+    FString Message;
+
+    bool IsSet() const { return !Code.IsEmpty(); }
+
+    static FGV2OperationFault None()
+    {
+        return FGV2OperationFault();
+    }
+};
+using FOperationFault = FGV2OperationFault;
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2SessionOperationResult
+{
+    GENERATED_BODY()
+
+    UPROPERTY(BlueprintReadOnly, Category = "GV2|Runtime")
+    ESessionOperationOutcome Outcome = ESessionOperationOutcome::Completed;
+
+    UPROPERTY(BlueprintReadOnly, Category = "GV2|Runtime")
+    FGV2OperationFault Fault;
+
+    bool IsCompleted() const { return Outcome == ESessionOperationOutcome::Completed; }
+    bool IsFailed() const { return Outcome == ESessionOperationOutcome::Failed; }
+    bool IsCancelled() const { return Outcome == ESessionOperationOutcome::Cancelled; }
+    bool IsSuperseded() const { return Outcome == ESessionOperationOutcome::Superseded; }
+
+    static FGV2SessionOperationResult MakeSuccess(ESessionNonFailureOutcome NonFailure = ESessionNonFailureOutcome::Completed)
+    {
+        FGV2SessionOperationResult Result;
+        switch (NonFailure)
+        {
+        case ESessionNonFailureOutcome::Completed:
+            Result.Outcome = ESessionOperationOutcome::Completed;
+            break;
+        case ESessionNonFailureOutcome::Cancelled:
+            Result.Outcome = ESessionOperationOutcome::Cancelled;
+            break;
+        case ESessionNonFailureOutcome::Superseded:
+            Result.Outcome = ESessionOperationOutcome::Superseded;
+            break;
+        }
+        return Result;
+    }
+
+    static FGV2SessionOperationResult MakeFailure(const FGV2OperationFault& InFault)
+    {
+        FGV2SessionOperationResult Result;
+        Result.Outcome = ESessionOperationOutcome::Failed;
+        Result.Fault = InFault;
+        return Result;
+    }
+
+    bool operator==(ESessionOperationOutcome InOutcome) const { return Outcome == InOutcome; }
+    bool operator!=(ESessionOperationOutcome InOutcome) const { return Outcome != InOutcome; }
+    bool operator==(const FGV2SessionOperationResult& Other) const
+    {
+        return Outcome == Other.Outcome && Fault.Code == Other.Fault.Code;
+    }
+    bool operator!=(const FGV2SessionOperationResult& Other) const
+    {
+        return !(*this == Other);
+    }
+};
+using FSessionOperationResult = FGV2SessionOperationResult;
+
+inline bool operator==(ESessionOperationOutcome Lhs, const FGV2SessionOperationResult& Rhs)
+{
+    return Lhs == Rhs.Outcome;
+}
+inline bool operator!=(ESessionOperationOutcome Lhs, const FGV2SessionOperationResult& Rhs)
+{
+    return Lhs != Rhs.Outcome;
+}
+
+inline FString LexToString(const FGV2SessionOperationResult& Res)
+{
+    return FString::Printf(TEXT("%s (Fault: %s: %s)"),
+        *UEnum::GetValueAsString(Res.Outcome),
+        *Res.Fault.Code,
+        *Res.Fault.Message);
+}
+
+inline FString LexToString(const FGV2OperationFault& Fault)
+{
+    return FString::Printf(TEXT("%s: %s"), *Fault.Code, *Fault.Message);
+}
+
+struct GV2_API FGV2SessionFaultCodes
+{
+    inline static const FString RepositoryNotReady = TEXT("RepositoryNotReady");
+    inline static const FString InvalidSessionDescriptor = TEXT("InvalidSessionDescriptor");
+    inline static const FString SessionNotReady = TEXT("SessionNotReady");
+    inline static const FString InvalidSaveSlotId = TEXT("InvalidSaveSlotId");
+    inline static const FString SaveSlotStorageUnavailable = TEXT("SaveSlotStorageUnavailable");
+    inline static const FString SaveSlotNotFound = TEXT("SaveSlotNotFound");
+    inline static const FString SaveSlotUnreadable = TEXT("SaveSlotUnreadable");
+    inline static const FString RepositoryVersionChanged = TEXT("RepositoryVersionChanged");
+    inline static const FString LuaRuntimeSourceMissing = TEXT("LuaRuntimeSourceMissing");
+    inline static const FString LuaRuntimeSourceInvalid = TEXT("LuaRuntimeSourceInvalid");
+    inline static const FString ScreenRegistryNotReady = TEXT("ScreenRegistryNotReady");
+    inline static const FString ImageCatalogNotReady = TEXT("ImageCatalogNotReady");
+    inline static const FString ThemeNotReady = TEXT("ThemeNotReady");
+    inline static const FString InitialPresentationMissing = TEXT("InitialPresentationMissing");
+    inline static const FString InitialPresentationInvalid = TEXT("InitialPresentationInvalid");
+    inline static const FString InitialPresentationApplyFailed = TEXT("InitialPresentationApplyFailed");
+    inline static const FString InitialPresentationCommitFailed = TEXT("InitialPresentationCommitFailed");
+    inline static const FString PublishReadyFailed = TEXT("PublishReadyFailed");
+    inline static const FString SessionShutdown = TEXT("SessionShutdown");
+    inline static const FString NoPendingStartContext = TEXT("NoPendingStartContext");
+
+    static TArray<FString> GetAllDeclaredFaultCodes()
+    {
+        return {
+            RepositoryNotReady,
+            InvalidSessionDescriptor,
+            SessionNotReady,
+            InvalidSaveSlotId,
+            SaveSlotStorageUnavailable,
+            SaveSlotNotFound,
+            SaveSlotUnreadable,
+            RepositoryVersionChanged,
+            LuaRuntimeSourceMissing,
+            LuaRuntimeSourceInvalid,
+            ScreenRegistryNotReady,
+            ImageCatalogNotReady,
+            ThemeNotReady,
+            InitialPresentationMissing,
+            InitialPresentationInvalid,
+            InitialPresentationApplyFailed,
+            InitialPresentationCommitFailed,
+            PublishReadyFailed,
+            SessionShutdown,
+            NoPendingStartContext
+        };
+    }
+};
 
 UENUM(BlueprintType)
 enum class ESessionCancellationResult : uint8

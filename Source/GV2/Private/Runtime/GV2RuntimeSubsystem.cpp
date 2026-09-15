@@ -259,10 +259,15 @@ int64 UGV2RuntimeSubsystem::RequestSession(const FSessionStartDescriptor& Descri
         RepoVersion,
         PackageSetToUse);
 
-    const TOptional<ESessionOperationOutcome> Outcome = Coordinator->GetSessionOperationOutcome(OpId);
-    if (Outcome.IsSet() && *Outcome == ESessionOperationOutcome::Failed)
+    const TOptional<FGV2SessionOperationResult> Outcome = Coordinator->GetSessionOperationOutcome(OpId);
+    if (Outcome.IsSet() && Outcome->IsFailed())
     {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
+        UE_LOG(
+            LogGV2Runtime,
+            Error,
+            TEXT("Failed to start GV2 session: code=%s message=%s"),
+            *Outcome->Fault.Code,
+            *Outcome->Fault.Message);
         if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed && GetGameInstance() != nullptr)
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Showing UE-native recovery surface: session bootstrap failed"));
@@ -342,24 +347,25 @@ ESessionCancellationResult UGV2RuntimeSubsystem::CancelSessionRequest(const int6
     return Coordinator ? Coordinator->CancelSessionRequest(static_cast<uint64>(OperationId)) : ESessionCancellationResult::Stale;
 }
 
-bool UGV2RuntimeSubsystem::GetSessionOperationOutcome(const int64 OperationId, ESessionOperationOutcome& OutOutcome) const
+bool UGV2RuntimeSubsystem::GetSessionOperationOutcome(const int64 OperationId, ESessionOperationOutcome& OutOutcome, FGV2OperationFault& OutFault) const
 {
     if (!Coordinator)
     {
         return false;
     }
-    const TOptional<ESessionOperationOutcome> Outcome = Coordinator->GetSessionOperationOutcome(static_cast<uint64>(OperationId));
+    const TOptional<FGV2SessionOperationResult> Outcome = Coordinator->GetSessionOperationOutcome(static_cast<uint64>(OperationId));
     if (Outcome.IsSet())
     {
-        OutOutcome = *Outcome;
+        OutOutcome = Outcome->Outcome;
+        OutFault = Outcome->Fault;
         return true;
     }
     return false;
 }
 
-TOptional<ESessionOperationOutcome> UGV2RuntimeSubsystem::GetSessionOperationOutcome(const uint64 OperationId) const
+TOptional<FGV2SessionOperationResult> UGV2RuntimeSubsystem::GetSessionOperationOutcome(const uint64 OperationId) const
 {
-    return Coordinator ? Coordinator->GetSessionOperationOutcome(OperationId) : TOptional<ESessionOperationOutcome>();
+    return Coordinator ? Coordinator->GetSessionOperationOutcome(OperationId) : TOptional<FGV2SessionOperationResult>();
 }
 
 void UGV2RuntimeSubsystem::StartSession()
@@ -390,7 +396,8 @@ void UGV2RuntimeSubsystem::StartSession()
     if (OpId > 0)
     {
         ESessionOperationOutcome Outcome;
-        if (GetSessionOperationOutcome(OpId, Outcome) && Outcome == ESessionOperationOutcome::Completed)
+        FGV2OperationFault Fault;
+        if (GetSessionOperationOutcome(OpId, Outcome, Fault) && Outcome == ESessionOperationOutcome::Completed)
         {
             UE_LOG(
                 LogGV2Runtime,

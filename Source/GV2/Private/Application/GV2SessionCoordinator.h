@@ -58,7 +58,7 @@ public:
 
     ESessionCancellationResult CancelSessionRequest(uint64 OperationId);
 
-    TOptional<ESessionOperationOutcome> GetSessionOperationOutcome(uint64 OperationId) const;
+    TOptional<FGV2SessionOperationResult> GetSessionOperationOutcome(uint64 OperationId) const;
 
     // CFC-09: Save control requests & storage
     void SetSaveSlotStorage(GV2RuntimeCore::ISaveSlotStorage* InStorage);

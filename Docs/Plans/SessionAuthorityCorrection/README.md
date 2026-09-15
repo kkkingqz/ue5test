@@ -216,7 +216,7 @@ Theme проходит тот же путь, что Screen Registry: authoring-�
 
 ### SAC-05 — Связать typed fault с terminal outcome
 
-- [ ] SAC-05 — Связать typed fault с terminal outcome
+- [x] SAC-05 — Связать typed fault с terminal outcome
 
 **Зависимость:** SAC-04. **Файлы:** `Source/GV2/Private/Application/GV2SessionTransition.h/.cpp`, `Source/GV2/Private/Application/GV2SessionCoordinator.cpp`, `Source/GV2/Public/Runtime/GV2RuntimeSubsystem.h` и его `.cpp`, `Source/GV2/Public/Bridge/GV2BridgeTypes.h`.
 
