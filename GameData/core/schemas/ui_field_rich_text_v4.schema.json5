@@ -1,0 +1,51 @@
+{
+  id: "core:schema.ui_field.rich_text.v4",
+  schema_domain: "ui_field",
+  schema_version: 4,
+  root: {
+    kind: "object",
+    fields: {
+      text: {
+        kind: "text",
+        required: true,
+      },
+      spans: {
+        kind: "array",
+        required: false,
+        keyed_by: "key",
+        items: {
+          kind: "object",
+          fields: {
+            key: {
+              kind: "key",
+              required: true,
+            },
+            span_id: {
+              kind: "key",
+              required: false,
+            },
+            binding: {
+              kind: "binding",
+              required: false,
+            },
+            hover: {
+              kind: "object",
+              required: false,
+              fields: {
+                screen_id: {
+                  kind: "ref",
+                  target_kind: "screen",
+                  required: true,
+                },
+                fields: {
+                  kind: "screen_fields",
+                  required: false,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+}

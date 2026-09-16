@@ -441,18 +441,36 @@ private:
 
 /**
  * RichText spans consumer: parses and preflights interactive spans array for UGV2RichTextWidgetBase.
- * Validates canonical span keys, hover payloads, themes, and ensures all referenced runs match.
+ * Validates canonical span keys, binding, and each span's optional hover -- a nested screen
+ * resolved and instantiated off-tree the same way FGV2TabContainerTabsPropertyConsumer resolves
+ * each tab's screen (PEP-05, mirroring DUC-09/10/11). A popover opening a span's hover never
+ * resolves or styles anything itself (PSC-10B): everything below is already done by the time
+ * a span is prepared, independent of whether that span is ever actually hovered.
  */
 class GV2_API FGV2RichTextSpansPropertyConsumer : public IGV2PropertyConsumer
 {
 public:
+    // Per-span prepare-time state: the reflected view model plus the private nested-screen
+    // bookkeeping Commit needs (child field plan, central style transaction), mirroring
+    // FGV2TabContainerTabsPropertyConsumer::FPreparedTabItem's own split between what the
+    // widget stores (FGV2TabItemEntry/FGV2RichTextSpanViewModel) and what only Prepare/Commit
+    // need to carry between the two calls.
+    struct FPreparedSpanItem
+    {
+        FGV2RichTextSpanViewModel Span;
+        TSubclassOf<UGV2ScreenWidgetBase> HoverScreenWidgetClass;
+        TSharedPtr<FGV2ScreenMutationPlan> HoverChildScreenPlan;
+        GV2PresentationApply::FGV2PreparedPresentationTransaction HoverCentralStyleTransaction;
+        bool bHoverHasChildPlan = false;
+    };
+
     virtual EGV2PreparedUiValueKind GetSupportedKind() const override { return EGV2PreparedUiValueKind::Array; }
     virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
-    const TArray<FGV2RichTextSpanViewModel>& GetPreparedSpans() const { return PreparedSpans; }
+    const TArray<FPreparedSpanItem>& GetPreparedSpans() const { return PreparedSpans; }
 
     // PSC-09B/11 (ADR-0043 D2/D3): flattens PreparedSpans into the lower module's own
     // canonical FPreparedRichTextSpan (plain Core types only). The host reconstructs the
@@ -466,9 +484,16 @@ public:
     // context is a typed failure when hover data is present.
     virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }
 
+    // DUC-11: same composition-cycle-guard wiring FGV2TabContainerTabsPropertyConsumer
+    // exposes -- a span's hover nested screen can recurse into a tab container or another
+    // rich text field just as readily as a tab's own nested screen can.
+    void SetActiveCompositionChain(const TArray<FString>* InChain) { ActiveCompositionChain = InChain; }
+
 private:
-    TArray<FGV2RichTextSpanViewModel> PreparedSpans;
+    TArray<FPreparedSpanItem> PreparedSpans;
     const FGV2PresentationPrepareContext* PrepareContext = nullptr;
+    const TArray<FString>* ActiveCompositionChain = nullptr;
+    bool bHasAcceptedRevision = false;
 };
 
 class UGV2ScreenWidgetBase;

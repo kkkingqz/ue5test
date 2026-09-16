@@ -409,11 +409,8 @@ void UGV2RichTextWidgetBase::ApplyPreparedRichTextSpans(
         FGV2RichTextSpanViewModel Span;
         Span.SpanId = FlatSpan.SpanId;
         Span.Key = FlatSpan.Key;
-        Span.Hover.Title = FGV2TextViewModel::FromPrepared(FlatSpan.Hover.Title);
-        Span.Hover.Description = FGV2TextViewModel::FromPrepared(FlatSpan.Hover.Description);
-        Span.Hover.ImageResourceId = FlatSpan.Hover.ImageResourceId;
-        Span.Hover.ResolvedImageBrush = FlatSpan.Hover.ImageBrush;
-        Span.Hover.bHasResolvedImage = FlatSpan.Hover.bHasResolvedImage;
+        Span.Hover.ScreenId = FlatSpan.Hover.ScreenId;
+        Span.Hover.ScreenWidget = Cast<UUserWidget>(FlatSpan.Hover.ScreenWidget.Get());
         Span.Binding = FGV2UiBindingHandle::FromSerialized(FlatSpan.SerializedBinding);
         Spans.Add(MoveTemp(Span));
     }

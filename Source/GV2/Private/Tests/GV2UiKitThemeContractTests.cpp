@@ -442,8 +442,8 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
             FGV2UiCapabilityBuilder Builder;
             Popover->DescribeUiCapabilities(Builder);
             const FGV2UiCapabilityTree Caps = Builder.Build();
-            TestTrue(TEXT("Popover declares title capability"), Caps.Properties.Contains(TEXT("title")));
-            TestTrue(TEXT("Popover declares description capability"), Caps.Properties.Contains(TEXT("description")));
+            // PEP-05: content is a nested screen (ContentBox), not a declared property of
+            // this host -- only host identity remains.
             TestTrue(TEXT("Popover declares key capability"), Caps.Properties.Contains(TEXT("key")));
         }
     }
@@ -1187,36 +1187,28 @@ bool FGV2UiKitWidgetThemeApplicationContractTest::RunTest(const FString& Paramet
             if (UGV2RichTextPopoverWidgetBase* Popover =
                     Cast<UGV2RichTextPopoverWidgetBase>(Widget))
             {
-                UGV2RichTextWidgetBase* PopoverDescription =
-                    Cast<UGV2RichTextWidgetBase>(
-                        Popover->GetWidgetFromName(TEXT("DescriptionText")));
-                TestNotNull(
-                    TEXT("RichText popover composes the reusable RichText component"),
-                    PopoverDescription);
+                // PEP-05: content is a nested screen this popover never builds itself
+                // (PSC-10B) -- InitializePopover only re-parents an already-prepared
+                // instance into ContentBox. The screen widget below stands in for
+                // whatever FGV2RichTextSpansPropertyConsumer::Prepare would have already
+                // built and styled; this test is about the popover's OWN attach/style
+                // behavior, not about nested-screen preparation (covered in
+                // GV2.UI.Consumers.PropertyConsumers).
+                UGV2ScreenWidgetBase* HoverScreen = CreateWidget<UGV2ScreenWidgetBase>(
+                    TestWorld, UGV2ScreenWidgetBase::StaticClass());
+                TestNotNull(TEXT("Hover screen instantiates for popover test"), HoverScreen);
                 FGV2RichTextHoverViewModel HoverModel;
-                HoverModel.Title.Text = FText::FromString(TEXT("Title"));
-                HoverModel.Title = MakeResolvedLiteralTextForTest(*Theme, TEXT("Title"));
-                HoverModel.Description = MakeResolvedLiteralTextForTest(
-                    *Theme,
-                    TEXT("A long popover description that must use the shared wrapping and scrolling behavior."));
+                HoverModel.ScreenId = TEXT("core:screen.test_embedded");
+                HoverModel.ScreenWidget = HoverScreen;
                 TestTrue(
-                    TEXT("RichText popover initializes through the reusable component"),
+                    TEXT("RichText popover initializes with an already-prepared nested screen"),
                     Popover->InitializePopover(
                         HoverModel,
                         MakePreparedRichTextStyleForTest(*Theme)));
-                if (PopoverDescription != nullptr)
-                {
-                    UCommonRichTextBlock* PopoverRichText =
-                        Cast<UCommonRichTextBlock>(PopoverDescription->GetWidgetFromName(TEXT("RichTextBlock")));
-                    UScrollBox* PopoverScrollBox = Cast<UScrollBox>(
-                        PopoverDescription->GetWidgetFromName(TEXT("RichTextScrollBox")));
-                    TestTrue(
-                        TEXT("Popover description inherits automatic wrapping"),
-                        PopoverRichText != nullptr && PopoverRichText->GetAutoWrapText());
-                    TestNotNull(
-                        TEXT("Popover description inherits vertical overflow scrolling"),
-                        PopoverScrollBox);
-                }
+                TestEqual(
+                    TEXT("Popover ContentBox hosts exactly the prepared nested screen"),
+                    Popover->GetPopoverModel().ScreenWidget.Get(),
+                    static_cast<UUserWidget*>(HoverScreen));
             }
         }
 

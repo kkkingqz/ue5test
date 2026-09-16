@@ -386,6 +386,16 @@ bool PrepareUiHostProperties(
                     // above -- see PrepareUiHostProperties' own doc comment.
                     TabConsumer->SetPrepareContext(PrepareContext);
                 }
+                else if (Cap.TargetType == EGV2UiCapabilityTargetType::CustomControl
+                    && Cap.SupportedKind == EGV2PreparedUiValueKind::Array)
+                {
+                    // PEP-05 (DUC-11): a span's hover is a nested screen exactly like a
+                    // tab's own content -- same composition-cycle-guard wiring as the
+                    // NestedScreen branch above.
+                    FGV2RichTextSpansPropertyConsumer* SpansConsumer =
+                        static_cast<FGV2RichTextSpansPropertyConsumer*>(Consumer.Get());
+                    SpansConsumer->SetActiveCompositionChain(ActiveCompositionChain);
+                }
 
                 FString PrepError;
                 if (!Consumer->Prepare(*PresentVal, Cap, TargetWidget, PrepError))

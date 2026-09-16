@@ -1636,10 +1636,10 @@ bool FGV2PropertyConsumersListsDropdownsAndSpansTest::RunTest(const FString& Par
                 Span1Map.Add(TEXT("span_id"), FGV2PreparedUiValue::MakeKey(TEXT("item_span")));
                 Span1Map.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd_inspect@1:1"))));
 
+                // PEP-05: hover is a nested screen -- "core:screen.test_embedded" is the
+                // same registered fixture screen the tab container test below (12) resolves.
                 TMap<FString, FGV2PreparedUiValue> HoverMap;
-                const FGV2TextViewModel HoverTitle =
-                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Hover Title"));
-                HoverMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(HoverTitle));
+                HoverMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
                 Span1Map.Add(TEXT("hover"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(HoverMap)));
 
                 TArray<FGV2PreparedUiValue> SpanElements;
@@ -1651,17 +1651,18 @@ bool FGV2PropertyConsumersListsDropdownsAndSpansTest::RunTest(const FString& Par
                     *SpansCap,
                     RichTextWidget,
                     PrepErr);
-                TestTrue(TEXT("RichText spans Prepare succeeds"), bPrepOk);
+                TestTrue(*FString::Printf(TEXT("RichText spans Prepare succeeds [Error: %s]"), *PrepErr), bPrepOk);
 
                 bool bCommitOk = SpansConsumer->Commit(RichTextWidget, CommitErr);
-                TestTrue(TEXT("RichText spans Commit succeeds"), bCommitOk);
+                TestTrue(*FString::Printf(TEXT("RichText spans Commit succeeds [Error: %s]"), *CommitErr), bCommitOk);
                 TestTrue(TEXT("RichText has interactive span item_span"), RichTextWidget->HasInteractiveSpan(TEXT("item_span")));
                 const FGV2RichTextSpanViewModel* FoundSpan = RichTextWidget->FindInteractiveSpan(TEXT("item_span"));
                 TestNotNull(TEXT("Found interactive span"), FoundSpan);
                 if (FoundSpan)
                 {
                     TestEqual(TEXT("Span binding handle matches"), FoundSpan->Binding.ToString(), FString(TEXT("cmd_inspect@1:1")));
-                    TestEqual(TEXT("Span hover title matches"), FoundSpan->Hover.Title.Text.ToString(), TEXT("Hover Title"));
+                    TestEqual(TEXT("Span hover screen_id matches"), FoundSpan->Hover.ScreenId, FString(TEXT("core:screen.test_embedded")));
+                    TestNotNull(TEXT("Span hover screen widget instantiated"), FoundSpan->Hover.ScreenWidget.Get());
                 }
 
                 // 10b. Negative tests

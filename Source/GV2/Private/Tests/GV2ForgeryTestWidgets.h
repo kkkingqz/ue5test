@@ -135,19 +135,6 @@ public:
 };
 
 /**
- * PSC-10B: a rich text widget with its BindWidget members populated, so a C++-only test can
- * exercise the real ApplyText/decorator paths.
- */
-UCLASS(meta = (GV2TestOnly))
-class UGV2RichTextBoundTestWidget : public UGV2RichTextWidgetBase
-{
-    GENERATED_BODY()
-
-public:
-    void BuildBoundSubWidgets();
-};
-
-/**
  * PSC-10B: a hover popover whose `meta = (BindWidget)` sub-widgets are populated the way a
  * Widget Blueprint would populate them, so a C++-only test can drive the real
  * InitializePopover entry point and read back the physical result.

@@ -2472,12 +2472,11 @@ bool FGV2HoverPopoverStyledFromPreparedValuesTest::RunTest(const FString& Parame
     UGV2RichTextPopoverBoundTestWidget* Popover = NewObject<UGV2RichTextPopoverBoundTestWidget>();
     Popover->BuildBoundSubWidgets();
 
+    // PEP-05 (PSC-10B): hover is a nested screen this popover never builds; this test is
+    // about its OWN style application, not nested-screen prepare (covered elsewhere).
     FGV2RichTextHoverViewModel Model;
-    FString TextError;
-    TestTrue(TEXT("Hover title resolves through the pipeline"),
-        UGV2TextPipeline::ResolveLiteralForAutomationTest(Theme, TEXT("Hover title"), NAME_None, Model.Title, TextError));
-    TestTrue(TEXT("Hover description resolves through the pipeline"),
-        UGV2TextPipeline::ResolveLiteralForAutomationTest(Theme, TEXT("Hover description"), NAME_None, Model.Description, TextError));
+    Model.ScreenId = TEXT("core:screen.test_embedded");
+    Model.ScreenWidget = NewObject<UGV2ScreenWidgetBase>();
 
     TestTrue(TEXT("InitializePopover accepts a model plus its owner's prepared style"),
         Popover->InitializePopover(Model, OwnerStyle));

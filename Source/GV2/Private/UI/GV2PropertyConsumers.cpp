@@ -1679,6 +1679,19 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
     UWidget* TargetWidget,
     FString& OutError)
 {
+    // GBF-05 (mirrors FGV2TabContainerTabsPropertyConsumer::Prepare): leaving a partial
+    // PreparedSpans behind after a rejected Prepare would make this consumer committable
+    // on a prefix of a transaction that was never accepted.
+    bool bSpansPrepareAccepted = false;
+    bHasAcceptedRevision = false;
+    ON_SCOPE_EXIT
+    {
+        if (!bSpansPrepareAccepted)
+        {
+            PreparedSpans.Reset();
+        }
+    };
+
     PreparedSpans.Reset();
     if (!Value.IsArray())
     {
@@ -1686,7 +1699,12 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
         return false;
     }
 
-    bool bHasHover = false;
+    UGV2RichTextWidgetBase* Owner = Cast<UGV2RichTextWidgetBase>(TargetWidget);
+    if (!Owner && TargetWidget)
+    {
+        Owner = TargetWidget->GetTypedOuter<UGV2RichTextWidgetBase>();
+    }
+
     TSet<FName> SeenKeys;
 
     for (const FGV2PreparedUiValue& Item : Value.AsArray())
@@ -1713,7 +1731,8 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
         }
         SeenKeys.Add(ItemKey);
 
-        FGV2RichTextSpanViewModel Span;
+        FPreparedSpanItem PreparedItem;
+        FGV2RichTextSpanViewModel& Span = PreparedItem.Span;
         Span.Key = ItemKey;
         Span.SpanId = ItemKey;
 
@@ -1743,39 +1762,189 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
             }
         }
 
+        // PEP-05 (ADR-0040, DUC-09/10/11): hover is a nested screen -- the same
+        // resolve/instantiate/prepare-child-fields/prepare-central-style sequence
+        // FGV2TabContainerTabsPropertyConsumer::Prepare runs for each tab's own screen,
+        // just for a single embedded screen instead of a keyed array of them.
         if (const FGV2PreparedUiValue* HoverVal = ItemObj.FindField(TEXT("hover")))
         {
-            if (HoverVal->IsObject())
+            if (!HoverVal->IsNull())
             {
+                // PSC-10B (ADR-0043 D1): the popover renderer class was loaded ONCE at
+                // snapshot build. Checking availability here must not be a synchronous
+                // load of its own -- this check runs as soon as Prepare sees ANY span
+                // carrying hover content, before resolving that content: authoring a
+                // hover with no way to ever render it is a content error, not something
+                // deferred to the moment a user happens to hover it.
+                const FGV2ResolvedUiTheme* Theme = PrepareContext != nullptr
+                    ? &PrepareContext->GetTheme()
+                    : nullptr;
+                if (Theme == nullptr || !Theme->IsValid() || Theme->RichTextPopoverClass.Get() == nullptr)
+                {
+                    OutError = TEXT("core:diagnostic.ui_consumer.missing_popover_renderer: RichText popover renderer unavailable in prepared session theme");
+                    return false;
+                }
+
+                if (!HoverVal->IsObject())
+                {
+                    OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.item_kind_mismatch: Span '%s' hover must be an object"), *ItemKey.ToString());
+                    return false;
+                }
                 const FGV2PreparedUiObject& HoverObj = HoverVal->AsObject();
-                if (const FGV2PreparedUiValue* TitleVal = HoverObj.FindField(TEXT("title")))
+
+                const FGV2PreparedUiValue* ScreenIdVal = HoverObj.FindField(TEXT("screen_id"));
+                if (!ScreenIdVal || (!ScreenIdVal->IsStableId() && !ScreenIdVal->IsString()))
                 {
-                    if (TitleVal->IsText())
+                    OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.missing_tab_screen_id: Span '%s' hover requires a screen_id"), *ItemKey.ToString());
+                    return false;
+                }
+                const FString HoverScreenId = ScreenIdVal->IsStableId() ? ScreenIdVal->AsStableId().Id : ScreenIdVal->AsString();
+                if (!GV2StableIdUE::IsOfKind(HoverScreenId, "screen"))
+                {
+                    OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.invalid_tab_screen_id: Span '%s' hover has invalid screen_id '%s'"), *ItemKey.ToString(), *HoverScreenId);
+                    return false;
+                }
+
+                // DUC-11: composition cycle guard, same reasoning as
+                // FGV2TabContainerTabsPropertyConsumer::Prepare's own check.
+                if (ActiveCompositionChain != nullptr && ActiveCompositionChain->Contains(HoverScreenId))
+                {
+                    const FString Chain = FString::Join(*ActiveCompositionChain, TEXT(" -> ")) + TEXT(" -> ") + HoverScreenId;
+                    OutError = FString::Printf(
+                        TEXT("core:diagnostic.ui_composition.cycle_detected: Span '%s' hover composition cycle: %s"),
+                        *ItemKey.ToString(), *Chain);
+                    return false;
+                }
+
+                FGV2ResolvedScreenDescriptor Descriptor;
+                FGV2ScreenResolutionRejection Rejection;
+                bool bScreenResolved = false;
+                if (PrepareContext == nullptr)
+                {
+                    Rejection.Message = TEXT("core:diagnostic.ui_screen_registry.no_resolver_available: no PrepareContext is available");
+                }
+                else
+                {
+                    bScreenResolved = PrepareContext->ResolveScreen(HoverScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection);
+                }
+                if (!bScreenResolved)
+                {
+                    OutError = FString::Printf(
+                        TEXT("core:diagnostic.ui_consumer.unregistered_screen_id: Screen '%s' for span '%s' hover: %s"),
+                        *HoverScreenId, *ItemKey.ToString(), *Rejection.Message);
+                    return false;
+                }
+                const TSubclassOf<UGV2ScreenWidgetBase> TargetWidgetClass = Descriptor.WidgetClass;
+
+                // Reuse the previous revision's already-prepared instance for this span,
+                // the same off-tree-candidate-reuse FGV2TabContainerTabsPropertyConsumer
+                // gets from GetScreenWidgetForTab -- here read directly off the owner's own
+                // CurrentSpans/FindInteractiveSpan, which already is that cache.
+                TObjectPtr<UGV2ScreenWidgetBase> ChildWidget = nullptr;
+                if (Owner != nullptr)
+                {
+                    if (const FGV2RichTextSpanViewModel* Existing = Owner->FindInteractiveSpan(ItemKey))
                     {
-                        Span.Hover.Title = TitleVal->AsText();
+                        ChildWidget = Cast<UGV2ScreenWidgetBase>(Existing->Hover.ScreenWidget.Get());
                     }
                 }
-                if (const FGV2PreparedUiValue* DescVal = HoverObj.FindField(TEXT("description")))
+                if (!ChildWidget && TargetWidget != nullptr)
                 {
-                    if (DescVal->IsText())
+                    if (UWorld* World = TargetWidget->GetWorld())
                     {
-                        Span.Hover.Description = DescVal->AsText();
+                        ChildWidget = CreateWidget<UGV2ScreenWidgetBase>(World, TargetWidgetClass);
                     }
                 }
-                if (const FGV2PreparedUiValue* ImageVal = HoverObj.FindField(TEXT("image_resource_id")))
+                if (ChildWidget == nullptr)
                 {
-                    if (ImageVal->IsStableId())
-                    {
-                        Span.Hover.ImageResourceId = ImageVal->AsStableId().Id;
-                    }
-                    else if (ImageVal->IsString())
-                    {
-                        Span.Hover.ImageResourceId = ImageVal->AsString();
-                    }
+                    OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.missing_target: Span '%s' hover screen widget could not be instantiated"), *ItemKey.ToString());
+                    return false;
                 }
-                if (!Span.Hover.IsEmpty())
+
+                Span.Hover.ScreenId = HoverScreenId;
+                Span.Hover.ScreenWidget = ChildWidget;
+                PreparedItem.HoverScreenWidgetClass = TargetWidgetClass;
+
+                const FGV2PreparedUiValue* FieldsVal = HoverObj.FindField(TEXT("fields"));
+                if (FieldsVal != nullptr && !FieldsVal->IsNull())
                 {
-                    bHasHover = true;
+                    if (!FieldsVal->IsArray())
+                    {
+                        OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.kind_mismatch: Span '%s' hover fields must be an array"), *ItemKey.ToString());
+                        return false;
+                    }
+
+                    TArray<FGV2ScreenFieldValue> NestedFields;
+                    for (const FGV2PreparedUiValue& EnvelopeVal : FieldsVal->AsArray().GetElements())
+                    {
+                        if (!EnvelopeVal.IsObject())
+                        {
+                            OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.item_kind_mismatch: Span '%s' hover field envelope must be an object"), *ItemKey.ToString());
+                            return false;
+                        }
+                        const FGV2PreparedUiObject& EnvelopeObj = EnvelopeVal.AsObject();
+                        const FGV2PreparedUiValue* FieldIdVal = EnvelopeObj.FindField(TEXT("field_id"));
+                        const FGV2PreparedUiValue* SchemaIdVal = EnvelopeObj.FindField(TEXT("schema_id"));
+                        const FGV2PreparedUiValue* InnerValueVal = EnvelopeObj.FindField(TEXT("value"));
+                        if (FieldIdVal == nullptr || !FieldIdVal->IsKey()
+                            || SchemaIdVal == nullptr || !SchemaIdVal->IsString()
+                            || InnerValueVal == nullptr || !InnerValueVal->IsObject())
+                        {
+                            OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.malformed_screen_field_envelope: Span '%s' hover has a malformed nested field envelope"), *ItemKey.ToString());
+                            return false;
+                        }
+
+                        const FString SchemaIdStr = SchemaIdVal->AsString();
+                        FString SchemaError;
+                        const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> NestedSchema =
+                            GV2ScreenFieldMaterializer::GetCompiledSchema(*PrepareContext, TCHAR_TO_UTF8(*SchemaIdStr), SchemaError);
+                        if (!NestedSchema)
+                        {
+                            OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.unknown_schema: Span '%s' hover nested field schema '%s' could not be compiled: %s"), *ItemKey.ToString(), *SchemaIdStr, *SchemaError);
+                            return false;
+                        }
+
+                        FGV2ScreenFieldValue& NestedField = NestedFields.AddDefaulted_GetRef();
+                        NestedField.FieldId = FName(FieldIdVal->AsKey());
+                        NestedField.SchemaId = SchemaIdStr;
+                        NestedField.PreparedValue = InnerValueVal->AsObjectRef();
+                        NestedField.CompiledSchema = NestedSchema;
+                    }
+
+                    TArray<FString> ChildCompositionChain;
+                    if (ActiveCompositionChain != nullptr)
+                    {
+                        ChildCompositionChain = *ActiveCompositionChain;
+                    }
+                    ChildCompositionChain.Add(HoverScreenId);
+
+                    PreparedItem.HoverChildScreenPlan = MakeShared<FGV2ScreenMutationPlan>();
+                    FString ChildPrepareError;
+                    if (!ChildWidget->PrepareScreenFields(
+                            NestedFields,
+                            *PreparedItem.HoverChildScreenPlan,
+                            ChildPrepareError,
+                            &ChildCompositionChain,
+                            PrepareContext))
+                    {
+                        OutError = FString::Printf(TEXT("core:diagnostic.ui_mutation.prepare_failed: Span '%s' hover nested screen fields failed to prepare: %s"), *ItemKey.ToString(), *ChildPrepareError);
+                        return false;
+                    }
+                    PreparedItem.bHoverHasChildPlan = true;
+                }
+
+                if (PrepareContext == nullptr)
+                {
+                    OutError = FString::Printf(TEXT("core:diagnostic.ui_central_style.missing_prepare_context: span '%s' hover"), *ItemKey.ToString());
+                    return false;
+                }
+                if (!GV2CentralStylePreparer::PrepareForSubtree(
+                        ChildWidget,
+                        *PrepareContext,
+                        PreparedItem.HoverCentralStyleTransaction,
+                        OutError))
+                {
+                    return false;
                 }
             }
         }
@@ -1786,51 +1955,11 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
             return false;
         }
 
-        PreparedSpans.Add(MoveTemp(Span));
+        PreparedSpans.Add(MoveTemp(PreparedItem));
     }
 
-    if (bHasHover)
-    {
-        // PSC-10B (ADR-0043 D1): the popover renderer class was loaded ONCE at snapshot
-        // build. Checking availability here must not be a synchronous load of its own --
-        // this check runs during Prepare for every rich text field carrying a hover span.
-        const FGV2ResolvedUiTheme* Theme = PrepareContext != nullptr
-            ? &PrepareContext->GetTheme()
-            : nullptr;
-        if (Theme == nullptr || !Theme->IsValid() || Theme->RichTextPopoverClass.Get() == nullptr)
-        {
-            OutError = TEXT("core:diagnostic.ui_consumer.missing_popover_renderer: RichText popover renderer unavailable in prepared session theme");
-            return false;
-        }
-
-        for (FGV2RichTextSpanViewModel& Span : PreparedSpans)
-        {
-            if (Span.Hover.ImageResourceId.IsEmpty())
-            {
-                continue;
-            }
-
-            FGV2ResolvedImageResource Resolved;
-            FString ResourceError;
-            if (!PrepareContext->ResolveResource(Span.Hover.ImageResourceId, Resolved, ResourceError))
-            {
-                OutError = FString::Printf(
-                    TEXT("core:diagnostic.ui_consumer.rich_text_hover_image_failed: %s"),
-                    *ResourceError);
-                return false;
-            }
-            if (!IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, Resolved.RenderMode))
-            {
-                OutError = FString::Printf(
-                    TEXT("core:diagnostic.ui_consumer.scale_policy_mismatch: RichText hover image '%s' must use fixed_aspect rendering"),
-                    *Span.Hover.ImageResourceId);
-                return false;
-            }
-            Span.Hover.ResolvedImageBrush = Resolved.Brush;
-            Span.Hover.bHasResolvedImage = true;
-        }
-    }
-
+    bSpansPrepareAccepted = true;
+    bHasAcceptedRevision = true;
     return true;
 }
 
@@ -1841,11 +1970,8 @@ GV2PresentationApply::FPreparedRichTextSpan FlattenRichTextSpan(const FGV2RichTe
     GV2PresentationApply::FPreparedRichTextSpan Flattened;
     Flattened.SpanId = Span.SpanId;
     Flattened.Key = Span.Key;
-    Flattened.Hover.Title = FlattenTextValue(Span.Hover.Title);
-    Flattened.Hover.Description = FlattenTextValue(Span.Hover.Description);
-    Flattened.Hover.ImageResourceId = Span.Hover.ImageResourceId;
-    Flattened.Hover.ImageBrush = Span.Hover.ResolvedImageBrush;
-    Flattened.Hover.bHasResolvedImage = Span.Hover.bHasResolvedImage;
+    Flattened.Hover.ScreenId = Span.Hover.ScreenId;
+    Flattened.Hover.ScreenWidget = Span.Hover.ScreenWidget.Get();
     Flattened.SerializedBinding = Span.Binding.ToString();
     return Flattened;
 }
@@ -1859,18 +1985,90 @@ bool FGV2RichTextSpansPropertyConsumer::BuildPreparedOperation(
     GV2PresentationApply::FPreparedRichTextSpansOperation Operation;
     Operation.TargetWidget = TargetWidget;
     Operation.Spans.Reserve(PreparedSpans.Num());
-    for (const FGV2RichTextSpanViewModel& Span : PreparedSpans)
+    for (const FPreparedSpanItem& Item : PreparedSpans)
     {
-        Operation.Spans.Add(FlattenRichTextSpan(Span));
+        Operation.Spans.Add(FlattenRichTextSpan(Item.Span));
     }
     OutTransaction.AddRichTextSpansOperation(MoveTemp(Operation));
     OutError.Reset();
     return true;
 }
 
-// GBF-07: rollback_leaf=PropertyMutation
+// GBF-07: rollback_boundary=RichTextSpansHover
 bool FGV2RichTextSpansPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
+    // GBF-05: nothing was accepted, so there is nothing to publish -- mirrors
+    // FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector's own guard.
+    if (!bHasAcceptedRevision)
+    {
+        return true;
+    }
+
+    // Commit each span's own hover nested screen fields first, through the same
+    // CommitScreenFields a top-level screen uses (DUC-09), with sibling rollback on
+    // failure -- mirrors FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector.
+    for (int32 SpanIndex = 0; SpanIndex < PreparedSpans.Num(); ++SpanIndex)
+    {
+        FPreparedSpanItem& Item = PreparedSpans[SpanIndex];
+        if (Item.bHoverHasChildPlan && Item.HoverChildScreenPlan.IsValid() && Item.Span.Hover.ScreenWidget.IsValid())
+        {
+            UGV2ScreenWidgetBase* ChildWidget = Cast<UGV2ScreenWidgetBase>(Item.Span.Hover.ScreenWidget.Get());
+            FString ChildCommitError;
+            if (ChildWidget == nullptr || !ChildWidget->CommitScreenFields(*Item.HoverChildScreenPlan, ChildCommitError, nullptr))
+            {
+                bool bSiblingRollbackFailed = false;
+                for (int32 RollbackIndex = SpanIndex - 1; RollbackIndex >= 0; --RollbackIndex)
+                {
+                    const FPreparedSpanItem& CommittedItem = PreparedSpans[RollbackIndex];
+                    if (CommittedItem.bHoverHasChildPlan && CommittedItem.HoverChildScreenPlan.IsValid())
+                    {
+                        const FGV2UiRollbackResult SiblingRollback = RollbackFieldPlans(CommittedItem.HoverChildScreenPlan->FieldPlans);
+                        bSiblingRollbackFailed |= !SiblingRollback.bRestored;
+                    }
+                }
+                OutError = FString::Printf(
+                    TEXT("nested screen fields commit failed for span '%s' hover: %s"),
+                    *Item.Span.Key.ToString(), *ChildCommitError);
+                if (bSiblingRollbackFailed && !OutError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+                {
+                    OutError = FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *OutError);
+                }
+                return false;
+            }
+        }
+
+        if (Item.Span.Hover.ScreenWidget.IsValid())
+        {
+            FString StyleError;
+            if (!GV2ApplyTransaction(Item.HoverCentralStyleTransaction, StyleError))
+            {
+                bool bRollbackFailed = false;
+                if (Item.bHoverHasChildPlan && Item.HoverChildScreenPlan.IsValid())
+                {
+                    const FGV2UiRollbackResult CurrentRollback = RollbackFieldPlans(Item.HoverChildScreenPlan->FieldPlans);
+                    bRollbackFailed |= !CurrentRollback.bRestored;
+                }
+                for (int32 RollbackIndex = SpanIndex - 1; RollbackIndex >= 0; --RollbackIndex)
+                {
+                    const FPreparedSpanItem& CommittedItem = PreparedSpans[RollbackIndex];
+                    if (CommittedItem.bHoverHasChildPlan && CommittedItem.HoverChildScreenPlan.IsValid())
+                    {
+                        const FGV2UiRollbackResult SiblingRollback = RollbackFieldPlans(CommittedItem.HoverChildScreenPlan->FieldPlans);
+                        bRollbackFailed |= !SiblingRollback.bRestored;
+                    }
+                }
+                OutError = FString::Printf(
+                    TEXT("nested screen central style commit failed for span '%s' hover: %s"),
+                    *Item.Span.Key.ToString(), *StyleError);
+                if (bRollbackFailed && !OutError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+                {
+                    OutError = FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *OutError);
+                }
+                return false;
+            }
+        }
+    }
+
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {

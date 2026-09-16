@@ -9,9 +9,8 @@
 #include "GV2RichTextPopoverWidgetBase.generated.h"
 
 class UBorder;
-class UCommonTextBlock;
 class UGV2RichTextWidgetBase;
-class UImage;
+class UPanelWidget;
 class USizeBox;
 
 UCLASS(Blueprintable)
@@ -50,16 +49,15 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Properties")
     FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
-    // PSC-10B: the ONLY entry point. A popover is created at hover time, after the screen
-    // transaction, so it can never be the target of its own prepared operation -- it takes
-    // the values from the RichText widget that creates it, which took them from Prepare, and
-    // routes them through a fresh transaction solely for physical application. Style is a
-    // required argument rather than an earlier separate call precisely so an uninitialised
-    // popover is not expressible.
-    //
-    // Passing the creator's whole FPreparedRichTextStyle is deliberate: this popover's own
-    // description is a RichText widget and needs the same token tables, and a hover span
-    // inside it terminates on the same values.
+    // PSC-10B/PEP-05: the ONLY entry point. A popover is created at hover time, after the
+    // screen transaction, so it can never be the target of its own prepared operation, and
+    // it resolves nothing here: InModel.ScreenWidget is already prepared and styled by the
+    // owning RichText field's own Prepare (FGV2RichTextSpansPropertyConsumer). This call
+    // only applies the popover's OWN border/background style (through a fresh transaction,
+    // same as before) and re-parents the already-built nested screen into ContentBox --
+    // it does not build, style, or resolve that screen itself. Style is a required argument
+    // rather than an earlier separate call precisely so an uninitialised popover is not
+    // expressible.
     bool InitializePopover(
         const FGV2RichTextHoverViewModel& InModel,
         const GV2PresentationApply::FPreparedRichTextStyle& InStyle);
@@ -85,14 +83,11 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<USizeBox> PopoverWidth;
 
+    // PEP-05: the sole content host. It receives exactly one child -- the already-prepared
+    // nested screen widget InitializePopover was handed -- the same ClearChildren/AddChild
+    // shape FPreparedKeyedCollectionOperation's own Apply already uses for a generic panel.
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
-    TObjectPtr<UCommonTextBlock> TitleText;
-
-    UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
-    TObjectPtr<UGV2RichTextWidgetBase> DescriptionText;
-
-    UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
-    TObjectPtr<UImage> Icon;
+    TObjectPtr<UPanelWidget> ContentBox;
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;

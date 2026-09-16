@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 0.5
+version: 0.6
 updated: 2026-09-16
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -239,9 +239,9 @@ decisions:
 
 ### PEP-05 — Перевести содержимое hover на nested screen
 
-- [ ] PEP-05 — Перевести содержимое hover на nested screen
+- [x] PEP-05 — Перевести содержимое hover на nested screen
 
-**Зависимость:** PEP-04. **Файлы:** `GameData/core/schemas/ui_field_rich_text_v4.schema.json5` (новая версия рядом с v3); `FGV2RichTextSpanViewModel`/`FGV2RichTextHoverViewModel` в `Source/GV2PresentationApply/Public/GV2PresentationApply/GV2WidgetTypes.h`; потребитель `FGV2RichTextSpansPropertyConsumer`.
+**Зависимость:** PEP-04. **Файлы:** `GameData/core/schemas/ui_field_rich_text_v4.schema.json5` (новая версия рядом с v3); `FGV2RichTextHoverViewModel`/`FPreparedRichTextHover` в `GV2WidgetTypes.h`/`PreparedPresentationTransaction.h`; `FGV2RichTextSpansPropertyConsumer` (`Source/GV2/Public/UI/GV2PropertyConsumers.h`, `.cpp`) переписан по образцу `FGV2TabContainerTabsPropertyConsumer`; `SetActiveCompositionChain`-инъекция для `CustomControl` в `GV2UiMutationPlan.cpp`; `UGV2RichTextPopoverWidgetBase` (`ContentBox` вместо `TitleText`/`DescriptionText`/`Icon`) и WBP-ассет `Content/TextSystem/UI/Widgets/WBP_RichTextPopover.uasset`; тесты в `GV2PropertyConsumersTests.cpp`, `GV2UiKitThemeContractTests.cpp`, `GV2RuntimeCoreTests.cpp`, `GV2ForgeryTestWidgets.h/.cpp`.
 
 **Инвариант:** [ADR-0040](../../ADR/0040-universal-ui-property-pipeline.md) — universal property pipeline: содержимое элемента интерфейса описывается схемой и приходит подготовленными значениями, а не фиксированной C++-структурой. Фиксированная тройка `Title`/`Description`/`ImageResourceId` — schema-specific DTO ровно того вида, который этот ADR отменил в остальном интерфейсе; hover остался единственным местом, куда он не дошёл.
 
@@ -263,6 +263,14 @@ decisions:
 - Существующее содержимое окна воспроизводится на v4 без потери значений; сверка по значениям, не по факту зелёного прогона.
 
 **Evidence:** схема v4, фактическое множество значений с шага 1, прогоны потребителя, запись классификации.
+
+**Реализация.** Фактическое множество значений (шаг 1) — `InitializePopover`'s старая сигнатура: `Title`/`Description` (`FGV2TextViewModel`) и `ImageResourceId`+`ResolvedImageBrush` — ровно то, что снято. `hover` в v4 несёт `{ screen_id: ref(screen), fields: screen_fields }` — тот же маршрут, которым уже пользуется `tab_container.v1` для `tabs[].{screen_id,fields}`; резолв (`PrepareContext->ResolveScreen`, `PrepareScreenFields`, `GV2CentralStylePreparer::PrepareForSubtree`) и off-tree переиспользование кандидата (`UGV2RichTextWidgetBase::FindInteractiveSpan` как готовый кэш по ключу спана, без отдельной TMap) происходят в `FGV2RichTextSpansPropertyConsumer::Prepare`; `Commit` коммитит дочерний `FGV2ScreenMutationPlan` и central-style транзакцию per-span с sibling-rollback при отказе, симметрично `FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector`. `UGV2RichTextPopoverWidgetBase::InitializePopover` только переносит уже подготовленный `ScreenWidget` в `ContentBox` (`ClearChildren`/`AddChild`) и применяет собственный border/background стиль — резолвит и стилизует ноль байт. `PSC-10B` не ослаблен структурно: `GV2PresentationApply.Build.cs` не даёт этому модулю знать `GV2RuntimeCore`/content-authority типы вообще (та же гарантия, что уже доказана для PEP-04), подтверждено зелёным `validate_presentation_apply_module_graph.py`.
+
+Classification (Compatibility Policy, ось Content schemas, pre-1.0): breaking change для `hover`, новая `schema_version=4` рядом с v3 (`v3` не удалена и не изменена — совместима с чем угодно, что её уже использует). Явный перевод контента не потребовался: `rich_text.v3` реально используется только `Scripts/authoring/presentation.lua`'s `description`-полем с пустым `spans`, hover никогда не заполнялся ни в одном реальном (rh:/sample:) контенте — проверено `grep` по `GameData/`/`Scripts/` до начала работы.
+
+Найдена и исправлена собственная архитектурная ошибка по ходу: попытка экспортировать `RefreshViewportSubtree` для переиспользования попапом поймана `validate_presentation_apply_surface.py` (PSC-11) как второй физический вход мутации виджета в обход единственного `FGV2PresentationApply::Apply`. Исправлено — попап строит `FPreparedViewportRefreshOperation` и идёт через тот же единственный facade, как любой другой прикладной код.
+
+Портативный ctest не тронут (PEP-05 не касается `GV2RuntimeCore`). UE: полный `GV2.*` automation suite 197/197 зелёный после двух найденных и исправленных прогонами регрессий (REV3-09 popover-availability-check порядок проверок; `CoreBaselineComponents` капабилити popover). `WBP_RichTextPopover` отредактирован и скомпилирован через `unreal-mcp` (Designer-правка не выполнялась вручную), сохранён на диск.
 
 ---
 

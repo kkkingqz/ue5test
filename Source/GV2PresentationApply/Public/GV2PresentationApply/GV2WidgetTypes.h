@@ -6,6 +6,7 @@
 #include "Styling/SlateTypes.h"
 
 class UCommonTextStyle;
+class UUserWidget;
 
 #include "GV2WidgetTypes.generated.h"
 
@@ -163,31 +164,26 @@ struct GV2PRESENTATIONAPPLY_API FGV2TextViewModel
     }
 };
 
+// PEP-05 (ADR-0040): hover content is a nested screen, not a fixed Title/Description/
+// ImageResourceId triple -- the same NestedScreen route FGV2TabItemEntry already uses
+// for tab content (GV2TabContainerWidgetBase.h). ScreenId names what was resolved;
+// ScreenWidget is the off-tree instance the owner's Prepare already built and styled
+// (PSC-10B: a popover opening this hover never resolves or styles anything itself, it
+// only asks for the reference and attaches it).
 USTRUCT(BlueprintType)
 struct GV2PRESENTATIONAPPLY_API FGV2RichTextHoverViewModel
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
-    FGV2TextViewModel Title;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
-    FGV2TextViewModel Description;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
-    FString ImageResourceId;
-
-    // PSC-10B: transient value prepared from ImageResourceId through the session
-    // snapshot. Tooltip opening applies this brush directly and never reaches a catalog.
-    UPROPERTY(Transient)
-    FSlateBrush ResolvedImageBrush;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Rich Text")
+    FString ScreenId;
 
     UPROPERTY(Transient)
-    bool bHasResolvedImage = false;
+    TWeakObjectPtr<UUserWidget> ScreenWidget;
 
     bool IsEmpty() const
     {
-        return Title.Text.IsEmpty() && Description.Text.IsEmpty() && ImageResourceId.IsEmpty();
+        return ScreenId.IsEmpty();
     }
 };
 

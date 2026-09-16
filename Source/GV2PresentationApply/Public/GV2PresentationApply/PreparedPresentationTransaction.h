@@ -186,16 +186,17 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextValue
     bool bHasResolvedDefaultStyle = false;
 };
 
-// PSC-09B/10B: canonical lower replacement for hover/span USTRUCTs. Hover text keeps
-// its prepared presentation and the optional image is a finished brush resolved in
-// Prepare; opening a tooltip performs no catalog lookup or synchronous load.
+// PEP-05 (ADR-0040): canonical lower replacement for the hover/span USTRUCT. Hover
+// content used to be a fixed Title/Description/ImageResourceId triple -- exactly the
+// schema-specific DTO ADR-0040 abolished everywhere else. It is now a nested screen,
+// prepared and instantiated off-tree the same way FPreparedTabEntry's ScreenWidget is:
+// ScreenId names what was resolved, ScreenWidget is the already-prepared, already-styled
+// widget instance. Opening a popover performs no resolution of its own (PSC-10B) -- it
+// only asks for this reference and attaches it.
 struct GV2PRESENTATIONAPPLY_API FPreparedRichTextHover
 {
-    FPreparedTextValue Title;
-    FPreparedTextValue Description;
-    FString ImageResourceId;
-    FSlateBrush ImageBrush;
-    bool bHasResolvedImage = false;
+    FString ScreenId;
+    TWeakObjectPtr<UWidget> ScreenWidget;
 };
 
 struct GV2PRESENTATIONAPPLY_API FPreparedRichTextSpan
