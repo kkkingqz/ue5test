@@ -1,8 +1,8 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 0.3
-updated: 2026-09-15
+version: 0.4
+updated: 2026-09-16
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
   - ../../UI/UIDocumentAndReconciliation.md
@@ -179,9 +179,9 @@ decisions:
 
 ### PEP-03 — Реализовать DTO, очередь и порядок эффектов
 
-- [ ] PEP-03 — Реализовать DTO, очередь и порядок эффектов
+- [x] PEP-03 — Реализовать DTO, очередь и порядок эффектов
 
-**Зависимость:** PEP-02. **Файлы:** переносимое ядро эффекта рядом с существующими presentation-типами; Lua binding рядом с `publish_snapshot` (`Scripts/authoring/presentation.lua` и его host-side приёмник); тесты CTest и automation.
+**Зависимость:** PEP-02. **Файлы:** `Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2RuntimeSession.h` и `.cpp` (`FPresentationEffect`, `EPresentationEffectRejectReason`, `ResolveEffectTarget`, `PublishHostLocalEffect`/`TakePendingEffects`); `Scripts/boundary/outbound.lua` (`publish_effect`/`take_pending_effects`, staged/committed lifecycle); `Source/GV2RuntimeCore/Private/GV2PresentationEffectConformance.cpp` и `Testing/GV2PresentationEffectConformance.h`; `Source/GV2/Private/Tests/GV2PresentationEffectConformanceTests.cpp`; `Tests/Lua/presentation/effect_queue_spec.lua`.
 
 **Инвариант:** [достоверная приёмка](../../Architecture/BuildAndTooling.md) и раздел `Snapshot/effect ordering` контракта. Очередь без монотонного `sequence` и без отбрасывания чужого поколения — это тихая доставка эффекта в сессию, которая его не заказывала: наблюдаемо как всплывающее окно предыдущей сессии поверх новой.
 

@@ -101,6 +101,9 @@ FIXED_LIFECYCLE_ENTRY_POINTS = {
     "seal",
     "stop",
     "take_pending_screen",
+    # PEP-03 (ADR-0047): mirrors take_pending_screen's own entry above -- the effect
+    # queue's Lua-pull entry point.
+    "take_pending_effects",
     "unregister",
     "validate_state",
     "validate_state_tree",
@@ -129,6 +132,13 @@ PRESENTATION_DOCUMENT_FIELDS = {
     "revision",
     "schema_id",
     "ui_instance_id",
+    # PEP-03 (ADR-0047): one-shot presentation effect DTO fields -- effect_id/target/args
+    # mirror screen_id/route/fields' own deserialization-field status above; none of
+    # these three names a canonical state section (see FORBIDDEN_SCHEMA_TRAVERSAL_LITERALS
+    # below), so they belong here, not there.
+    "effect_id",
+    "target",
+    "args",
 }
 
 # Host control, bridge and safe-point save entry points:

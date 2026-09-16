@@ -19,6 +19,7 @@ add_library(gv2_runtime_core STATIC
     "${GV2_RUNTIME_CORE_DIR}/Private/GV2RegistryLifecycleConformance.cpp"
     "${GV2_RUNTIME_CORE_DIR}/Private/GV2ValidatorRegistryConformance.cpp"
     "${GV2_RUNTIME_CORE_DIR}/Private/GV2LuaSpecRunnerConformance.cpp"
+    "${GV2_RUNTIME_CORE_DIR}/Private/GV2PresentationEffectConformance.cpp"
     ${GV2_LUA_SOURCES}
 )
 

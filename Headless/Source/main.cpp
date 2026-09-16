@@ -44,6 +44,7 @@
 #include "GV2RuntimeCore/Testing/GV2RunDigestConformance.h"
 #include "GV2RuntimeCore/Testing/GV2RunManifestConformance.h"
 #include "GV2RuntimeCore/Testing/GV2ColdStartLoadConformance.h"
+#include "GV2RuntimeCore/Testing/GV2PresentationEffectConformance.h"
 #include "GV2RuntimeCore/Testing/GV2RunReplayConformance.h"
 #include "GV2RuntimeCore/Testing/GV2SaveSlotStorageConformance.h"
 #include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
@@ -1284,6 +1285,16 @@ int Run(
         {
             std::cerr << "registry_lifecycle_conformance_failed case=" << RegistryLifecycleFailure << '\n';
             return 21;
+        }
+
+        // PEP-03 (ADR-0047): one-shot presentation effect DTO/queue/sequence conformance
+        // (plan PresentationEffectPipeline, M1).
+        const std::string PresentationEffectFailure =
+            GV2RuntimeCore::Testing::RunPresentationEffectConformance();
+        if (!PresentationEffectFailure.empty())
+        {
+            std::cerr << "presentation_effect_conformance_failed case=" << PresentationEffectFailure << '\n';
+            return 22;
         }
 
         // TAS-04: both hosts call this one runner over Tests/Lua/**/*.lua.

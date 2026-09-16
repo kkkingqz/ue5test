@@ -195,6 +195,14 @@ struct FRuntimeSession::FImpl
     std::vector<std::string> DiscoveredPackageIds;
     std::vector<FModuleSpec> LoadedModulesOrder;
 
+    // PEP-03 (ADR-0047 §3): one counter for both sources -- PublishHostLocalEffect and
+    // TakePendingEffects' own Lua-pull half both draw from this, in whichever order the
+    // two are actually called, so sequence reflects real assignment order regardless of
+    // source. PendingEffects holds effects already assigned a Sequence, awaiting the next
+    // TakePendingEffects call to drain them.
+    std::int64_t NextEffectSequence = 1;
+    std::vector<FPresentationEffect> PendingEffects;
+
     bool IsOwnerThread() const
     {
         return State == nullptr || OwnerThread == std::this_thread::get_id();
@@ -3015,6 +3023,284 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
+    // PEP-03 (ADR-0047): reads { ui_instance_id, revision } -- rejects any other key so
+    // a typo or a field from a future revision of the contract fails loudly instead of
+    // being silently ignored, matching ReadScreenInstance's own closed-field discipline.
+    bool ReadPresentationEffectTarget(
+        const int TableIndex,
+        FPresentationEffect& OutEffect,
+        FRuntimeFault& OutFault)
+    {
+        if (!lua_istable(State, TableIndex))
+        {
+            OutFault = {"LuaPresentationEffectInvalid", "Effect target must be a table."};
+            return false;
+        }
+        const int AbsoluteIndex = lua_absindex(State, TableIndex);
+
+        lua_pushnil(State);
+        while (lua_next(State, AbsoluteIndex) != 0)
+        {
+            if (lua_type(State, -2) != LUA_TSTRING)
+            {
+                lua_pop(State, 2);
+                OutFault = {"LuaPresentationEffectInvalid", "Effect target keys must be strings."};
+                return false;
+            }
+            std::size_t KeyLength = 0;
+            const char* KeyData = lua_tolstring(State, -2, &KeyLength);
+            const std::string Key(KeyData, KeyLength);
+            lua_pop(State, 1);
+            if (Key != "ui_instance_id" && Key != "revision")
+            {
+                lua_pop(State, 1);
+                OutFault = {"LuaPresentationEffectInvalid", "Effect target contains an unknown field: " + Key};
+                return false;
+            }
+        }
+
+        lua_getfield(State, AbsoluteIndex, "ui_instance_id");
+        if (lua_type(State, -1) != LUA_TSTRING)
+        {
+            lua_pop(State, 1);
+            OutFault = {"LuaPresentationEffectInvalid", "Effect target ui_instance_id must be a string."};
+            return false;
+        }
+        std::size_t InstanceLength = 0;
+        const char* InstanceData = lua_tolstring(State, -1, &InstanceLength);
+        OutEffect.TargetUiInstanceId.assign(InstanceData, InstanceLength);
+        lua_pop(State, 1);
+        if (OutEffect.TargetUiInstanceId.empty())
+        {
+            OutFault = {"LuaPresentationEffectInvalid", "Effect target ui_instance_id must not be empty."};
+            return false;
+        }
+
+        lua_getfield(State, AbsoluteIndex, "revision");
+        if (!lua_isinteger(State, -1) || lua_tointeger(State, -1) <= 0)
+        {
+            lua_pop(State, 1);
+            OutFault = {"LuaPresentationEffectInvalid", "Effect target revision must be a positive integer."};
+            return false;
+        }
+        OutEffect.TargetRevision = static_cast<std::int64_t>(lua_tointeger(State, -1));
+        lua_pop(State, 1);
+
+        OutEffect.bHasTarget = true;
+        return true;
+    }
+
+    // PEP-03 (ADR-0047 §1/§4): reads { effect_id, target?, args? } -- Sequence and the
+    // Target*SessionGeneration field are NEVER read from Lua; both are host-stamped by
+    // the caller (CallTakePendingEffects/PublishHostLocalEffect) after this returns, the
+    // same way Sequence is host-assigned for every other queue in this file. An unknown
+    // top-level field is rejected before the effect is queued, not silently dropped --
+    // PEP-03's own Done bullet: "эффект с лишним или неизвестным полем отвергается до
+    // постановки".
+    bool ReadPresentationEffect(
+        const int TableIndex,
+        FPresentationEffect& OutEffect,
+        FRuntimeFault& OutFault)
+    {
+        if (!lua_istable(State, TableIndex))
+        {
+            OutFault = {"LuaPresentationEffectInvalid", "Effect must be a table."};
+            return false;
+        }
+        const int AbsoluteIndex = lua_absindex(State, TableIndex);
+        FPresentationEffect Candidate;
+
+        lua_pushnil(State);
+        while (lua_next(State, AbsoluteIndex) != 0)
+        {
+            if (lua_type(State, -2) != LUA_TSTRING)
+            {
+                lua_pop(State, 2);
+                OutFault = {"LuaPresentationEffectInvalid", "Effect keys must be strings."};
+                return false;
+            }
+            std::size_t KeyLength = 0;
+            const char* KeyData = lua_tolstring(State, -2, &KeyLength);
+            const std::string Key(KeyData, KeyLength);
+            lua_pop(State, 1);
+            if (Key != "effect_id" && Key != "target" && Key != "args")
+            {
+                lua_pop(State, 1);
+                OutFault = {"LuaPresentationEffectInvalid", "Effect contains an unknown field: " + Key};
+                return false;
+            }
+        }
+
+        lua_getfield(State, AbsoluteIndex, "effect_id");
+        if (lua_type(State, -1) != LUA_TSTRING)
+        {
+            lua_pop(State, 1);
+            OutFault = {"LuaPresentationEffectInvalid", "Effect effect_id must be a string."};
+            return false;
+        }
+        std::size_t EffectIdLength = 0;
+        const char* EffectIdData = lua_tolstring(State, -1, &EffectIdLength);
+        Candidate.EffectId.assign(EffectIdData, EffectIdLength);
+        lua_pop(State, 1);
+        if (!FStableId::IsOfKind(Candidate.EffectId, "effect"))
+        {
+            OutFault = {"LuaPresentationEffectInvalid", "Effect effect_id is not a valid 'effect' Stable ID."};
+            return false;
+        }
+
+        lua_getfield(State, AbsoluteIndex, "target");
+        if (!lua_isnil(State, -1))
+        {
+            if (!ReadPresentationEffectTarget(-1, Candidate, OutFault))
+            {
+                lua_pop(State, 1);
+                return false;
+            }
+        }
+        lua_pop(State, 1);
+
+        lua_getfield(State, AbsoluteIndex, "args");
+        if (lua_isnil(State, -1))
+        {
+            Candidate.Args.clear();
+        }
+        else
+        {
+            std::size_t NodeCount = 0;
+            std::set<const void*> ActiveTables;
+            FValue ArgsValue;
+            const bool bArgsValid = ReadPortableValue(-1, ArgsValue, 0, NodeCount, ActiveTables, OutFault);
+            if (!bArgsValid)
+            {
+                lua_pop(State, 1);
+                return false;
+            }
+            if (!std::holds_alternative<FValue::FObject>(ArgsValue.Data))
+            {
+                lua_pop(State, 1);
+                OutFault = {"LuaPresentationEffectInvalid", "Effect args must be an object."};
+                return false;
+            }
+            Candidate.Args = std::get<FValue::FObject>(std::move(ArgsValue.Data));
+        }
+        lua_pop(State, 1);
+
+        OutEffect = std::move(Candidate);
+        return true;
+    }
+
+    // PEP-03 (ADR-0047 §3): host-stamps Sequence and (when targeted) SessionGeneration --
+    // never trusts either from the caller, matching ReadPresentationEffect's own refusal
+    // to read them from Lua. This is the SOLE place either field is assigned, for BOTH
+    // sources: PublishHostLocalEffect and CallTakePendingEffects' own Lua-pull loop both
+    // call this, in whichever order the host actually calls them.
+    void StampAndEnqueueEffect(FPresentationEffect Effect)
+    {
+        Effect.Sequence = NextEffectSequence++;
+        if (Effect.bHasTarget)
+        {
+            Effect.TargetSessionGeneration = SessionGeneration;
+        }
+        PendingEffects.push_back(std::move(Effect));
+    }
+
+    bool CallPublishHostLocalEffect(FPresentationEffect Effect, FRuntimeFault& OutFault)
+    {
+        OutFault = {};
+        if (!IsOwnerThread())
+        {
+            OutFault = {"RuntimeWrongThread", "PublishHostLocalEffect must execute on the session owner thread."};
+            return false;
+        }
+        if (SessionGeneration <= 0)
+        {
+            OutFault = {"LuaVmNotStarted", "PublishHostLocalEffect requires a started session."};
+            return false;
+        }
+        if (!FStableId::IsOfKind(Effect.EffectId, "effect"))
+        {
+            OutFault = {"PresentationEffectInvalid", "Engine-originated effect_id is not a valid 'effect' Stable ID."};
+            return false;
+        }
+        StampAndEnqueueEffect(std::move(Effect));
+        return true;
+    }
+
+    bool CallTakePendingEffects(
+        std::vector<FPresentationEffect>& OutEffects,
+        FRuntimeFault& OutFault)
+    {
+        OutEffects.clear();
+        if (!BeginEntry("take_pending_effects", OutFault))
+        {
+            return false;
+        }
+
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+
+        lua_getglobal(State, "game");
+        if (!lua_istable(State, -1))
+        {
+            OutEffects = std::move(PendingEffects);
+            PendingEffects.clear();
+            return true;
+        }
+        lua_getfield(State, -1, "ui");
+        if (!lua_istable(State, -1))
+        {
+            OutEffects = std::move(PendingEffects);
+            PendingEffects.clear();
+            return true;
+        }
+        lua_getfield(State, -1, "take_pending_effects");
+        if (!lua_isfunction(State, -1))
+        {
+            OutEffects = std::move(PendingEffects);
+            PendingEffects.clear();
+            return true;
+        }
+
+        if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "LuaPresentationEffectTakeError", "Lua failed to return pending effects.", OutFault);
+            return false;
+        }
+
+        if (!lua_isnil(State, -1))
+        {
+            if (!lua_istable(State, -1))
+            {
+                OutFault = {"LuaPresentationEffectInvalid", "Pending effects must be an array table."};
+                return false;
+            }
+            const int TableIndex = lua_absindex(State, -1);
+            const int Count = static_cast<int>(lua_rawlen(State, TableIndex));
+            for (int i = 1; i <= Count; ++i)
+            {
+                lua_rawgeti(State, TableIndex, i);
+                FPresentationEffect Candidate;
+                const bool bValid = ReadPresentationEffect(-1, Candidate, OutFault);
+                lua_pop(State, 1);
+                if (!bValid)
+                {
+                    return false;
+                }
+                // sequence assigned in Lua array order -- effects Lua queued earlier
+                // (lower array index) get a lower Sequence than ones queued later in the
+                // same batch, regardless of how many host-local effects interleave with
+                // this pull on either side.
+                StampAndEnqueueEffect(std::move(Candidate));
+            }
+        }
+
+        OutEffects = std::move(PendingEffects);
+        PendingEffects.clear();
+        return true;
+    }
+
     bool CallTakePendingControlRequests(
         std::vector<FHostControlRequest>& OutRequests,
         FRuntimeFault& OutFault)
@@ -3602,6 +3888,28 @@ bool FRuntimeSession::TakePendingControlRequests(
     return Impl->CallTakePendingControlRequests(OutRequests, OutFault);
 }
 
+bool FRuntimeSession::PublishHostLocalEffect(FPresentationEffect Effect, FRuntimeFault& OutFault)
+{
+    if (!Impl)
+    {
+        OutFault = {"LuaVmNotStarted", "PublishHostLocalEffect requires a valid runtime session."};
+        return false;
+    }
+    return Impl->CallPublishHostLocalEffect(std::move(Effect), OutFault);
+}
+
+bool FRuntimeSession::TakePendingEffects(
+    std::vector<FPresentationEffect>& OutEffects,
+    FRuntimeFault& OutFault)
+{
+    if (!Impl)
+    {
+        OutFault = {"LuaVmNotStarted", "TakePendingEffects requires a valid runtime session."};
+        return false;
+    }
+    return Impl->CallTakePendingEffects(OutEffects, OutFault);
+}
+
 bool FRuntimeSession::IsStarted() const
 {
     return Impl->State != nullptr;
@@ -3641,5 +3949,30 @@ std::string FRuntimeSession::GetScriptSetHash() const
 std::vector<FReplacedModuleInfo> FRuntimeSession::GetReplacedModules() const
 {
     return Impl ? Impl->ReplacedModules : std::vector<FReplacedModuleInfo>{};
+}
+
+EPresentationEffectRejectReason ResolveEffectTarget(
+    const FPresentationEffect& Effect,
+    std::int32_t CurrentSessionGeneration,
+    const std::string& CurrentUiInstanceId,
+    std::int64_t CurrentRevision)
+{
+    if (!Effect.bHasTarget)
+    {
+        return EPresentationEffectRejectReason::None;
+    }
+    if (Effect.TargetSessionGeneration != CurrentSessionGeneration)
+    {
+        return EPresentationEffectRejectReason::WrongSessionGeneration;
+    }
+    if (Effect.TargetUiInstanceId != CurrentUiInstanceId)
+    {
+        return EPresentationEffectRejectReason::StaleTarget;
+    }
+    if (Effect.TargetRevision != CurrentRevision)
+    {
+        return EPresentationEffectRejectReason::StaleRevision;
+    }
+    return EPresentationEffectRejectReason::None;
 }
 }

@@ -172,6 +172,16 @@ MECHANISM_LUA_FIXTURE_CONFORMANCE_FILES = {
     # methods before any canonical state build. Its embedded Lua is synthetic
     # fixture data, not a gameplay rule.
     "GV2RuntimeCore/Private/GV2RegistryLifecycleConformance.cpp",
+    # Tests FRuntimeSession::PublishHostLocalEffect/TakePendingEffects and
+    # ResolveEffectTarget's C++ orchestration (PEP-03, ADR-0047): DTO parsing,
+    # sequence stamping/monotonicity across sources, and the three typed
+    # rejection reasons. Its embedded migrate/state_validator/state_composition
+    # stubs and synthetic game.ui.publish_effect/take_pending_effects are
+    # deliberately trivial fixture data, not copies of the real Scripts/ rule
+    # logic — the real Scripts/boundary/outbound.lua's own light validation and
+    # staged/committed/rollback lifecycle is covered by
+    # Tests/Lua/presentation/effect_queue.lua instead.
+    "GV2RuntimeCore/Private/GV2PresentationEffectConformance.cpp",
 }
 
 

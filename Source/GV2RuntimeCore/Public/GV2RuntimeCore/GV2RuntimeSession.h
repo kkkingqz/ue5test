@@ -202,6 +202,50 @@ struct FScreenRequest
     bool operator==(const FScreenRequest&) const = default;
 };
 
+// PEP-03 (ADR-0047): one-shot presentation effect. Source (Lua-published vs host-local)
+// is deliberately absent -- ADR-0047's whole point is that source does not belong in
+// identity. Target fields are flattened (not a nested optional struct) to mirror
+// FSemanticInput's own shape above, the established precedent at this same layer for
+// "which UI instance/revision does this message belong to". bHasTarget distinguishes an
+// untargeted effect (always applicable) from a targeted one pointing at generation 0/
+// empty instance id, which would otherwise be indistinguishable from a genuine target.
+struct FPresentationEffect
+{
+    std::string EffectId;
+    std::int64_t Sequence = 0;
+    bool bHasTarget = false;
+    std::int32_t TargetSessionGeneration = 0;
+    std::string TargetUiInstanceId;
+    std::int64_t TargetRevision = 0;
+    FValue::FObject Args;
+
+    bool operator==(const FPresentationEffect&) const = default;
+};
+
+// PEP-03 (ADR-0047 §4): the three distinct rejection causes the contract requires --
+// a bare bool would make "delivered to the wrong session" indistinguishable from
+// ordinary stale-target discarding.
+enum class EPresentationEffectRejectReason : std::uint8_t
+{
+    None,
+    StaleTarget,
+    WrongSessionGeneration,
+    StaleRevision,
+};
+
+// Pure function, no session/Lua state: given an effect and the CURRENT session/document
+// coordinates it would be applied against, decides whether it still applies. An
+// untargeted effect (bHasTarget == false) always resolves None -- it names no UI
+// coordinate to have gone stale against. Order of checks matters for which single
+// reason a triply-wrong target reports: generation first (a completely different
+// session), then instance (same session, different/torn-down UI document), then
+// revision (same instance, document has since moved on).
+GV2_PORTABLE_API EPresentationEffectRejectReason ResolveEffectTarget(
+    const FPresentationEffect& Effect,
+    std::int32_t CurrentSessionGeneration,
+    const std::string& CurrentUiInstanceId,
+    std::int64_t CurrentRevision);
+
 struct FRuntimeSource
 {
     std::string Name;
@@ -397,6 +441,23 @@ public:
     bool PreflightSaveBytes(const std::string& Bytes, FRuntimeFault& OutFault);
     bool TakePendingControlRequests(
         std::vector<FHostControlRequest>& OutRequests,
+        FRuntimeFault& OutFault);
+
+    // PEP-03 (ADR-0047): host-local source -- a presentation event with no gameplay
+    // meaning (hover, self-dismiss timer). Assigns the next Sequence from the SAME
+    // counter TakePendingEffects below uses for Lua-published effects, appends
+    // immediately; Effect.Sequence on entry is ignored (overwritten), matching
+    // TakePendingEffects' own assignment-at-enqueue behavior for the Lua-published half.
+    bool PublishHostLocalEffect(FPresentationEffect Effect, FRuntimeFault& OutFault);
+
+    // Pulls every effect Lua committed since the last call (game.ui.take_pending_effects,
+    // mirroring take_pending_requests' staged/committed queue -- see outbound.lua),
+    // assigns each the next Sequence in array order, then returns AND CLEARS every
+    // pending effect -- both the ones just pulled from Lua and any queued directly via
+    // PublishHostLocalEffect since the previous call. One counter, one queue, one drain
+    // point: this is the only way either source's effects leave this session.
+    bool TakePendingEffects(
+        std::vector<FPresentationEffect>& OutEffects,
         FRuntimeFault& OutFault);
 
     bool IsStarted() const;
