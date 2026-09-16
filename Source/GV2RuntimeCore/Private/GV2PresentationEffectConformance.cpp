@@ -3,8 +3,11 @@
 #include "GV2ContentCore/PackageDescriptor.h"
 #include "GV2ContentCore/RepositoryBuilder.h"
 #include "GV2ContentCore/RepositorySnapshot.h"
+#include "GV2RuntimeCore/GV2HostServices.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 
+#include <chrono>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -74,12 +77,67 @@ end
 return M
 )lua";
 
+// PEP-04: deliberately trivial stand-ins for game.save_slots.write's Lua-side
+// counterpart, not copies of the real Scripts/runtime/save.lua and load.lua --
+// this suite's case 5 is about FRuntimeSession::SaveToSlot/StartFromSave excluding
+// the effect queue from the saved container, not any gameplay-shaped save rule
+// (GV2ColdStartLoadConformance.cpp's own precedent for the same distinction).
+const char* SaveStubSource = R"lua(
+local M = {
+    id = "core:module.runtime.save",
+}
+M.SAVE_VERSION = 1
+function M.is_safe_point()
+    return game and game.runtime and game.runtime.phase == "idle"
+end
+function M.save(slot_id, data_version)
+    if not M.is_safe_point() then
+        return false, "SaveNotAtSafePoint"
+    end
+    if not game or not game.save_slots or not game.save_slots.write then
+        return false, "SaveSlotStorageUnavailable"
+    end
+    local container = "SYNTHETIC_CONTAINER:" .. tostring(data_version or 1)
+    local ok, err = game.save_slots.write(slot_id, container)
+    if not ok then
+        return false, "SaveWriteFailed:" .. tostring(err)
+    end
+    return true
+end
+return M
+)lua";
+
+const char* LoadStubSource = R"lua(
+local M = {
+    id = "core:module.runtime.load",
+}
+function M.decode_and_prepare(container_bytes)
+    if type(container_bytes) ~= "string" then
+        return nil, "SaveContainerCorrupt"
+    end
+    if not container_bytes:match("^SYNTHETIC_CONTAINER:") then
+        return nil, "SaveContainerCorrupt"
+    end
+    return { meta = { save_version = 1 }, data = {} }, nil
+end
+function M.preflight_bytes(container_bytes)
+    if type(container_bytes) ~= "string" or not container_bytes:match("^SYNTHETIC_CONTAINER:") then
+        return false, "SaveContainerCorrupt"
+    end
+    return true, nil
+end
+return M
+)lua";
+
 // PEP-03 (ADR-0047): a synthetic game.ui.publish_effect/take_pending_effects, NOT a
 // copy of the real Scripts/boundary/outbound.lua -- this suite exercises the HOST
 // side (ReadPresentationEffect, TakePendingEffects, sequence stamping), not
 // outbound.lua's own light validation or staged/committed/rollback lifecycle, which
-// Tests/Lua/presentation/effect_queue.lua covers against the real module instead.
+// Tests/Lua/presentation/effect_queue_spec.lua covers against the real module instead.
 const char* DriverSource = R"lua(
+local save = require("core:module.runtime.save")
+local load_mod = require("core:module.runtime.load")
+
 local M = {
     id = "core:module.test.presentation_effect_driver",
 }
@@ -102,6 +160,16 @@ _G.game.ui.take_pending_effects = function()
     local result = pending_effects
     pending_effects = {}
     return result
+end
+_G.game.runtime.save_to_slot = save.save
+_G.game.runtime.preflight_save_bytes = load_mod.preflight_bytes
+_G.game.runtime.phase = "idle"
+-- Deliberately trivial stand-in for outbound.lua's real
+-- state_hasher.hash_state(game.state) binding: this suite's non-persistence case
+-- only needs a stable, non-empty value that does not change when an effect is
+-- published, never a real content-shaped hash.
+_G.game.runtime.get_canonical_state_hash = function()
+    return "canonical_state_hash_stub:" .. tostring(game.state and game.state.data and game.state.data.marker or "")
 end
 
 return M
@@ -129,11 +197,23 @@ return {
             dependencies = {},
         },
         {
+            module_id = "core:module.runtime.save",
+            source = "runtime/save.lua",
+            dependencies = {},
+        },
+        {
+            module_id = "core:module.runtime.load",
+            source = "runtime/load.lua",
+            dependencies = {},
+        },
+        {
             module_id = "core:module.test.presentation_effect_driver",
             source = "test/driver.lua",
             dependencies = {
                 "core:module.runtime.state_composition",
                 "core:module.runtime.migrate",
+                "core:module.runtime.save",
+                "core:module.runtime.load",
             },
         },
     },
@@ -145,6 +225,8 @@ return {
         {"@core/runtime/state_validator.lua", StateValidatorStubSource},
         {"@core/runtime/state_composition.lua", StateCompositionStubSource},
         {"@core/runtime/migrate.lua", MigrateStubSource},
+        {"@core/runtime/save.lua", SaveStubSource},
+        {"@core/runtime/load.lua", LoadStubSource},
         {"@core/test/driver.lua", DriverSource},
     };
 }
@@ -441,6 +523,100 @@ return {
         }
 
         Session.Stop();
+    }
+
+    // 5. PEP-04: non-persistence, proven by behavior after a real Save+StartFromSave
+    //    round trip, not by the absence of a field in the container (Docs/UI/
+    //    PresentationSnapshotAndEffects.md, "Snapshot/effect ordering"). An effect
+    //    published and left undrained -- "in progress" -- must not change canonical
+    //    state, must not appear in the saved container, and must not be resumed after
+    //    load: the reloaded session's effect queue starts empty, same as any fresh
+    //    session's, because nothing ever wrote the effect queue into the container.
+    {
+        const std::filesystem::path SlotRoot = std::filesystem::temp_directory_path()
+            / ("gv2_presentation_effect_conformance_"
+                + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        auto StorageOpen = FFilesystemSaveSlotStorage::Open(SlotRoot);
+        if (StorageOpen.Result != ESaveSlotResult::Ok || !StorageOpen.Storage)
+        {
+            return "presentation_effect_conformance.non_persistence_storage_open_failed";
+        }
+        auto& Storage = *StorageOpen.Storage;
+
+        FRuntimeFault Fault;
+        FRuntimeSession Session;
+        Session.SetSaveSlotStorage(&Storage);
+        if (!StartConformanceSession(Session, Fault))
+        {
+            std::error_code Ec;
+            std::filesystem::remove_all(SlotRoot, Ec);
+            return "presentation_effect_conformance.non_persistence_session_start_failed: " + Fault.Code;
+        }
+
+        const std::string HashBeforeEffect = Session.GetCanonicalStateHash();
+
+        FPresentationEffect InProgress;
+        InProgress.EffectId = "core:effect.test.in_progress";
+        if (!Session.PublishHostLocalEffect(InProgress, Fault))
+        {
+            Session.Stop();
+            std::error_code Ec;
+            std::filesystem::remove_all(SlotRoot, Ec);
+            return "presentation_effect_conformance.non_persistence_publish_failed: " + Fault.Code;
+        }
+
+        // Deliberately left undrained: this IS "an effect in progress" for this test's
+        // purposes -- queued, not yet applied. Publishing it must not have touched
+        // canonical state at all.
+        const std::string HashAfterEffect = Session.GetCanonicalStateHash();
+        if (HashAfterEffect != HashBeforeEffect || HashAfterEffect.empty())
+        {
+            Session.Stop();
+            std::error_code Ec;
+            std::filesystem::remove_all(SlotRoot, Ec);
+            return "presentation_effect_conformance.non_persistence_publish_changed_state";
+        }
+
+        if (!Session.SaveToSlot("presentation_effect_conformance_slot", Fault))
+        {
+            Session.Stop();
+            std::error_code Ec;
+            std::filesystem::remove_all(SlotRoot, Ec);
+            return "presentation_effect_conformance.non_persistence_save_failed: " + Fault.Code + ": " + Fault.Message;
+        }
+        Session.Stop();
+
+        FRuntimeSession ReloadedSession;
+        if (!ReloadedSession.StartFromSave(1, MakeEmptyRepository(), MakeConformanceSources(), Storage,
+                "presentation_effect_conformance_slot", Fault))
+        {
+            std::error_code Ec;
+            std::filesystem::remove_all(SlotRoot, Ec);
+            return "presentation_effect_conformance.non_persistence_load_failed: " + Fault.Code + ": " + Fault.Message;
+        }
+
+        const std::string HashAfterLoad = ReloadedSession.GetCanonicalStateHash();
+        if (HashAfterLoad != HashBeforeEffect)
+        {
+            ReloadedSession.Stop();
+            std::error_code Ec;
+            std::filesystem::remove_all(SlotRoot, Ec);
+            return "presentation_effect_conformance.non_persistence_state_hash_mismatch_after_load";
+        }
+
+        std::vector<FPresentationEffect> DrainedAfterLoad;
+        FRuntimeFault DrainFault;
+        if (!ReloadedSession.TakePendingEffects(DrainedAfterLoad, DrainFault) || !DrainedAfterLoad.empty())
+        {
+            ReloadedSession.Stop();
+            std::error_code Ec;
+            std::filesystem::remove_all(SlotRoot, Ec);
+            return "presentation_effect_conformance.non_persistence_effect_resumed_after_load";
+        }
+
+        ReloadedSession.Stop();
+        std::error_code Ec;
+        std::filesystem::remove_all(SlotRoot, Ec);
     }
 
     return "";

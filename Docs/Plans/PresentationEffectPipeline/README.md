@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 0.4
+version: 0.5
 updated: 2026-09-16
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -108,7 +108,7 @@ decisions:
 Порядок не переставляется. Оба ADR идут **до** кода, потому что обе задачи меняют архитектурный инвариант: первая — состав канала Lua → UE, вторая — модель владения виджетами и правило ввода [ADR-0041](../../ADR/0041-ui-commit-rollback-model.md). Механизм эффектов идёт **до** переезда окна, иначе переезд не на чем проверять и окно временно получает собственный таймер — ровно тот второй механизм, который план запрещает. Переезд окна идёт **до** затухания, потому что затухание требует виджета, переживающего собственное логическое удаление, а тултип им быть не может.
 
 - [x] M0 — PEP-01…02 приняты по Done/Evidence.
-- [ ] M1 — PEP-03…04 приняты по Done/Evidence.
+- [x] M1 — PEP-03…04 приняты по Done/Evidence.
 - [ ] M2 — PEP-05…07 приняты по Done/Evidence.
 - [ ] M3 — PEP-08…09 приняты по Done/Evidence.
 - [ ] M4 — PEP-10 принят по Done/Evidence.
@@ -207,9 +207,11 @@ decisions:
 
 ### PEP-04 — Реализовать исполнение эффектов и non-persistence
 
-- [ ] PEP-04 — Реализовать исполнение эффектов и non-persistence
+- [x] PEP-04 — Реализовать исполнение эффектов и non-persistence
 
-**Зависимость:** PEP-03. **Файлы:** apply-сторона в `Source/GV2PresentationApply`; save/load-тесты рядом с существующими `GV2.Runtime.SaveAndLoad.*`.
+**Зависимость:** PEP-03. **Файлы:** `Source/GV2PresentationApply/Public/GV2PresentationApply/PresentationEffectApply.h` и `Private/PresentationEffectApply.cpp` (`EPresentationEffectKind`, `FGV2PresentationEffectApply`); `Source/GV2/Private/Tests/GV2PresentationEffectApplyTests.cpp`; non-persistence case 5 добавлен в `Source/GV2RuntimeCore/Private/GV2PresentationEffectConformance.cpp` (сохранение/загрузка через существующую портативную сессию, рядом с `GV2.Runtime.SaveAndLoad.*`, без правки самого файла).
+
+**Реализация (закрытая с 0 видами эффекта):** перечисление `EPresentationEffectKind` заведено пустым (`Count = 0`) — единственный содержательный вид, прозрачность, явно вынесен в `PEP-08`, чтобы не объединять механизм с первым потребителем в одном change set. Экземплярность гейта полноты доказана мутацией по ходу разработки: временно добавленное значение перечисления (`TestOnlyMutationProbe`) поймано гейтом (`GV2.Runtime.Presentation.PresentationEffectApply` красный: «Zero unhandled effect kind diagnostics» — 1 вместо 0), после чего откачено. Компилятор эту мутацию НЕ ловит (пустой `switch` без `default` не выдаёт предупреждения в текущей сборочной конфигурации) — единственная измеренная гарантия здесь рантайм-гейт, симметричный `FGV2PropertyConsumerFactory::ValidateAllKindsHandled`, с независимой перепроверкой через `IsInapplicableKind` (без неё функция-заглушка `GetKindHandlingStatus` тихо провалила бы найденную мутацию через собственный fallback). `Apply` принимает только `Kind` — ни виджета, ни snapshot, ни gameplay-state в сигнатуре нет в принципе (граф сборки `GV2PresentationApply.Build.cs` не даёт этому модулю знать такие типы), поэтому отказ эффекта структурно не может задеть ни то, ни другое — гарантия ADR-0043 D2, а не тест поведения. Non-persistence проверен реальным `SaveToSlot`/`StartFromSave` над портативной сессией: canonical state hash не меняется при постановке недренированного эффекта, после реального перезапуска сессии из сохранённого слота хэш совпадает с состоянием до эффекта, а очередь эффектов пуста — поведением, а не отсутствием поля в контейнере.
 
 **Инвариант:** [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) — граница применения презентации: физическое применение получает только подготовленные значения и исполняется на Game Thread. Эффект, применяемый вне Game Thread, воспроизводит ровно тот класс отказа, который уже закрыт guard-ом в `FGV2PresentationApply::Apply`.
 
