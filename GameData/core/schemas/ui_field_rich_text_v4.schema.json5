@@ -41,6 +41,11 @@
                   kind: "screen_fields",
                   required: false,
                 },
+                duration: {
+                  kind: "number",
+                  min: 0.0,
+                  required: false,
+                },
               },
             },
           },

@@ -181,6 +181,13 @@ struct GV2PRESENTATIONAPPLY_API FGV2RichTextHoverViewModel
     UPROPERTY(Transient)
     TWeakObjectPtr<UUserWidget> ScreenWidget;
 
+    // PEP-06C: a place in data for how long this hover's own window should stay open once
+    // shown -- content-declared, per span, the same way ScreenId is. 0 means the field was
+    // not authored; no consumer reads it yet (PEP-08 is what will), this task only gives it
+    // a home so that task doesn't also have to reopen the schema.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Rich Text")
+    float Duration = 0.0f;
+
     bool IsEmpty() const
     {
         return ScreenId.IsEmpty();

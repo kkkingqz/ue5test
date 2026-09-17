@@ -197,6 +197,9 @@ struct GV2PRESENTATIONAPPLY_API FPreparedRichTextHover
 {
     FString ScreenId;
     TWeakObjectPtr<UWidget> ScreenWidget;
+    // PEP-06C: content-declared duration, mirrored from FGV2RichTextHoverViewModel::Duration
+    // through the flatten/unflatten round trip -- see that struct's own doc comment.
+    float Duration = 0.0f;
 };
 
 struct GV2PRESENTATIONAPPLY_API FPreparedRichTextSpan

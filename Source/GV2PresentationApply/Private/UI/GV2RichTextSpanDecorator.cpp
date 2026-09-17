@@ -76,6 +76,18 @@ public:
                     Widget->SubmitSpanInteraction(FName(**Id));
                 }
             });
+        // PEP-06C: load-bearing, not dead code, despite every method on the IToolTip it
+        // returns being a no-op since PEP-06B. This is the ONLY per-run hook
+        // FSlateHyperlinkRun::Create exposes -- the engine gives no other way to attach data
+        // to one specific SRichTextHyperlink instance at the moment its SpanId is known
+        // (SetTag() exists on SWidget, but nothing here ever gets a reference to the actual
+        // widget being tooltipped to call it on; only the Metadata map is handed back).
+        // Removing this line silently breaks NativeTick's hover detector (GV2RichTextWidgetBase
+        // ::CaptureHoverableSpanAnchors reads Hyperlink->GetToolTip() back to a SpanId) with no
+        // compile error -- proven by mutation: replacing this OnTooltip argument with
+        // FSlateHyperlinkRun::FOnGenerateTooltip() (unbound) reddens GV2RichTextSpanHoverDetectorTests
+        // ("Exactly one anchor is captured" becomes 0), confirmed by an actual mutation-then-revert
+        // run, not by reading this comment.
         const FSlateHyperlinkRun::FOnGenerateTooltip OnTooltip =
             FSlateHyperlinkRun::FOnGenerateTooltip::CreateLambda(
                 [WeakOwner](const FSlateHyperlinkRun::FMetadata& Metadata) -> TSharedRef<IToolTip>

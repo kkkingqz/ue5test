@@ -1853,6 +1853,20 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
                 Span.Hover.ScreenWidget = ChildWidget;
                 PreparedItem.HoverScreenWidgetClass = TargetWidgetClass;
 
+                // PEP-06C: duration has a home in the schema now (v4, edited in place --
+                // hover is unfilled in every real package, so no migration is needed) but no
+                // consumer reads it yet; PEP-08 is what will. Absent means 0, the same "not
+                // authored" default FGV2RichTextHoverViewModel::Duration already declares.
+                if (const FGV2PreparedUiValue* DurationVal = HoverObj.FindField(TEXT("duration")))
+                {
+                    if (!DurationVal->IsNumber())
+                    {
+                        OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.kind_mismatch: Span '%s' hover duration must be a number"), *ItemKey.ToString());
+                        return false;
+                    }
+                    Span.Hover.Duration = static_cast<float>(DurationVal->AsNumber());
+                }
+
                 const FGV2PreparedUiValue* FieldsVal = HoverObj.FindField(TEXT("fields"));
                 if (FieldsVal != nullptr && !FieldsVal->IsNull())
                 {
@@ -1960,6 +1974,7 @@ GV2PresentationApply::FPreparedRichTextSpan FlattenRichTextSpan(const FGV2RichTe
     Flattened.Key = Span.Key;
     Flattened.Hover.ScreenId = Span.Hover.ScreenId;
     Flattened.Hover.ScreenWidget = Span.Hover.ScreenWidget.Get();
+    Flattened.Hover.Duration = Span.Hover.Duration;
     Flattened.SerializedBinding = Span.Binding.ToString();
     return Flattened;
 }

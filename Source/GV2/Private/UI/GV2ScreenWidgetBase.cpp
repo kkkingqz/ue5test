@@ -398,10 +398,32 @@ void UGV2ScreenWidgetBase::SetAnchoredContentPosition(const FVector2D& LocalPosi
         // child) -- a documented no-op, not a failure a caller has to check for.
         return;
     }
-    if (UCanvasPanelSlot* Slot = Cast<UCanvasPanelSlot>(RootCanvas->GetChildAt(0)->Slot))
+    UWidget* Content = RootCanvas->GetChildAt(0);
+    UCanvasPanelSlot* Slot = Cast<UCanvasPanelSlot>(Content->Slot);
+    if (Slot == nullptr)
     {
-        Slot->SetPosition(LocalPosition);
+        return;
     }
+
+    // PEP-06C: keep the content inside the viewport -- the Slate tooltip window this content
+    // used to live in (before PEP-06B) did this for free; moving it into an ordinary screen
+    // lost it silently, and this restores it as ours. This screen fills its whole layer
+    // (ApplyScreenSlotLayout's uniform Fill/Fill), so its own cached size IS the viewport
+    // size. Both sizes come from live post-paint geometry, matching NativeTick's own
+    // self-healing re-apply every tick; a size of zero (not yet painted) leaves that axis
+    // unclamped rather than pinning it to the corner.
+    const FVector2D ScreenSize = GetCachedGeometry().GetLocalSize();
+    const FVector2D ContentSize = Content->GetCachedGeometry().GetLocalSize();
+    FVector2D ClampedPosition = LocalPosition;
+    if (ScreenSize.X > 0.0f)
+    {
+        ClampedPosition.X = FMath::Clamp(ClampedPosition.X, 0.0f, FMath::Max(0.0f, ScreenSize.X - ContentSize.X));
+    }
+    if (ScreenSize.Y > 0.0f)
+    {
+        ClampedPosition.Y = FMath::Clamp(ClampedPosition.Y, 0.0f, FMath::Max(0.0f, ScreenSize.Y - ContentSize.Y));
+    }
+    Slot->SetPosition(ClampedPosition);
 }
 
 TArray<FName> UGV2ScreenWidgetBase::GetScreenFieldIds() const

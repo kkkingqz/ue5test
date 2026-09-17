@@ -54,14 +54,17 @@ class GV2_API UGV2ScreenWidgetBase
     GENERATED_BODY()
 
 public:
-    // PEP-06B: implemented unconditionally on every screen, not just the ones a host-local
-    // participant actually anchors -- the same "generic capability, no-op where unused"
-    // shape GetScreenFieldIds() already has. Repositions this screen's own root canvas'
-    // single child if its WidgetTree->RootWidget is a UCanvasPanel with exactly one child;
-    // any other root shape (the overwhelming majority of screens, which are never anchored)
-    // makes this a documented no-op, not a silent failure -- a screen author who wants
-    // anchoring authors a UCanvasPanel root with one child, same as any other UMG canvas
-    // layout; nothing else changes for a screen that doesn't.
+    // PEP-06B/06C: implemented unconditionally on every screen, not just the ones a
+    // host-local participant actually anchors -- the same "generic capability, no-op where
+    // unused" shape GetScreenFieldIds() already has. Repositions this screen's own root
+    // canvas' single child if its WidgetTree->RootWidget is a UCanvasPanel with exactly one
+    // child; any other root shape (the overwhelming majority of screens, which are never
+    // anchored) makes this a documented no-op, not a silent failure -- a screen author who
+    // wants anchoring authors a UCanvasPanel root with one child, same as any other UMG
+    // canvas layout; nothing else changes for a screen that doesn't. PEP-06C: the position
+    // is clamped to this screen's own live size minus the content's own live size, so the
+    // content never sits partly off-screen -- the property the old Slate tooltip window
+    // gave for free and PEP-06B silently lost.
     virtual void SetAnchoredContentPosition(const FVector2D& LocalPosition) override;
     // UPP-27 / UPP-28: Prepares every field's full mutation plan without modifying any widget.
     // Predicts deep child failures (STATUS-004) before commit.

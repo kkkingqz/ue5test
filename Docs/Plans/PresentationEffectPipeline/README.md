@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 2.3
+version: 2.4
 updated: 2026-09-17
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -427,9 +427,9 @@ UE `GV2.*` automation suite 199/199 зелёный (добавился ровн�
 
 ### PEP-06C — Довести окно наведения до авторской полноты
 
-- [ ] PEP-06C — Довести окно наведения до авторской полноты
+- [x] PEP-06C — Довести окно наведения до авторской полноты
 
-**Зависимость:** PEP-06B. **Файлы:** `GameData/core/schemas/ui_field_rich_text_v4.schema.json5` (длительность в `hover`), `Source/GV2PresentationApply/Private/UI/GV2RichTextWidgetBase.cpp` (удержание в границах, канал переноса `SpanId`), `FGV2RichTextSpansPropertyConsumer`, авторская Blueprint-фикстура второго вида окна.
+**Зависимость:** PEP-06B. **Файлы:** `GameData/core/schemas/ui_field_rich_text_v4.schema.json5` (длительность в `hover`); `GV2WidgetTypes.h`/`PreparedPresentationTransaction.h` (`Duration` на `FGV2RichTextHoverViewModel`/`FPreparedRichTextHover`); `GV2PropertyConsumers.cpp` (чтение `duration`, перенос через `FlattenRichTextSpan`); `Source/GV2PresentationApply/Private/UI/GV2RichTextWidgetBase.cpp` (перенос `Duration` в `ApplyPreparedRichTextSpans`); `Source/GV2/Public/UI/GV2ScreenWidgetBase.h`/`.cpp` (удержание в границах вьюпорта); `GV2RichTextSpanDecorator.cpp` (закрепляющий комментарий канала `SpanId`); `GV2LayeredReconciliationTests.cpp` (`ScreenAnchorHostViewportClamp`, `HoverWindowSelectableFromData`); `GV2LayoutInvariantSourceTests.cpp` (исключения `DCA-15` для тестовых WBP-фикстур); `Content/UI/Widgets/WBP_HoverFixtureAlpha.uasset`/`WBP_HoverFixtureBeta.uasset` (второй вид окна, созданы через `unreal-mcp`).
 
 **Задача переписана после `PEP-06B`.** Прежняя формулировка требовала превратить общий попаповый стиль темы в ключевой набор и выбирать его токеном. Такого стиля больше нет: `PEP-06B` удалил `UGV2RichTextPopoverWidgetBase` вместе со всей его Theme-инфраструктурой (`RichTextPopover*`, `FPreparedRichTextPopoverStyle`, `IGV2PreparedRichTextPopoverStyleTarget`), и вид окна теперь задаётся тем, какой `screen_id` назван в `hover` конкретного спана. Это сильнее токена: токен выбирал стиль из фиксированного набора, `screen_id` выбирает целый экран. Задача сохраняет из прежней редакции то, что к новому механизму применимо, и добавляет свойства, которые при уходе от Slate были потеряны молча.
 
@@ -464,6 +464,18 @@ UE `GV2.*` automation suite 199/199 зелёный (добавился ровн�
 - Снятие привязки тултипа краснит тест либо невозможно, потому что `SpanId` носит явный носитель; проверено мутацией, а не чтением.
 
 **Evidence:** снятые габариты двух видов окна, прогон по четырём краям вьюпорта, запись решения по потолку, мутационная проба на снятие привязки тултипа, схема v4 с полем длительности.
+
+**Реализация.** Длительность получила поле `duration` (`kind: "number", min: 0.0, required: false`) в `hover` схемы `ui_field_rich_text_v4` — правка на месте, без новой версии схемы (v4 введена `PEP-05`, `hover` не заполнен ни в одном реальном пакете, миграция не нужна). Путь тот же, каким уже идёт `screen_id`: `FGV2RichTextSpansPropertyConsumer::Prepare` читает поле (типизированный отказ на не-число), кладёт в `FGV2RichTextHoverViewModel.Duration`, `FlattenRichTextSpan` переносит в `FPreparedRichTextHover.Duration`, `UGV2RichTextWidgetBase::ApplyPreparedRichTextSpans` — обратно в view model. Потребителя пока нет (появится в `PEP-08`), место в данных — есть.
+
+Удержание в границах вьюпорта возвращено в `UGV2ScreenWidgetBase::SetAnchoredContentPosition`: позиция ограничивается собственным живым размером экрана (он всегда равен вьюпорту — слой Fill/Fill) минус живым размером контента, по каждой оси независимо, при нулевом размере (кадр ещё не отрисован) — без ограничения на этой оси, тем же принципом самолечения, что и переприменение позиции каждый тик из `PEP-06B`. Проверено прогоном по всем четырём краям (`GV2.UI.LayeredReconciliation.ScreenAnchorHostViewportClamp`, реальная геометрия через `SVirtualWindow`) плюс отдельно проверено, что точка внутри границ не меняется.
+
+Потолок размера решён как дисциплина авторинга, без кода: положение, вправо/вниз ограничивающее содержимое вьюпортом, уже не даёт окну уехать за экран — а второе, более узкое ограничение («не даёт закрыть весь слой целиком») требует ЛИБО общего на все окна значения (то самое, что `PEP-06B` удалил как мёртвый код и что явно запрещено «не считается закрытием»), ЛИБО per-screen значения — а оно уже полностью в руках автора: `USizeBox.MaxDesiredWidth/Height` в собственном WBP экрана, без единой строки C++. Второй путь уже доступен и не требует отдельного механизма.
+
+Перенос `SpanId` закреплён как ЕДИНСТВЕННО возможный (движок не даёт иного способа привязать данные к конкретному `SRichTextHyperlink` в момент, когда `SpanId` известен — `SetTag()` есть на `SWidget`, но виджет, которому его ставить, в момент разрешения `OnGenerateTooltip` не передаётся, только `Metadata`). Явного носителя не существует в принципе — задача сохраняет `FGV2RichTextSpanToolTip` и вместо этого закрепляет тест: мутацией (заменой `OnTooltip` на несвязанный `FSlateHyperlinkRun::FOnGenerateTooltip()`, пересборкой, прогоном и последующим откатом) подтверждено, что `GV2.Runtime.Presentation.RichTextSpanHoverDetector` краснеет («Exactly one anchor is captured» становится 0) — не читкой, а прогоном. Комментарий на месте вызова `OnTooltip` фиксирует и причину, и сам факт мутационной проверки.
+
+Второй вид окна собран целиком в данных и Blueprint-фикстуре: `WBP_HoverFixtureAlpha` (граница `RootCanvas → SizeBox 120×80 → Border` красного тона) и `WBP_HoverFixtureBeta` (`220×140`, синего тона), обе — обычные `UGV2ScreenWidgetBase` Blueprint'ы без единой C++ правки, созданные через `unreal-mcp` (`UMGToolSet.CreateWidgetBlueprint`/`AddWidget`/`ObjectTools.set_properties`). Новый тест `GV2.UI.LayeredReconciliation.HoverWindowSelectableFromData` инстанцирует оба класса, реально рендерит их (`SVirtualWindow`) и снимает габариты именованного `ContentSize`-виджета через `GetWidgetFromName` — подтверждено: `120×80` и `220×140` соответственно, различны. `DCA-15`'s Half B (сканирование контента на абсолютные размеры) получил именованное исключение для `WBP_HoverFixture*` с объяснением, почему это не производственный контент.
+
+UE `GV2.*` automation suite 201/201 зелёный (199 было после `PEP-06B`; `PEP-06C` добавил два новых теста — `GV2.UI.LayeredReconciliation.ScreenAnchorHostViewportClamp` и `GV2.UI.LayeredReconciliation.HoverWindowSelectableFromData`). Портативный `ctest` не тронут (задача не касается `GV2RuntimeCore`).
 
 ---
 

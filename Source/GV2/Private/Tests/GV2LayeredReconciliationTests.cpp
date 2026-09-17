@@ -2074,6 +2074,155 @@ bool FGV2HoverOverlayAnchorAndLifecycleContract::RunTest(const FString& Paramete
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ScreenAnchorHostViewportClampContract,
+    "GV2.UI.LayeredReconciliation.ScreenAnchorHostViewportClamp",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PEP-06C: the Slate tooltip window this content used to live in (before PEP-06B) kept it
+// inside the viewport for free; moving it into an ordinary screen lost that silently. This
+// proves UGV2ScreenWidgetBase::SetAnchoredContentPosition's own clamp restores it, by
+// requesting a position beyond each of the four edges in turn against REAL post-paint
+// geometry (SVirtualWindow, the same idiom GV2RichTextSpanHoverDetectorTests uses) and
+// reading back the actually-applied canvas position, not re-deriving the expected clamp.
+bool FGV2ScreenAnchorHostViewportClampContract::RunTest(const FString& Parameters)
+{
+    UGV2ScreenWidgetBase* HoverScreen = NewObject<UGV2ScreenWidgetBase>();
+    TestNotNull(TEXT("PEP-06C: hover screen instantiates"), HoverScreen);
+    if (HoverScreen == nullptr)
+    {
+        return false;
+    }
+    HoverScreen->WidgetTree = NewObject<UWidgetTree>(HoverScreen);
+    UCanvasPanel* RootCanvas = HoverScreen->WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("RootCanvas"));
+    HoverScreen->WidgetTree->RootWidget = RootCanvas;
+    USizeBox* Content = HoverScreen->WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("Content"));
+    Content->SetWidthOverride(100.0f);
+    Content->SetHeightOverride(60.0f);
+    UCanvasPanelSlot* ContentSlot = Cast<UCanvasPanelSlot>(RootCanvas->AddChild(Content));
+    TestNotNull(TEXT("PEP-06C: hover content slot is a canvas slot"), ContentSlot);
+    if (ContentSlot != nullptr)
+    {
+        // A default UCanvasPanelSlot's own Size (160x30) governs layout regardless of the
+        // SizeBox's WidthOverride/HeightOverride unless the slot is told to size itself to
+        // its content -- without this, ContentSize below would read the slot default, not
+        // the 100x60 this test actually wants to clamp against.
+        ContentSlot->SetAutoSize(true);
+    }
+
+    const FVector2D ViewportSize(800.0f, 600.0f);
+    TSharedPtr<SWidget> SlateWidget = HoverScreen->TakeWidget();
+    TestTrue(TEXT("PEP-06C: hover screen produces a valid Slate widget"), SlateWidget.IsValid());
+    if (!SlateWidget.IsValid())
+    {
+        return false;
+    }
+    TSharedRef<SVirtualWindow> VirtualWindow = SNew(SVirtualWindow).Size(ViewportSize);
+    VirtualWindow->SetContent(SlateWidget.ToSharedRef());
+    GV2PresentationTestFixtures::GV2SimulateResponsiveFrame(VirtualWindow, ViewportSize);
+
+    IGV2ScreenAnchorHost* AnchorHost = Cast<IGV2ScreenAnchorHost>(HoverScreen);
+    TestNotNull(TEXT("PEP-06C: hover screen implements IGV2ScreenAnchorHost"), AnchorHost);
+    if (AnchorHost == nullptr)
+    {
+        return false;
+    }
+
+    const FVector2D MaxPosition = ViewportSize - FVector2D(100.0f, 60.0f);
+
+    // Left/top edge: a point far off the top-left must clamp to (0, 0), not sit negative.
+    AnchorHost->SetAnchoredContentPosition(FVector2D(-500.0f, -500.0f));
+    TestEqual(TEXT("PEP-06C: a top-left-of-viewport anchor clamps to the origin"),
+        ContentSlot->GetPosition(), FVector2D(0.0f, 0.0f));
+
+    // Right/bottom edge: a point far past the bottom-right must clamp so the content's own
+    // far edge lands exactly on the viewport's own far edge, not run off it.
+    AnchorHost->SetAnchoredContentPosition(FVector2D(5000.0f, 5000.0f));
+    TestEqual(TEXT("PEP-06C: a bottom-right-of-viewport anchor clamps so the content stays fully visible"),
+        ContentSlot->GetPosition(), MaxPosition);
+
+    // Left edge only (Y well inside bounds): only X clamps.
+    AnchorHost->SetAnchoredContentPosition(FVector2D(-10.0f, 200.0f));
+    TestEqual(TEXT("PEP-06C: a left-of-viewport anchor clamps only its X"),
+        ContentSlot->GetPosition(), FVector2D(0.0f, 200.0f));
+
+    // Top edge only (X well inside bounds): only Y clamps.
+    AnchorHost->SetAnchoredContentPosition(FVector2D(200.0f, -10.0f));
+    TestEqual(TEXT("PEP-06C: a top-of-viewport anchor clamps only its Y"),
+        ContentSlot->GetPosition(), FVector2D(200.0f, 0.0f));
+
+    // A point already fully inside bounds passes through unclamped -- the clamp is a
+    // boundary correction, not a repositioning of every anchor.
+    AnchorHost->SetAnchoredContentPosition(FVector2D(300.0f, 250.0f));
+    TestEqual(TEXT("PEP-06C: a fully-in-bounds anchor is not altered"),
+        ContentSlot->GetPosition(), FVector2D(300.0f, 250.0f));
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2HoverWindowSelectableFromDataContract,
+    "GV2.UI.LayeredReconciliation.HoverWindowSelectableFromData",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PEP-06C: the project owner's own requirement -- a new hover window appearance needs no
+// C++ -- proven by measuring two REAL WBP fixtures (WBP_HoverFixtureAlpha/Beta, both plain
+// UGV2ScreenWidgetBase Blueprints authored entirely in Designer: a different frame color and
+// a different fixed content size each) and reading back their actually-rendered sizes, not
+// asserting the claim from the fact that both merely compile.
+bool FGV2HoverWindowSelectableFromDataContract::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+    if (TestWorld == nullptr)
+    {
+        return false;
+    }
+
+    UClass* AlphaClass = LoadClass<UGV2ScreenWidgetBase>(
+        nullptr, TEXT("/Game/UI/Widgets/WBP_HoverFixtureAlpha.WBP_HoverFixtureAlpha_C"));
+    UClass* BetaClass = LoadClass<UGV2ScreenWidgetBase>(
+        nullptr, TEXT("/Game/UI/Widgets/WBP_HoverFixtureBeta.WBP_HoverFixtureBeta_C"));
+    TestNotNull(TEXT("PEP-06C: hover fixture Alpha's generated class loads"), AlphaClass);
+    TestNotNull(TEXT("PEP-06C: hover fixture Beta's generated class loads"), BetaClass);
+    if (AlphaClass == nullptr || BetaClass == nullptr)
+    {
+        return false;
+    }
+
+    auto MeasureFixture = [TestWorld](UClass* Class) -> FVector2D
+    {
+        UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, Class);
+        UWidget* Content = Screen != nullptr ? Screen->GetWidgetFromName(TEXT("ContentSize")) : nullptr;
+        if (Screen == nullptr || Content == nullptr)
+        {
+            return FVector2D::ZeroVector;
+        }
+        TSharedPtr<SWidget> SlateWidget = Screen->TakeWidget();
+        if (!SlateWidget.IsValid())
+        {
+            return FVector2D::ZeroVector;
+        }
+        const FVector2D ViewportSize(800.0f, 600.0f);
+        TSharedRef<SVirtualWindow> VirtualWindow = SNew(SVirtualWindow).Size(ViewportSize);
+        VirtualWindow->SetContent(SlateWidget.ToSharedRef());
+        GV2PresentationTestFixtures::GV2SimulateResponsiveFrame(VirtualWindow, ViewportSize);
+        return Content->GetCachedGeometry().GetLocalSize();
+    };
+
+    const FVector2D AlphaSize = MeasureFixture(AlphaClass);
+    const FVector2D BetaSize = MeasureFixture(BetaClass);
+
+    TestEqual(TEXT("PEP-06C: hover fixture Alpha measures its own authored dimensions"),
+        AlphaSize, FVector2D(120.0f, 80.0f));
+    TestEqual(TEXT("PEP-06C: hover fixture Beta measures its own authored dimensions"),
+        BetaSize, FVector2D(220.0f, 140.0f));
+    TestNotEqual(TEXT("PEP-06C: two differently screen_id-named windows measure different sizes -- the appearance is selected from data, not fixed in C++"),
+        AlphaSize, BetaSize);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2PresentationAuthorityPhaseContract,
     "GV2.Runtime.UI.PresentationAuthorityPhaseContract",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

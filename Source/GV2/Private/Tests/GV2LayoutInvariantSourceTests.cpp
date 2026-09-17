@@ -99,6 +99,16 @@ const TArray<FGV2LayoutSourceException>& GetLayoutSourceExceptions()
             TEXT("SetHeightOverride"),
             TEXT("PSC-13 design-time negative fixture deliberately writes a sentinel physical value before NativePreConstruct, then proves preview keeps it without consulting runtime authority; it is not production layout."),
         },
+        {
+            TEXT("GV2LayeredReconciliationTests.cpp"),
+            TEXT("SetWidthOverride"),
+            TEXT("PEP-06C: FGV2ScreenAnchorHostViewportClampContract's probe content is an arbitrary fixed-size SizeBox, not authored production layout -- the test's own claim (a position beyond the viewport clamps so the content's far edge lands on the viewport's own far edge) holds for any nonzero content size, so the literal is a deterministic test fixture, not a value ADR-0035 means to distribute."),
+        },
+        {
+            TEXT("GV2LayeredReconciliationTests.cpp"),
+            TEXT("SetHeightOverride"),
+            TEXT("PEP-06C: same reasoning as SetWidthOverride above -- FGV2ScreenAnchorHostViewportClampContract's probe content size is arbitrary and fixed by design, not a production layout dimension."),
+        },
     };
     return Exceptions;
 }
@@ -417,7 +427,17 @@ struct FGV2LayoutContentException
 
 const TArray<FGV2LayoutContentException>& GetLayoutContentExceptions()
 {
-    static const TArray<FGV2LayoutContentException> Exceptions;
+    static const TArray<FGV2LayoutContentException> Exceptions = {
+        {
+            TEXT("WBP_HoverFixture"),
+            TEXT("PEP-06C: WBP_HoverFixtureAlpha/Beta are test-only fixtures proving a hover "
+                 "window's appearance is selected from data (GV2.UI.LayeredReconciliation."
+                 "HoverWindowSelectableFromData) -- their whole claim is that two different "
+                 "screen_id-named windows measure different, Designer-fixed sizes; deriving "
+                 "either from the viewport would make them always agree and defeat the test, "
+                 "not because production content should ever do this."),
+        },
+    };
     return Exceptions;
 }
 

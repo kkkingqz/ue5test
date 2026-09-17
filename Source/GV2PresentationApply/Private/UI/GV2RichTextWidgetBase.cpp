@@ -560,6 +560,7 @@ void UGV2RichTextWidgetBase::ApplyPreparedRichTextSpans(
         Span.Key = FlatSpan.Key;
         Span.Hover.ScreenId = FlatSpan.Hover.ScreenId;
         Span.Hover.ScreenWidget = Cast<UUserWidget>(FlatSpan.Hover.ScreenWidget.Get());
+        Span.Hover.Duration = FlatSpan.Hover.Duration;
         Span.Binding = FGV2UiBindingHandle::FromSerialized(FlatSpan.SerializedBinding);
         Spans.Add(MoveTemp(Span));
     }
