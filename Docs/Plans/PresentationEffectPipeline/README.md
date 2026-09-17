@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 2.1
+version: 2.2
 updated: 2026-09-17
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -332,9 +332,9 @@ Classification (Compatibility Policy, ось Content schemas, pre-1.0): breaking
 
 UE `GV2.*` automation suite 198/198 зелёный (добавился ровно один новый тест). Портативный ctest не тронут — задача не касается `GV2RuntimeCore`.
 
-- [ ] PEP-06A — Ввести собственный детектор наведения и якорь спана
+- [x] PEP-06A — Ввести собственный детектор наведения и якорь спана
 
-**Зависимость:** PEP-06 (по порядку исполнения; содержательно независима). **Файлы:** `Source/GV2PresentationApply/Private/UI/GV2RichTextSpanDecorator.cpp`, `Source/GV2PresentationApply/Private/UI/GV2RichTextWidgetBase.cpp`, `Public/UI/GV2RichTextWidgetBase.h`.
+**Зависимость:** PEP-06 (по порядку исполнения; содержательно независима). **Файлы:** `Source/GV2PresentationApply/Private/UI/GV2RichTextWidgetBase.cpp`, `Public/UI/GV2RichTextWidgetBase.h`; тест `Source/GV2/Private/Tests/GV2RichTextSpanHoverDetectorTests.cpp`; переиспользуемая `UGV2RichTextBoundTestWidget` в `GV2ForgeryTestWidgets.h/.cpp` и общая `MakePreparedRichTextStyleForTest` в `GV2PresentationTestFixtures.h` (обе разделены с `GV2UiKitThemeContractTests.cpp`, не задублированы).
 
 **Инвариант:** [SemanticInput](../../UI/SemanticInput.md) — hover и unhover не пересекают границу Lua и не создают Semantic Input. Новый детектор эту границу не сдвигает: он живёт целиком внутри presentation и наружу отдаёт только геометрию.
 
@@ -359,6 +359,20 @@ UE `GV2.*` automation suite 198/198 зелёный (добавился ровн�
 - Tooltip-маршрут на момент закрытия задачи цел: детектор существует раньше, чем исчезает то, что он заменяет.
 
 **Evidence:** прогоны подачей точки, сверка множеств спанов, обход путей вызова.
+
+**Реализация.** Ни `URichTextBlock`/`UCommonRichTextBlock`, ни движковый `SRichTextBlock` не дают публичного доступа к `FTextLayout` — раскладка спана недостижима напрямую по имени. Но интерактивный run уже создаёт настоящий дочерний Slate-виджет (`SRichTextHyperlink`, движковый `FSlateHyperlinkRun::CreateBlock`), расставляемый каждый кадр обычной Slate-раскладкой — `CaptureHoverableSpanAnchors` обходит `SRichTextBlock::GetChildren()` (публичный), находит эти виджеты по `GetTypeAsString() == "SRichTextHyperlink"` (устоявшийся в движке способ типоопределения без RTTI) и берёт геометрию через `GetTickSpaceGeometry().GetLayoutBoundingRect()` — обычный, ничем не особый путь.
+
+Корреляция виджет→`SpanId` идёт через `OnGenerateTooltip` — единственный per-block колбэк, который `FSlateHyperlinkRun::Create` вообще принимает: он и сегодня вызывается по разу на каждое создание блока и уже замыкает `SpanId` в возвращаемом `FGV2RichTextSpanToolTip`. Детектор добавляет этому классу read-only `GetSpanId()` и читает его через `Hyperlink->GetToolTip()` — это чтение уже существующего состояния, не использование `OnOpening`/`OnClosed` как сигнала: тултип-маршрут не тронут ни на строку, `IsEmpty()` остаётся его единственным потребителем.
+
+Множества спанов сверены напрямую в тесте: `CreateSpanToolTip(...)->IsEmpty()` (старый путь) и `CaptureHoverableSpanAnchors()` (новый) проверены на ОДНОЙ И ТОЙ ЖЕ паре спанов (один с hover, один только с binding) — оба видят один и тот же спан, что и требует Done. `AdvanceSpanHoverState` — чистая функция состояния (Began/Ended/Changed/None), проверена подачей точек вручную, без тика и без курсора.
+
+Мутационная проба: снятие фильтра `Span->Hover.IsEmpty()` в `CaptureHoverableSpanAnchors` дало красный тест (`Exactly one anchor... expected 1, got 2`), после чего откачено.
+
+Рендер в тесте — реальный (`SVirtualWindow` + `GV2SimulateResponsiveFrame`, идиома `GV2ContentSmokeTests.cpp`), но не через игровой `WBP_RichText` (`/Game/TextSystem`, sample-пакет — `validate_test_content_coupling.py` отверг первую версию теста за это): воссоздан `UGV2RichTextBoundTestWidget` (был удалён в PEP-05 как неиспользуемый) по образцу уже существующего `UGV2RichTextPopoverBoundTestWidget`. `MakePreparedRichTextStyleForTest` вынесен в общие `GV2PresentationTestFixtures.h`, чтобы не дублировать между `GV2UiKitThemeContractTests.cpp` и новым файлом.
+
+Наведение не достигает Lua структурно, не по рассуждению: весь новый код живёт в `GV2PresentationApply`, которому граф сборки не даёт знать `GV2RuntimeCore` вообще (та же гарантия, что уже доказана для PEP-04/05, подтверждено `validate_presentation_apply_module_graph.py`).
+
+UE `GV2.*` automation suite 199/199 зелёный (добавился ровно один новый тест). Портативный ctest не тронут.
 
 ---
 

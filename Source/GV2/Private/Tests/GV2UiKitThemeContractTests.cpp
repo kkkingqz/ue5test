@@ -59,40 +59,8 @@
 namespace
 {
 using GV2PresentationTestFixtures::LoadConfiguredThemeForTest;
+using GV2PresentationTestFixtures::MakePreparedRichTextStyleForTest;
 using GV2PresentationTestFixtures::MakeResolvedLiteralTextForTest;
-
-GV2PresentationApply::FPreparedRichTextStyle MakePreparedRichTextStyleForTest(
-    const UGV2UiTheme& Theme)
-{
-    GV2PresentationApply::FPreparedRichTextStyle Result;
-    Result.DefaultTokenName = Theme.DefaultTextStyleToken.IsNone()
-        ? FName(TEXT("default"))
-        : Theme.DefaultTextStyleToken;
-    Result.DefaultStyleClass = Theme.RichTextStyle;
-    Result.DefaultToken.StyleClass = Theme.RichTextStyle;
-    Result.DefaultToken.UnscaledFontSize = 0.0f;
-    if (const UCommonTextStyle* Style = Theme.RichTextStyle != nullptr
-            ? Cast<UCommonTextStyle>(Theme.RichTextStyle->GetDefaultObject())
-            : nullptr)
-    {
-        Style->ToTextBlockStyle(Result.DefaultToken.BaseStyle);
-        Result.DefaultToken.bResolved = true;
-    }
-    Result.ColorByToken = Theme.TextColorTokens;
-    Result.UnscaledSizeByToken = Theme.TextSizeTokens;
-    Result.ScalePolicy = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, Result.DefaultTokenName);
-    Result.InteractiveStyle = Theme.RichTextInteractiveStyle;
-    Result.PopoverClass = Theme.RichTextPopoverClass.LoadSynchronous();
-    Result.PopoverStyle.Background = Theme.RichTextPopoverBackground;
-    Result.PopoverStyle.Padding = Theme.RichTextPopoverPadding;
-    Result.PopoverStyle.MaxWidth = Theme.RichTextPopoverMaxWidth;
-    Result.PopoverStyle.MaxHeight = Theme.RichTextPopoverMaxHeight;
-    Result.PopoverStyle.ImageTint = Theme.ImageTint;
-    Result.PopoverStyle.Scale.ScaleCurve = Theme.TextScaleCurve;
-    Result.PopoverStyle.Scale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
-    Result.bIsResolved = true;
-    return Result;
-}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

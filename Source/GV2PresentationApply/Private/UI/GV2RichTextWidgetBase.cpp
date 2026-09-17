@@ -94,6 +94,13 @@ public:
         SlateToolTip->OnSetInteractiveWindowLocation(InOutDesiredLocation);
     }
 
+    // PEP-06A: read-only, for CaptureHoverableSpanAnchors's own correlation below --
+    // OnGenerateTooltip is the only per-block hook FSlateHyperlinkRun::Create exposes, and
+    // this is the one place a fresh instance of this class already closes over the span id
+    // for exactly the widget it gets attached to. Never used by anything to change what
+    // this class does; the tooltip route itself is untouched.
+    FName GetSpanId() const { return SpanId; }
+
 private:
     TWeakObjectPtr<UGV2RichTextWidgetBase> Owner;
     FName SpanId;
@@ -216,6 +223,126 @@ const FGV2RichTextSpanViewModel* UGV2RichTextWidgetBase::FindInteractiveSpan(
 UCommonRichTextBlock* UGV2RichTextWidgetBase::GetRichTextBlock() const
 {
     return RichTextBlock != nullptr ? RichTextBlock.Get() : Cast<UCommonRichTextBlock>(GetWidgetFromName(TEXT("RichTextBlock")));
+}
+
+namespace
+{
+// PEP-06A: URichTextBlock/UCommonRichTextBlock hide their SRichTextBlock entirely (no
+// public accessor), and SRichTextBlock itself exposes no FTextLayout getter -- there is no
+// engine API to ask "give me the geometry of run X" by name. What DOES already exist,
+// through completely ordinary Slate mechanisms, is a real SRichTextHyperlink child widget
+// per interactive run, arranged every frame by the engine's own FSlateHyperlinkRun --
+// GetTypeAsString() is the established way to identify a Slate widget type without RTTI
+// when no other type tag is available.
+void CollectRichTextHyperlinks(const TSharedRef<SWidget>& Root, TArray<TSharedRef<SWidget>>& OutHyperlinks)
+{
+    if (Root->GetTypeAsString() == TEXT("SRichTextHyperlink"))
+    {
+        OutHyperlinks.Add(Root);
+        return;
+    }
+    FChildren* Children = Root->GetChildren();
+    if (Children == nullptr)
+    {
+        return;
+    }
+    const int32 Num = Children->Num();
+    for (int32 Index = 0; Index < Num; ++Index)
+    {
+        CollectRichTextHyperlinks(Children->GetChildAt(Index), OutHyperlinks);
+    }
+}
+}
+
+TArray<FGV2RichTextSpanAnchor> UGV2RichTextWidgetBase::CaptureHoverableSpanAnchors() const
+{
+    TArray<FGV2RichTextSpanAnchor> Anchors;
+    UCommonRichTextBlock* Block = GetRichTextBlock();
+    TSharedPtr<SWidget> CachedWidget = Block != nullptr ? Block->GetCachedWidget() : nullptr;
+    if (!CachedWidget.IsValid())
+    {
+        return Anchors;
+    }
+
+    TArray<TSharedRef<SWidget>> Hyperlinks;
+    CollectRichTextHyperlinks(CachedWidget.ToSharedRef(), Hyperlinks);
+
+    for (const TSharedRef<SWidget>& Hyperlink : Hyperlinks)
+    {
+        // PEP-06A: OnGenerateTooltip is the only per-block hook the engine's
+        // FSlateHyperlinkRun::Create exposes -- the FGV2RichTextSpanToolTip it attaches
+        // here already closes over exactly this widget's span id (see its own doc
+        // comment). Reading it back is a correlation lookup, not a use of the tooltip
+        // route's own OnOpening/OnClosed timing, which this detector never touches.
+        TSharedPtr<IToolTip> Tip = Hyperlink->GetToolTip();
+        const FGV2RichTextSpanToolTip* SpanTip = static_cast<FGV2RichTextSpanToolTip*>(Tip.Get());
+        if (SpanTip == nullptr)
+        {
+            continue;
+        }
+        const FName SpanId = SpanTip->GetSpanId();
+        const FGV2RichTextSpanViewModel* Span = FindInteractiveSpan(SpanId);
+        if (Span == nullptr || Span->Hover.IsEmpty())
+        {
+            continue;
+        }
+        FGV2RichTextSpanAnchor Anchor;
+        Anchor.SpanId = SpanId;
+        Anchor.Rect = Hyperlink->GetTickSpaceGeometry().GetLayoutBoundingRect();
+        Anchors.Add(Anchor);
+    }
+    return Anchors;
+}
+
+const FGV2RichTextSpanAnchor* UGV2RichTextWidgetBase::HitTestSpanAnchors(
+    TArrayView<const FGV2RichTextSpanAnchor> Anchors,
+    const FVector2D& Point)
+{
+    for (const FGV2RichTextSpanAnchor& Anchor : Anchors)
+    {
+        if (Anchor.Rect.ContainsPoint(Point))
+        {
+            return &Anchor;
+        }
+    }
+    return nullptr;
+}
+
+EGV2SpanHoverTransition UGV2RichTextWidgetBase::AdvanceSpanHoverState(
+    FGV2SpanHoverState& State,
+    TArrayView<const FGV2RichTextSpanAnchor> Anchors,
+    const TOptional<FVector2D>& Point,
+    FName& OutSpanId)
+{
+    OutSpanId = NAME_None;
+    const FGV2RichTextSpanAnchor* Hit = Point.IsSet() ? HitTestSpanAnchors(Anchors, Point.GetValue()) : nullptr;
+    const FName NewSpanId = Hit != nullptr ? Hit->SpanId : NAME_None;
+    const FName PreviousSpanId = State.HoveredSpanId;
+
+    if (NewSpanId == PreviousSpanId)
+    {
+        return EGV2SpanHoverTransition::None;
+    }
+
+    const bool bWasHovering = !PreviousSpanId.IsNone();
+    const bool bNowHovering = !NewSpanId.IsNone();
+    State.HoveredSpanId = NewSpanId;
+
+    if (!bWasHovering && bNowHovering)
+    {
+        OutSpanId = NewSpanId;
+        return EGV2SpanHoverTransition::Began;
+    }
+    if (bWasHovering && !bNowHovering)
+    {
+        // The span that ended, not NAME_None -- a caller closing whatever popover it opened
+        // for PreviousSpanId needs to know which one that was.
+        OutSpanId = PreviousSpanId;
+        return EGV2SpanHoverTransition::Ended;
+    }
+    // bWasHovering && bNowHovering, different span ids.
+    OutSpanId = NewSpanId;
+    return EGV2SpanHoverTransition::Changed;
 }
 
 EGV2SubmitUiInteractionResult UGV2RichTextWidgetBase::SubmitSpanInteraction(

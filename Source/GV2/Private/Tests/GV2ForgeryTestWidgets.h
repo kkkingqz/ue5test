@@ -135,6 +135,21 @@ public:
 };
 
 /**
+ * PEP-06A: a rich text widget whose `meta = (BindWidget)` sub-widgets are populated the way
+ * a Widget Blueprint would populate them, so a C++-only test can drive real interactive-span
+ * rendering (CaptureHoverableSpanAnchors et al.) without depending on a game-content WBP
+ * (ADR-0046/TSR-10 forbids a contract test referencing a non-core content path).
+ */
+UCLASS(meta = (GV2TestOnly))
+class UGV2RichTextBoundTestWidget : public UGV2RichTextWidgetBase
+{
+    GENERATED_BODY()
+
+public:
+    void BuildBoundSubWidgets();
+};
+
+/**
  * PSC-10B: a hover popover whose `meta = (BindWidget)` sub-widgets are populated the way a
  * Widget Blueprint would populate them, so a C++-only test can drive the real
  * InitializePopover entry point and read back the physical result.

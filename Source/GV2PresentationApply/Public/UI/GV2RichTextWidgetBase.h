@@ -8,6 +8,7 @@
 #include "UI/GV2ScreenFieldHost.h"
 #include "UI/GV2TextPipelineHost.h"
 #include "CommonUserWidget.h"
+#include "Layout/SlateRect.h"
 #include "GV2RichTextWidgetBase.generated.h"
 
 class UCommonRichTextBlock;
@@ -21,6 +22,32 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
     FName, SpanId,
     FGV2UiBindingHandle, BindingHandle,
     EGV2SubmitUiInteractionResult, Result);
+
+// PEP-06A: replacement for IToolTip::OnOpening/OnClosed as the hover signal. Rect is in
+// absolute (desktop) space -- the same space FGeometry::AbsoluteToLocal converts from, so
+// a caller positioning content inside any layer (overlay_stack included) can convert
+// against that layer's own geometry without this type needing to know which layer that is.
+struct GV2PRESENTATIONAPPLY_API FGV2RichTextSpanAnchor
+{
+    FName SpanId;
+    FSlateRect Rect;
+};
+
+enum class EGV2SpanHoverTransition : uint8
+{
+    None,
+    Began,
+    Ended,
+    // The point moved directly from one span's rect to a different span's, with no gap
+    // reported in between -- the caller decides whether that is one continuous hover or a
+    // close-then-open; this detector only reports what geometrically happened.
+    Changed,
+};
+
+struct GV2PRESENTATIONAPPLY_API FGV2SpanHoverState
+{
+    FName HoveredSpanId;
+};
 
 UCLASS(Blueprintable)
 class GV2PRESENTATIONAPPLY_API UGV2RichTextWidgetBase
@@ -114,6 +141,37 @@ public:
     UClass* GetPreparedPopoverClass() const { return PreparedPopoverClass.Get(); }
     void SetActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover);
     void ClearActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover);
+
+    // PEP-06A: the tooltip route (CreateSpanToolTip/OnOpening/OnClosed) is untouched by
+    // this task and stays the live signal until PEP-06B removes it -- this is a second,
+    // independent detector existing alongside it, not yet consumed by anything.
+    //
+    // Walks the real rendered interactive-span sub-widgets this text block's decorator
+    // created (SRichTextHyperlink instances, found via SWidget::GetChildren()) and returns
+    // one anchor per span whose hover content is non-empty -- the exact predicate
+    // FGV2RichTextSpanToolTip::IsEmpty() already gates tooltip-opening on, so this
+    // detector's coverage set is identical to the one it will replace. Requires a real
+    // paint pass to have happened (the geometry comes from live Slate arrangement, not a
+    // manual layout walk); returns an empty array before first paint or if RichTextBlock is
+    // unbound.
+    TArray<FGV2RichTextSpanAnchor> CaptureHoverableSpanAnchors() const;
+
+    // Pure point-in-rect test, no widget or cursor access -- callable with a synthetic
+    // point, which is exactly how this is tested (see GV2RichTextSpanHoverDetectorTests).
+    static const FGV2RichTextSpanAnchor* HitTestSpanAnchors(
+        TArrayView<const FGV2RichTextSpanAnchor> Anchors,
+        const FVector2D& Point);
+
+    // Advances State against this poll's Anchors and Point (unset meaning the cursor is not
+    // over this widget at all, e.g. it left the widget's own bounds entirely) and returns
+    // which transition happened, if any; OutSpanId names the span that began or ended, or
+    // the newly-hovered span for Changed. Pure state advance, no tick/timer dependency --
+    // feeding a manual sequence of points reproduces any real hover sequence exactly.
+    static EGV2SpanHoverTransition AdvanceSpanHoverState(
+        FGV2SpanHoverState& State,
+        TArrayView<const FGV2RichTextSpanAnchor> Anchors,
+        const TOptional<FVector2D>& Point,
+        FName& OutSpanId);
 
 protected:
     virtual void NativePreConstruct() override;

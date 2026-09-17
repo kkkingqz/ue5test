@@ -7,6 +7,7 @@
 #include "Components/Border.h"
 #include "Components/PanelWidget.h"
 #include "Components/ProgressBar.h"
+#include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/VerticalBox.h"
 #include "UI/GV2RichTextWidgetBase.h"
@@ -117,6 +118,17 @@ void UGV2ProgressBarBoundTestWidget::BuildBoundSubWidgets()
 FLinearColor UGV2ProgressBarBoundTestWidget::ReadAppliedFillColor() const
 {
     return ProgressBar != nullptr ? ProgressBar->GetFillColorAndOpacity() : FLinearColor::Transparent;
+}
+
+void UGV2RichTextBoundTestWidget::BuildBoundSubWidgets()
+{
+    WidgetTree = NewObject<UWidgetTree>(this);
+    RichTextBlock = WidgetTree->ConstructWidget<UCommonRichTextBlock>(
+        UCommonRichTextBlock::StaticClass(), TEXT("RichTextBlock"));
+    RichTextScrollBox = WidgetTree->ConstructWidget<UScrollBox>(
+        UScrollBox::StaticClass(), TEXT("RichTextScrollBox"));
+    RichTextScrollBox->AddChild(RichTextBlock);
+    WidgetTree->RootWidget = RichTextScrollBox;
 }
 
 void UGV2RichTextPopoverBoundTestWidget::BuildBoundSubWidgets()

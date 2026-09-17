@@ -426,6 +426,41 @@ inline FGV2TextViewModel MakeResolvedLiteralTextForTest(
     return Result;
 }
 
+// PEP-06A: shared with GV2UiKitThemeContractTests.cpp (its own original home) so a new test
+// file exercising a real interactive RichText render doesn't need its own copy.
+inline GV2PresentationApply::FPreparedRichTextStyle MakePreparedRichTextStyleForTest(
+    const UGV2UiTheme& Theme)
+{
+    GV2PresentationApply::FPreparedRichTextStyle Result;
+    Result.DefaultTokenName = Theme.DefaultTextStyleToken.IsNone()
+        ? FName(TEXT("default"))
+        : Theme.DefaultTextStyleToken;
+    Result.DefaultStyleClass = Theme.RichTextStyle;
+    Result.DefaultToken.StyleClass = Theme.RichTextStyle;
+    Result.DefaultToken.UnscaledFontSize = 0.0f;
+    if (const UCommonTextStyle* Style = Theme.RichTextStyle != nullptr
+            ? Cast<UCommonTextStyle>(Theme.RichTextStyle->GetDefaultObject())
+            : nullptr)
+    {
+        Style->ToTextBlockStyle(Result.DefaultToken.BaseStyle);
+        Result.DefaultToken.bResolved = true;
+    }
+    Result.ColorByToken = Theme.TextColorTokens;
+    Result.UnscaledSizeByToken = Theme.TextSizeTokens;
+    Result.ScalePolicy = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, Result.DefaultTokenName);
+    Result.InteractiveStyle = Theme.RichTextInteractiveStyle;
+    Result.PopoverClass = Theme.RichTextPopoverClass.LoadSynchronous();
+    Result.PopoverStyle.Background = Theme.RichTextPopoverBackground;
+    Result.PopoverStyle.Padding = Theme.RichTextPopoverPadding;
+    Result.PopoverStyle.MaxWidth = Theme.RichTextPopoverMaxWidth;
+    Result.PopoverStyle.MaxHeight = Theme.RichTextPopoverMaxHeight;
+    Result.PopoverStyle.ImageTint = Theme.ImageTint;
+    Result.PopoverStyle.Scale.ScaleCurve = Theme.TextScaleCurve;
+    Result.PopoverStyle.Scale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
+    Result.bIsResolved = true;
+    return Result;
+}
+
 // TSR-03: Shared adapter converting FGV2ResolvedImageResource to prepared presentation value.
 inline GV2PresentationApply::FPreparedResolvedImageValue MakePreparedResolvedImageForTest(
     const FGV2ResolvedImageResource& Resolved)
