@@ -518,12 +518,21 @@ bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, FName& OutInsta
         OutError = TEXT("core:diagnostic.ui_consumer.hover_overlay_unavailable: no active game shell or hover screen widget");
         return false;
     }
-    return Reconciler->AttachHostLocalScreen(
+    // PEP-07: the physical action stays exactly what PEP-06B built (Attach is unconditional,
+    // never gated by the effect below) -- publishing only adds the queue's own proof of
+    // delivery/discard alongside it, per the plan's own "discarded effect is not obligated to
+    // close a window" rule.
+    if (!Reconciler->AttachHostLocalScreen(
         ActiveGameShell,
         UGV2GameShellWidgetBase::LayerOverlayStack,
         ScreenWidget,
         OutInstanceKey,
-        OutError);
+        OutError))
+    {
+        return false;
+    }
+    PublishHoverEffect(TEXT("core:effect.rich_text_hover_open"), OutInstanceKey);
+    return true;
 }
 
 void UGV2RuntimeSubsystem::CloseHoverOverlay(FName InstanceKey)
@@ -535,7 +544,84 @@ void UGV2RuntimeSubsystem::CloseHoverOverlay(FName InstanceKey)
     FString Error;
     if (!Reconciler->DetachHostLocalScreen(ActiveGameShell, UGV2GameShellWidgetBase::LayerOverlayStack, InstanceKey, Error))
     {
-        UE_LOG(LogTemp, Error, TEXT("Hover overlay detach failed: %s"), *Error);
+        UE_LOG(LogGV2Runtime, Error, TEXT("Hover overlay detach failed: %s"), *Error);
+    }
+    PublishHoverEffect(TEXT("core:effect.rich_text_hover_close"), InstanceKey);
+}
+
+// PEP-07 (ADR-0047): the host-local producer -- naming where every field comes from.
+// bHasTarget/TargetUiInstanceId/TargetRevision are the document coordinates this hover
+// belongs to, read from the coordinator's own single source of truth (FGV2UiBindingRegistry)
+// AT PUBLISH TIME, not cached anywhere. TargetSessionGeneration is NOT set here: PEP-03's own
+// StampAndEnqueueEffect stamps it from the session's current generation at enqueue time --
+// naming it here too would be redundant and could only ever disagree with the session's own
+// truth. Args carries only the host-local participant key PEP-06's AttachHostLocalScreen
+// already returns/DetachHostLocalScreen already consumes -- the one piece of addressing data
+// a widget needs, resolved back through that same registry, never a second index.
+void UGV2RuntimeSubsystem::PublishHoverEffect(const TCHAR* EffectId, FName InstanceKey)
+{
+    if (!Coordinator.IsValid())
+    {
+        return;
+    }
+
+    GV2RuntimeCore::FPresentationEffect Effect;
+    Effect.EffectId = TCHAR_TO_UTF8(EffectId);
+    Effect.bHasTarget = true;
+    Effect.TargetUiInstanceId = TCHAR_TO_UTF8(*Coordinator->GetBindingRegistry().GetUiInstanceId());
+    Effect.TargetRevision = Coordinator->GetBindingRegistry().GetRevision();
+    Effect.Args.emplace(
+        "instance_key",
+        GV2RuntimeCore::FValue(std::string(TCHAR_TO_UTF8(*InstanceKey.ToString()))));
+
+    GV2RuntimeCore::FRuntimeFault PublishFault;
+    if (!Coordinator->GetRuntimeSession().PublishHostLocalEffect(Effect, PublishFault))
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Hover effect publish failed: %s"), UTF8_TO_TCHAR(PublishFault.Message.c_str()));
+        return;
+    }
+    DrainPresentationEffects();
+}
+
+// PEP-07: the ONE production call to TakePendingEffects (GV2.Runtime.Presentation.
+// HoverEffectSingleDrainPoint enumerates every call site in the production tree and asserts
+// there is exactly one). Every drained effect -- hover's own, and any other source's, since
+// the queue is shared by construction (ADR-0047) -- is checked against the CURRENT session/
+// document coordinates; the verdict is recorded for tests and otherwise has no further
+// effect: a discarded effect does not undo whatever AttachHostLocalScreen/
+// DetachHostLocalScreen already did, and an accepted one needs no further action either,
+// since the physical action already happened synchronously before publish.
+void UGV2RuntimeSubsystem::DrainPresentationEffects()
+{
+    if (!Coordinator.IsValid())
+    {
+        return;
+    }
+
+    std::vector<GV2RuntimeCore::FPresentationEffect> Effects;
+    GV2RuntimeCore::FRuntimeFault DrainFault;
+    if (!Coordinator->GetRuntimeSession().TakePendingEffects(Effects, DrainFault))
+    {
+        return;
+    }
+
+    const int32 CurrentSessionGeneration = Coordinator->GetRuntimeSession().GetSessionGeneration();
+    const std::string CurrentUiInstanceId = TCHAR_TO_UTF8(*Coordinator->GetBindingRegistry().GetUiInstanceId());
+    const int64 CurrentRevision = Coordinator->GetBindingRegistry().GetRevision();
+
+#if WITH_DEV_AUTOMATION_TESTS
+    LastDrainedEffectDiagnostics.Reset();
+#endif
+    for (const GV2RuntimeCore::FPresentationEffect& Effect : Effects)
+    {
+        const GV2RuntimeCore::EPresentationEffectRejectReason RejectReason = GV2RuntimeCore::ResolveEffectTarget(
+            Effect,
+            CurrentSessionGeneration,
+            CurrentUiInstanceId,
+            CurrentRevision);
+#if WITH_DEV_AUTOMATION_TESTS
+        LastDrainedEffectDiagnostics.Add({UTF8_TO_TCHAR(Effect.EffectId.c_str()), RejectReason});
+#endif
     }
 }
 

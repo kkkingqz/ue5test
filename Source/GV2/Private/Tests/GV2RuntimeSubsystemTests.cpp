@@ -4,6 +4,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformTime.h"
 #include "Widgets/SVirtualWindow.h"
 #include "Layout/ArrangedChildren.h"
@@ -2810,6 +2811,150 @@ bool FGV2UiTabContainerLifecycleAndCycleContractTest::RunTest(const FString& Par
             }
         }
     }
+
+    return true;
+}
+
+namespace
+{
+// PEP-07: extracts the {...} body of UGV2RuntimeSubsystem::FunctionName's own definition
+// (not merely a call site) via brace matching -- good enough for the four small,
+// non-overloaded functions GV2.Runtime.Presentation.HoverEffectNeverCrossesLua targets.
+// Returns empty on no match, which the caller must treat as a scan failure, not a vacuous
+// pass over nothing.
+FString ExtractQualifiedFunctionBody(const FString& Source, const FString& ClassName, const FString& FunctionName)
+{
+    const FString Qualifier = ClassName + TEXT("::") + FunctionName;
+    const int32 QualifierIndex = Source.Find(Qualifier, ESearchCase::CaseSensitive);
+    if (QualifierIndex == INDEX_NONE)
+    {
+        return FString();
+    }
+    const int32 OpenBrace = Source.Find(TEXT("{"), ESearchCase::CaseSensitive, ESearchDir::FromStart, QualifierIndex);
+    if (OpenBrace == INDEX_NONE)
+    {
+        return FString();
+    }
+    int32 Depth = 0;
+    for (int32 Index = OpenBrace; Index < Source.Len(); ++Index)
+    {
+        if (Source[Index] == TEXT('{'))
+        {
+            ++Depth;
+        }
+        else if (Source[Index] == TEXT('}'))
+        {
+            --Depth;
+            if (Depth == 0)
+            {
+                return Source.Mid(OpenBrace, Index - OpenBrace + 1);
+            }
+        }
+    }
+    return FString();
+}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2HoverEffectNeverCrossesLuaContract,
+    "GV2.Runtime.Presentation.HoverEffectNeverCrossesLua",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PEP-07 (SemanticInput.md:110, WidgetRegistry.md:278): hover/unhover must never cross the
+// Lua boundary. This walks the actual call sites in the four functions the hover path now
+// runs through, not just a comment claiming they don't -- a text scan, symmetric to DCA-15's
+// own idiom (GV2LayoutInvariantSourceTests.cpp), over a small, explicit function set rather
+// than a general call-graph walker.
+bool FGV2HoverEffectNeverCrossesLuaContract::RunTest(const FString& Parameters)
+{
+    const FString SubsystemPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp"));
+    FString Source;
+    TestTrue(TEXT("GV2RuntimeSubsystem.cpp is readable"), FFileHelper::LoadFileToString(Source, *SubsystemPath));
+    if (Source.IsEmpty())
+    {
+        return false;
+    }
+
+    const TArray<FString> HoverFunctionNames = {
+        TEXT("OpenHoverOverlay"),
+        TEXT("CloseHoverOverlay"),
+        TEXT("PublishHoverEffect"),
+        TEXT("DrainPresentationEffects"),
+    };
+
+    // The exact set of symbols that name a Lua-crossing entry point reachable from this
+    // module -- anything reaching one of these would let hover become a gameplay event.
+    const TArray<FString> LuaCrossingSymbols = {
+        TEXT("DispatchSemanticInput"),
+        TEXT("DispatchCommand"),
+        TEXT("SubmitUiInteraction"),
+        TEXT("SubmitPresentationInteraction"),
+        TEXT("lua_"),
+        TEXT("CallLua"),
+    };
+
+    int32 FunctionsScanned = 0;
+    for (const FString& FunctionName : HoverFunctionNames)
+    {
+        const FString Body = ExtractQualifiedFunctionBody(Source, TEXT("UGV2RuntimeSubsystem"), FunctionName);
+        TestFalse(
+            *FString::Printf(TEXT("UGV2RuntimeSubsystem::%s's definition is found and extractable"), *FunctionName),
+            Body.IsEmpty());
+        if (Body.IsEmpty())
+        {
+            continue;
+        }
+        ++FunctionsScanned;
+        for (const FString& Symbol : LuaCrossingSymbols)
+        {
+            TestFalse(
+                *FString::Printf(TEXT("%s does not reach the Lua-crossing symbol '%s'"), *FunctionName, *Symbol),
+                Body.Contains(Symbol));
+        }
+    }
+    TestEqual(TEXT("All four hover-path functions were actually scanned"), FunctionsScanned, HoverFunctionNames.Num());
+
+    // "One counter, one queue, one drain point" -- exactly one production call site may call
+    // TakePendingEffects; a second would let two independent drain loops race the same queue.
+    TArray<FString> SourceFiles;
+    const FString SourceRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("Source/GV2/Private"));
+    IFileManager::Get().FindFilesRecursive(SourceFiles, *SourceRoot, TEXT("*.cpp"), true, false, false);
+
+    int32 DrainCallSiteCount = 0;
+    TArray<FString> DrainCallSiteFiles;
+    for (const FString& FilePath : SourceFiles)
+    {
+        if (FilePath.Contains(TEXT("/Tests/")))
+        {
+            continue;
+        }
+        FString FileSource;
+        if (!FFileHelper::LoadFileToString(FileSource, *FilePath))
+        {
+            continue;
+        }
+        int32 Count = 0;
+        int32 SearchIndex = 0;
+        for (;;)
+        {
+            const int32 Found = FileSource.Find(TEXT(".TakePendingEffects("), ESearchCase::CaseSensitive, ESearchDir::FromStart, SearchIndex);
+            if (Found == INDEX_NONE)
+            {
+                break;
+            }
+            ++Count;
+            SearchIndex = Found + 1;
+        }
+        if (Count > 0)
+        {
+            DrainCallSiteCount += Count;
+            DrainCallSiteFiles.Add(FString::Printf(TEXT("%s (%d)"), *FPaths::GetCleanFilename(FilePath), Count));
+        }
+    }
+    TestEqual(
+        *FString::Printf(TEXT("Exactly one production call site drains TakePendingEffects: %s"), *FString::Join(DrainCallSiteFiles, TEXT(", "))),
+        DrainCallSiteCount,
+        1);
 
     return true;
 }

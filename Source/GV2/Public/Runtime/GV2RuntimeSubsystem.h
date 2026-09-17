@@ -5,6 +5,7 @@
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "GV2RuntimeCore/GV2HostServices.h"
+#include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include <memory>
 #include "GV2RuntimeSubsystem.generated.h"
 
@@ -143,6 +144,26 @@ private:
     void TeardownActiveProjection();
     void PublishActiveProjection();
 
+    // PEP-07 (ADR-0047): the host-local producer for hover open/close -- replaces the
+    // direct call PEP-06B/06C left. Builds a targeted FPresentationEffect (target =
+    // Coordinator's CURRENT document coordinates, taken at publish time; Args = the
+    // host-local participant key from PEP-06's own registry, the only address a widget
+    // needs -- see the plan's own field table) and hands it to
+    // FRuntimeSession::PublishHostLocalEffect, then drains. Never touches Lua: no call in
+    // this path or DrainPresentationEffects reaches DispatchSemanticInput/DispatchCommand
+    // or any other Lua-crossing entry point (GV2.Runtime.Presentation.
+    // HoverEffectNeverCrossesLua enumerates the call sites, not just this comment).
+    void PublishHoverEffect(const TCHAR* EffectId, FName InstanceKey);
+
+    // PEP-07: the ONE production call site for FRuntimeSession::TakePendingEffects --
+    // "one counter, one queue, one drain point" (the queue's own doc comment). Resolves
+    // each drained effect's target against the session/document's CURRENT coordinates via
+    // ResolveEffectTarget; a discarded effect is not obligated to close a window already
+    // opened directly (ADR-0048's own exit-lifecycle rule governs that independently) --
+    // this drain is the queue's proof of delivery/discard, not a second gate on the
+    // physical action AttachHostLocalScreen/DetachHostLocalScreen already performed.
+    void DrainPresentationEffects();
+
 public:
 #if WITH_DEV_AUTOMATION_TESTS
     // PSC-10C: the session's image catalog now lives only in its content snapshot -- the
@@ -153,8 +174,28 @@ public:
     const FGV2SessionContentSnapshot* GetContentSnapshotForAutomationTest() const;
     FGV2SessionCoordinator* GetCoordinatorForAutomationTest() const { return Coordinator.Get(); }
 
+    // PEP-07: what the single production drain point most recently observed -- every
+    // effect TakePendingEffects returned on the last DrainPresentationEffects() call, paired
+    // with the ResolveEffectTarget verdict each one actually got. Cleared and repopulated on
+    // every drain; a test proving a real (not synthetic) discard reads this instead of
+    // re-deriving the verdict itself.
+    struct FGV2DrainedEffectDiagnostic
+    {
+        FString EffectId;
+        GV2RuntimeCore::EPresentationEffectRejectReason RejectReason = GV2RuntimeCore::EPresentationEffectRejectReason::None;
+    };
+    const TArray<FGV2DrainedEffectDiagnostic>& GetLastDrainedEffectDiagnosticsForAutomationTest() const
+    {
+        return LastDrainedEffectDiagnostics;
+    }
+
     static bool bTestForceDocumentSinkFailure;
     static bool bTestForceRepositoryNotReady;
+
+private:
+    TArray<FGV2DrainedEffectDiagnostic> LastDrainedEffectDiagnostics;
+
+public:
 #endif
 
 private:

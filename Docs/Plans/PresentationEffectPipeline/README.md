@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 2.4
+version: 2.5
 updated: 2026-09-17
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -481,7 +481,7 @@ UE `GV2.*` automation suite 201/201 зелёный (199 было после `PEP
 
 ### PEP-07 — Сделать hover host-local источником эффекта
 
-- [ ] PEP-07 — Сделать hover host-local источником эффекта
+- [x] PEP-07 — Сделать hover host-local источником эффекта
 
 **Зависимость:** PEP-06C. **Файлы:** `OpenHoverOverlay`/`CloseHoverOverlay` на `UGV2PresentationInteractionSink` и их реализация в `UGV2RuntimeSubsystem`; `FRuntimeSession::PublishHostLocalEffect`/`TakePendingEffects` из `PEP-03`; `FGV2LayeredUiReconciler` (резолв ключа участника); `FGV2PresentationEffectApply` из `PEP-04`.
 
@@ -529,6 +529,12 @@ UE `GV2.*` automation suite 201/201 зелёный (199 было после `PEP
 - Отброшенный эффект не уничтожает окно: случай «документ сменился между публикацией и дренажом» покрыт тестом и отделён от stale-правила `ADR-0048`.
 
 **Evidence:** перечень вызывающих `TakePendingEffects`, обход путей вызова наведения, сверка canonical state, прогон отброшенного эффекта с живым окном, прогон rebuild.
+
+**Реализация.** Физическое действие осталось ровно тем, что построил `PEP-06B`: `AttachHostLocalScreen`/`DetachHostLocalScreen` вызываются безусловно, публикация эффекта их не гейтит. `OpenHoverOverlay`/`CloseHoverOverlay` (`UGV2RuntimeSubsystem`) после физического действия строят `FPresentationEffect` (`effect_id` = `core:effect.rich_text_hover_open`/`core:effect.rich_text_hover_close`) и публикуют через новый приватный `PublishHoverEffect`, который сразу дренирует через новый `DrainPresentationEffects` — единственное место в производственном дереве, вызывающее `TakePendingEffects` (перечислено `GV2.Runtime.Presentation.HoverEffectNeverCrossesLua`, счётчик равен единице). Источник каждой координаты цели: `TargetUiInstanceId`/`TargetRevision` — из `Coordinator->GetBindingRegistry()` (единственный источник истины) в момент публикации; `TargetSessionGeneration` НЕ проставляется вызывающим — его безусловно проставляет `FRuntimeSession::StampAndEnqueueEffect` из текущего поколения сессии в момент постановки в очередь (называть его повторно значило бы вручную дублировать то, что сессия уже гарантирует). `Args` несёт только `instance_key` — синтетический ключ участника, который `AttachHostLocalScreen` уже возвращает, а `DetachHostLocalScreen` уже принимает; второго индекса виджетов не заведено, ключ разрешается через тот же реестр `PEP-06`.
+
+Дренаж читает вердикт `ResolveEffectTarget` для диагностики (тестовый accessor `GetLastDrainedEffectDiagnosticsForAutomationTest`) и не действует на его основании: отброшенный эффект не отменяет уже выполненное физическое действие — правило ADR-0048 про stale-окно и правило очереди про stale-эффект разделены сознательно, а не по недосмотру. Прогон `GV2.Runtime.Presentation.HoverEffectQueueContract` (реальная RH-сессия, не синтетический fixture) доказывает: (1) canonical state hash побайтово одинаков до и после наведения; (2) один эффект дренируется на открытие, принят (`None`); (3) прямая публикация через ту же продакшен-функцию `PublishHostLocalEffect` с несуществующим `ui_instance_id` реально отклоняется дренажом с причиной `StaleTarget`, а первое открытое окно и canonical state остаются нетронутыми — отбрасывание проверено на реальном эффекте, а не только в тесте `PEP-03`; (4) настоящая смена локации через RH-контент (`SubmitUiInteraction` на travel-кнопку) тоже даёт реальную причину отказа — этот путь оказался куда разрушительнее ожидаемого (RH-контент запускает у себя `StartSession` заново на каждый travel, поднимая поколение сессии), поэтому этот шаг проверяет только сам факт отказа, не переживание окна: полноценный ребилд сессии — не тот баг, от которого защищает это правило. Проверка «окно переживает» поэтому выполнена отдельно, на контролируемом сценарии без travel. Обнаружена и исправлена собственная ошибка теста: `GetActiveScreenInLayer`/`Reconciler::GetActiveScreen` ищут только в документном ярусе (`ActiveScreens`) и никогда не находят host-local участника независимо от того, жив он или нет — проверка «окно живо» читает вместо этого `Shell->GetScreensInLayer(...)`, как уже делают собственные host-local тесты `PEP-06`.
+
+Восстановимость (`GV2.Runtime.Presentation.HoverEffectQueueContract`, шаг 5): `EndSession` разрушает весь GameShell целиком; `StartSession` не восстанавливает окно наведения — оно появляется только настоящим наведением. Обход путей вызова (`GV2.Runtime.Presentation.HoverEffectNeverCrossesLua`) сканирует тела ровно четырёх функций (`OpenHoverOverlay`, `CloseHoverOverlay`, `PublishHoverEffect`, `DrainPresentationEffects`) на отсутствие Lua-пересекающих символов (`DispatchSemanticInput`, `DispatchCommand`, `SubmitUiInteraction`, `lua_` и т.д.) — подтверждено мутацией: временный второй вызов `TakePendingEffects` красит «ровно один вызывающий» гейт («... to be 1, but it was 2»), откачено. UE `GV2.*` automation suite 203/203 зелёный (201 было + 2 новых теста). Портативный `ctest` не тронут (задача не коснулась `GV2RuntimeCore`, только использовала уже существующие `PublishHostLocalEffect`/`TakePendingEffects`/`ResolveEffectTarget`).
 
 ---
 
