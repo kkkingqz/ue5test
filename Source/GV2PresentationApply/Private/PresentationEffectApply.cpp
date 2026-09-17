@@ -1,8 +1,14 @@
 #include "GV2PresentationApply/PresentationEffectApply.h"
 
+#include "Components/Widget.h"
+
 using namespace GV2PresentationApply;
 
-bool FGV2PresentationEffectApply::Apply(EPresentationEffectKind Kind, FGV2PresentationEffectApplyResult& OutResult)
+bool FGV2PresentationEffectApply::Apply(
+    EPresentationEffectKind Kind,
+    UWidget* Widget,
+    float Alpha,
+    FGV2PresentationEffectApplyResult& OutResult)
 {
     OutResult = FGV2PresentationEffectApplyResult();
 
@@ -15,11 +21,19 @@ bool FGV2PresentationEffectApply::Apply(EPresentationEffectKind Kind, FGV2Presen
 
     switch (Kind)
     {
-        // PEP-04: no effect kind is registered yet. PEP-08 adds the first case here
-        // (opacity fade), together with a matching case in GetKindHandlingStatus below --
-        // the completeness gate, not this switch's own -Wswitch, is what's measured to
-        // actually catch a kind added to one without the other (see the PEP-04 commit
-        // message for the mutation that proved it).
+    case EPresentationEffectKind::Transparency:
+        if (Widget == nullptr)
+        {
+            OutResult.RejectReason = EGV2PresentationEffectApplyReject::InvalidWidget;
+            OutResult.Error = TEXT("core:diagnostic.presentation_effect_apply.invalid_widget: Transparency requires a widget.");
+            return false;
+        }
+        Widget->SetRenderOpacity(FMath::Clamp(Alpha, 0.0f, 1.0f));
+        OutResult.bApplied = true;
+        return true;
+
+    case EPresentationEffectKind::Count:
+        break;
     }
 
     OutResult.RejectReason = EGV2PresentationEffectApplyReject::UnsupportedKind;
@@ -33,7 +47,10 @@ EGV2EffectKindStatus FGV2PresentationEffectApply::GetKindHandlingStatus(EPresent
 {
     switch (Kind)
     {
-        // PEP-04: symmetric to the (empty) dispatch switch in Apply above.
+    case EPresentationEffectKind::Transparency:
+        return EGV2EffectKindStatus::Supported;
+    case EPresentationEffectKind::Count:
+        break;
     }
     return EGV2EffectKindStatus::Inapplicable;
 }

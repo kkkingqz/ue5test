@@ -6,6 +6,7 @@
 #include "Components/ScrollBox.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GV2PresentationApply/GV2PresentationInteractionSink.h"
+#include "GV2PresentationApply/PresentationEffectApply.h"
 #include "Styling/CoreStyle.h"
 #include "UI/GV2RichTextSpanDecorator.h"
 #include "UI/GV2ScreenAnchorHost.h"
@@ -101,27 +102,64 @@ void UGV2RichTextWidgetBase::NativeTick(const FGeometry& MyGeometry, float InDel
 
     FName TransitionedSpanId;
     const EGV2SpanHoverTransition Transition = AdvanceSpanHoverState(HoverState, Anchors, CursorPos, TransitionedSpanId);
-    if (Transition == EGV2SpanHoverTransition::Ended)
-    {
-        CloseActiveHoverOverlay();
-    }
-    else if (Transition == EGV2SpanHoverTransition::Began || Transition == EGV2SpanHoverTransition::Changed)
-    {
-        // Changed means a different span took over with no gap reported -- close whatever
-        // was open first; Began means nothing was open, making this a no-op.
-        CloseActiveHoverOverlay();
-        OpenHoverOverlayForSpan(TransitionedSpanId);
-    }
+    HandleHoverTransition(Transition, TransitionedSpanId);
 
     // Reposition every tick, not only on the transition edge: the overlay's own geometry is
     // one frame stale immediately after AttachHostLocalScreen (it has not been arranged in
     // the panel yet this frame), and re-applying every tick self-heals that without needing
-    // a special first-frame case.
-    if (!ActiveHoverInstanceKey.IsNone() && !HoverState.HoveredSpanId.IsNone())
+    // a special first-frame case. Uses ActiveHoverSpanId, not HoverState.HoveredSpanId --
+    // the latter goes back to NAME_None the instant the cursor leaves, exactly when a
+    // Leaving fade still needs its anchor tracked.
+    if (!ActiveHoverInstanceKey.IsNone() && !ActiveHoverSpanId.IsNone())
     {
-        RepositionActiveHoverOverlay(HoverState.HoveredSpanId, Anchors);
+        RepositionActiveHoverOverlay(ActiveHoverSpanId, Anchors);
+    }
+
+    TickHoverFade(InDeltaTime);
+}
+
+// PEP-08: factored out of NativeTick so GV2.Runtime.Presentation.HoverFadeAppearLeaveCancel
+// can drive the SAME production transition-handling code a real cursor would, via the
+// test-only SimulateHoverTickForAutomationTest seam below -- without needing a controllable
+// OS cursor position (AdvanceSpanHoverState's own cursor-to-transition mapping is already
+// covered by GV2RichTextSpanHoverDetectorTests).
+void UGV2RichTextWidgetBase::HandleHoverTransition(EGV2SpanHoverTransition Transition, FName TransitionedSpanId)
+{
+    if (Transition == EGV2SpanHoverTransition::Began && HoverFadeStage == EGV2HoverFadeStage::Leaving
+        && TransitionedSpanId == ActiveHoverSpanId)
+    {
+        // PEP-08: cursor returned to the same span -- or to the still-open window itself,
+        // since CaptureHoverableSpanAnchors also anchors the open window's own rect under
+        // ActiveHoverSpanId -- while it was leaving. Cancel: resume appearing from whatever
+        // opacity it already reached, not from zero and not with a snapped jump.
+        HoverFadeStage = EGV2HoverFadeStage::Appearing;
+    }
+    else if (Transition == EGV2SpanHoverTransition::Began || Transition == EGV2SpanHoverTransition::Changed)
+    {
+        // Changed means a different span took over with no gap reported -- close whatever
+        // was open first; Began means nothing was open (or the leave already finished),
+        // making the close a no-op.
+        CloseActiveHoverOverlay();
+        OpenHoverOverlayForSpan(TransitionedSpanId);
+    }
+    else if (Transition == EGV2SpanHoverTransition::Ended && !ActiveHoverInstanceKey.IsNone())
+    {
+        // The window itself is not destroyed here -- only the fade direction reverses.
+        // TickHoverFade is what actually closes it, once opacity reaches zero.
+        HoverFadeStage = EGV2HoverFadeStage::Leaving;
     }
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+void UGV2RichTextWidgetBase::SimulateHoverTickForAutomationTest(
+    EGV2SpanHoverTransition TransitionForTest,
+    FName SpanIdForTest,
+    float DeltaTime)
+{
+    HandleHoverTransition(TransitionForTest, SpanIdForTest);
+    TickHoverFade(DeltaTime);
+}
+#endif
 
 void UGV2RichTextWidgetBase::OpenHoverOverlayForSpan(FName SpanId)
 {
@@ -135,7 +173,8 @@ void UGV2RichTextWidgetBase::OpenHoverOverlayForSpan(FName SpanId)
     UGV2PresentationInteractionSink* Sink = UGV2PresentationInteractionSink::Find(this);
     FName NewInstanceKey;
     FString Error;
-    if (Sink == nullptr || !Sink->OpenHoverOverlay(HoverWidget, NewInstanceKey, Error))
+    const float DurationSeconds = FMath::Max(Span->Hover.Duration, 0.0f);
+    if (Sink == nullptr || !Sink->OpenHoverOverlay(HoverWidget, DurationSeconds, NewInstanceKey, Error))
     {
         UE_LOG(
             LogTemp,
@@ -148,6 +187,13 @@ void UGV2RichTextWidgetBase::OpenHoverOverlayForSpan(FName SpanId)
 
     ActiveHoverInstanceKey = NewInstanceKey;
     ActiveHoverWidget = HoverWidget;
+    ActiveHoverSpanId = SpanId;
+    HoverFadeDurationSeconds = DurationSeconds;
+    HoverFadeStage = EGV2HoverFadeStage::Appearing;
+    // Starts at zero unconditionally: this is always a brand-new attach (OpenHoverOverlayForSpan
+    // is never called while one is already open for a different span without CloseActiveHoverOverlay
+    // running first), so there is no "current" opacity to continue from yet.
+    HoverFadeOpacity = 0.0f;
 }
 
 void UGV2RichTextWidgetBase::CloseActiveHoverOverlay()
@@ -162,6 +208,59 @@ void UGV2RichTextWidgetBase::CloseActiveHoverOverlay()
     }
     ActiveHoverInstanceKey = NAME_None;
     ActiveHoverWidget.Reset();
+    ActiveHoverSpanId = NAME_None;
+    HoverFadeStage = EGV2HoverFadeStage::None;
+    HoverFadeOpacity = 0.0f;
+    HoverFadeDurationSeconds = 0.0f;
+}
+
+void UGV2RichTextWidgetBase::TickHoverFade(float DeltaTime)
+{
+    if (HoverFadeStage == EGV2HoverFadeStage::None)
+    {
+        return;
+    }
+    UUserWidget* Widget = ActiveHoverWidget.Get();
+    if (Widget == nullptr)
+    {
+        // The widget disappeared out from under the fade (e.g. torn down by a session
+        // rebuild) -- nothing left to fade or to close.
+        HoverFadeStage = EGV2HoverFadeStage::None;
+        return;
+    }
+
+    const bool bAppearing = HoverFadeStage == EGV2HoverFadeStage::Appearing;
+    if (HoverFadeDurationSeconds <= 0.0f)
+    {
+        // No authored duration: instant, not a division by zero.
+        HoverFadeOpacity = bAppearing ? 1.0f : 0.0f;
+    }
+    else
+    {
+        const float Direction = bAppearing ? 1.0f : -1.0f;
+        HoverFadeOpacity = FMath::Clamp(
+            HoverFadeOpacity + Direction * (DeltaTime / HoverFadeDurationSeconds),
+            0.0f,
+            1.0f);
+    }
+
+    GV2PresentationApply::FGV2PresentationEffectApplyResult ApplyResult;
+    FGV2PresentationEffectApply::Apply(
+        GV2PresentationApply::EPresentationEffectKind::Transparency,
+        Widget,
+        HoverFadeOpacity,
+        ApplyResult);
+
+    if (bAppearing && HoverFadeOpacity >= 1.0f)
+    {
+        // Fully visible and steady -- no more ticking needed until a Leaving edge starts.
+        HoverFadeStage = EGV2HoverFadeStage::None;
+    }
+    else if (!bAppearing && HoverFadeOpacity <= 0.0f)
+    {
+        // The window disappears HERE, at opacity zero -- never by a timer.
+        CloseActiveHoverOverlay();
+    }
 }
 
 void UGV2RichTextWidgetBase::RepositionActiveHoverOverlay(
@@ -314,6 +413,30 @@ TArray<FGV2RichTextSpanAnchor> UGV2RichTextWidgetBase::CaptureHoverableSpanAncho
         Anchor.Rect = Hyperlink->GetTickSpaceGeometry().GetLayoutBoundingRect();
         Anchors.Add(Anchor);
     }
+
+    // PEP-08: while an overlay is open, its OWN VISIBLE CONTENT rect (never its root, which
+    // is always Fill/Fill over the whole layer -- see IGV2ScreenAnchorHost::
+    // GetAnchoredContentScreenRect's own doc comment) counts as an anchor for the span it
+    // belongs to. Moving the cursor onto the popover itself (not just back onto the source
+    // text) then also counts as "still hovering that span" through this same detector, with
+    // no cross-widget signal needed. Independent of the hyperlink loop above: this span id's
+    // own real anchor may not even be in Anchors right now (e.g. the text scrolled it out of
+    // view), and the overlay must still be reachable regardless.
+    if (!ActiveHoverSpanId.IsNone())
+    {
+        if (const IGV2ScreenAnchorHost* AnchorHost = Cast<IGV2ScreenAnchorHost>(ActiveHoverWidget.Get()))
+        {
+            const FSlateRect ContentRect = AnchorHost->GetAnchoredContentScreenRect();
+            if (!ContentRect.IsEmpty())
+            {
+                FGV2RichTextSpanAnchor OverlayAnchor;
+                OverlayAnchor.SpanId = ActiveHoverSpanId;
+                OverlayAnchor.Rect = ContentRect;
+                Anchors.Add(OverlayAnchor);
+            }
+        }
+    }
+
     return Anchors;
 }
 

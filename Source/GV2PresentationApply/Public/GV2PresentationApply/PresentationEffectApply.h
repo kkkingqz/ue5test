@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 
+class UWidget;
+
 // PEP-04 (ADR-0043 D2/D4): the effect-side counterpart to FGV2PresentationApply
 // (PreparedPresentationTransaction.h). This header cannot name FPresentationEffect
 // (GV2RuntimeCore) or any other portable/content-authority type -- GV2PresentationApply.Build.cs
@@ -10,22 +12,30 @@
 // GV2 (which links both GV2RuntimeCore and GV2PresentationApply); this module only ever sees an
 // already-resolved effect kind, never the DTO it came from.
 //
-// PEP-04 introduces the mechanism with zero supported kinds: EPresentationEffectKind::Count is
-// 0. The first real kind (opacity fade) is PEP-08's job, matching the plan's own rule that a
-// change set does not combine introducing a mechanism with introducing its first consumer.
-// Exhaustiveness for the empty set is proven now, by construction and by a temporary mutation
-// during development (see the PEP-04 commit message for how); it holds unchanged once PEP-08
-// adds the first case.
+// PEP-08 (opacity fade) is the first real kind and the first thing to extend Apply's own
+// signature -- with a UWidget*, not a snapshot or gameplay-state reference. That is not a
+// weakening of PEP-04's own guarantee: the guarantee came from the module's Build.cs denying
+// GV2RuntimeCore/GV2ContentCore/GV2RuntimeCore-adjacent authority modules outright, and this
+// module already links UMG (GV2PresentationApply.Build.cs) -- it already knows what a UWidget
+// is, the same way FGV2PresentationApply::Apply (PreparedPresentationTransaction.h) always
+// has. Widget and Alpha are both plain, structurally inert values with no path back to a
+// snapshot or gameplay type; only GV2RuntimeCore/GV2ContentCore types were ever forbidden.
 
 namespace GV2PresentationApply
 {
-// PEP-04: closed enumeration of effect kinds the Game-Thread executor below can dispatch.
+// PEP-04/08: closed enumeration of effect kinds the Game-Thread executor below can dispatch.
 // Symmetric to EGV2PreparedUiValueKind (GV2PropertyConsumers.h): a plain enum with a Count
 // sentinel, walked by a completeness gate rather than a compile-time variant, because the set
 // of effect kinds grows with future plan tasks the same way the value-kind set once did.
 enum class EPresentationEffectKind : uint8
 {
-    Count = 0
+    // PEP-08: continuous 0<->1 UWidget::RenderOpacity fade -- appear/leave for a host-local
+    // hover overlay. Not itself a queued one-shot FPresentationEffect kind (the queue --
+    // PEP-03/07 -- only ever carries the hover open/close SIGNAL); this is ticked directly,
+    // once per frame, by whoever owns the fade state machine (GV2RichTextWidgetBase), each
+    // tick computing the next Alpha and calling Apply with it.
+    Transparency,
+    Count
 };
 
 // Mirrors EGV2PropertyConsumerKindStatus (GV2PropertyConsumers.h).
@@ -35,14 +45,15 @@ enum class EGV2EffectKindStatus : uint8
     Inapplicable
 };
 
-// A rejection always carries which of the two guarantees below fired -- never a bare bool.
-// OffGameThread and UnsupportedKind are the only ways Apply can fail: there is no third
-// failure mode because the function touches nothing before these two checks run.
+// A rejection always carries which of the guarantees below fired -- never a bare bool.
+// InvalidWidget is PEP-08's own addition: a null Widget is a real, distinct failure mode a
+// kind needing one can hit, never conflated with an unsupported Kind or an off-thread call.
 enum class EGV2PresentationEffectApplyReject : uint8
 {
     None,
     OffGameThread,
     UnsupportedKind,
+    InvalidWidget,
 };
 
 struct GV2PRESENTATIONAPPLY_API FGV2PresentationEffectApplyResult
@@ -53,16 +64,19 @@ struct GV2PRESENTATIONAPPLY_API FGV2PresentationEffectApplyResult
 };
 }
 
-// PEP-04: THE production entry point for executing one already-resolved effect kind. Its
-// signature carries no widget, snapshot, or gameplay-state reference -- Apply structurally
-// cannot mutate anything this module has no type to name, the same guarantee ADR-0043 D2
-// gives FGV2PresentationApply::Apply. A rejected effect therefore leaves snapshot and
-// gameplay state unchanged by construction, not by discipline this function has to uphold.
+// PEP-04/08: THE production entry point for executing one already-resolved effect kind. Its
+// signature carries a widget and a plain value (Alpha), never a snapshot or gameplay-state
+// reference -- Apply structurally cannot mutate anything this module has no type to name, the
+// same guarantee ADR-0043 D2 gives FGV2PresentationApply::Apply. A rejected effect therefore
+// leaves snapshot and gameplay state unchanged by construction, not by discipline this
+// function has to uphold.
 class GV2PRESENTATIONAPPLY_API FGV2PresentationEffectApply
 {
 public:
     static bool Apply(
         GV2PresentationApply::EPresentationEffectKind Kind,
+        UWidget* Widget,
+        float Alpha,
         GV2PresentationApply::FGV2PresentationEffectApplyResult& OutResult);
 
     static GV2PresentationApply::EGV2EffectKindStatus GetKindHandlingStatus(

@@ -510,7 +510,7 @@ UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::GetActiveScreenInLayer(FName Layer, 
     return Reconciler->GetActiveScreen(Layer, InstanceKey);
 }
 
-bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, FName& OutInstanceKey, FString& OutError)
+bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, float DurationSeconds, FName& OutInstanceKey, FString& OutError)
 {
     UGV2ScreenWidgetBase* ScreenWidget = Cast<UGV2ScreenWidgetBase>(Widget);
     if (ScreenWidget == nullptr || ActiveGameShell == nullptr || !Reconciler.IsValid())
@@ -531,7 +531,7 @@ bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, FName& OutInsta
     {
         return false;
     }
-    PublishHoverEffect(TEXT("core:effect.rich_text_hover_open"), OutInstanceKey);
+    PublishHoverEffect(TEXT("core:effect.rich_text_hover_open"), OutInstanceKey, DurationSeconds);
     return true;
 }
 
@@ -546,7 +546,7 @@ void UGV2RuntimeSubsystem::CloseHoverOverlay(FName InstanceKey)
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Hover overlay detach failed: %s"), *Error);
     }
-    PublishHoverEffect(TEXT("core:effect.rich_text_hover_close"), InstanceKey);
+    PublishHoverEffect(TEXT("core:effect.rich_text_hover_close"), InstanceKey, 0.0f);
 }
 
 // PEP-07 (ADR-0047): the host-local producer -- naming where every field comes from.
@@ -558,7 +558,7 @@ void UGV2RuntimeSubsystem::CloseHoverOverlay(FName InstanceKey)
 // truth. Args carries only the host-local participant key PEP-06's AttachHostLocalScreen
 // already returns/DetachHostLocalScreen already consumes -- the one piece of addressing data
 // a widget needs, resolved back through that same registry, never a second index.
-void UGV2RuntimeSubsystem::PublishHoverEffect(const TCHAR* EffectId, FName InstanceKey)
+void UGV2RuntimeSubsystem::PublishHoverEffect(const TCHAR* EffectId, FName InstanceKey, float DurationSeconds)
 {
     if (!Coordinator.IsValid())
     {
@@ -573,6 +573,9 @@ void UGV2RuntimeSubsystem::PublishHoverEffect(const TCHAR* EffectId, FName Insta
     Effect.Args.emplace(
         "instance_key",
         GV2RuntimeCore::FValue(std::string(TCHAR_TO_UTF8(*InstanceKey.ToString()))));
+    Effect.Args.emplace(
+        "duration_ms",
+        GV2RuntimeCore::FValue(static_cast<std::int64_t>(FMath::RoundToInt(DurationSeconds * 1000.0f))));
 
     GV2RuntimeCore::FRuntimeFault PublishFault;
     if (!Coordinator->GetRuntimeSession().PublishHostLocalEffect(Effect, PublishFault))

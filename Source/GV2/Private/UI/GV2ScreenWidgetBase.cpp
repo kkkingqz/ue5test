@@ -426,6 +426,17 @@ void UGV2ScreenWidgetBase::SetAnchoredContentPosition(const FVector2D& LocalPosi
     Slot->SetPosition(ClampedPosition);
 }
 
+FSlateRect UGV2ScreenWidgetBase::GetAnchoredContentScreenRect() const
+{
+    const UCanvasPanel* RootCanvas = WidgetTree != nullptr ? Cast<UCanvasPanel>(WidgetTree->RootWidget) : nullptr;
+    if (RootCanvas == nullptr || RootCanvas->GetChildrenCount() != 1)
+    {
+        return FSlateRect();
+    }
+    const UWidget* Content = RootCanvas->GetChildAt(0);
+    return Content != nullptr ? Content->GetTickSpaceGeometry().GetLayoutBoundingRect() : FSlateRect();
+}
+
 TArray<FName> UGV2ScreenWidgetBase::GetScreenFieldIds() const
 {
     TArray<FGV2ScreenHostRecord> Hosts;

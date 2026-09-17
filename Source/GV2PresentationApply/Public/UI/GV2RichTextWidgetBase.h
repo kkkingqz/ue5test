@@ -48,6 +48,18 @@ struct GV2PRESENTATIONAPPLY_API FGV2SpanHoverState
     FName HoveredSpanId;
 };
 
+// PEP-08: a hover overlay's own appear/leave state. None means no overlay is open at all.
+// Appearing/Leaving both ramp HoverFadeOpacity at the SAME constant rate
+// (1/HoverFadeDurationSeconds per second); reversing direction mid-ramp (cancel) is exactly
+// flipping the sign and continuing from whatever HoverFadeOpacity already is -- this is what
+// gives "proportional remaining time" for free, with no separate remaining-time calculation.
+enum class EGV2HoverFadeStage : uint8
+{
+    None,
+    Appearing,
+    Leaving,
+};
+
 UCLASS(Blueprintable)
 class GV2PRESENTATIONAPPLY_API UGV2RichTextWidgetBase
     : public UCommonUserWidget
@@ -178,6 +190,27 @@ private:
     void OpenHoverOverlayForSpan(FName SpanId);
     void CloseActiveHoverOverlay();
     void RepositionActiveHoverOverlay(FName SpanId, const TArray<FGV2RichTextSpanAnchor>& Anchors);
+    // PEP-08: advances the fade state machine by one tick and physically applies the
+    // resulting opacity via FGV2PresentationEffectApply -- the sole caller of Apply for the
+    // Transparency kind. Closes (physically detaches) the overlay itself once a Leaving fade
+    // reaches zero; a window never disappears by any other means (no timer).
+    void TickHoverFade(float DeltaTime);
+    // PEP-08: the transition-handling body NativeTick runs, factored out so a test can drive
+    // it with a supplied Transition/SpanId (see SimulateHoverTickForAutomationTest below)
+    // instead of a real, controllable OS cursor.
+    void HandleHoverTransition(EGV2SpanHoverTransition Transition, FName TransitionedSpanId);
+
+public:
+#if WITH_DEV_AUTOMATION_TESTS
+    // PEP-08: drives the exact same production transition-handling + fade-ticking code
+    // NativeTick does, without a real cursor -- AdvanceSpanHoverState's own cursor-to-
+    // transition mapping is already covered by GV2RichTextSpanHoverDetectorTests, so a fade
+    // test only needs to supply the transition it would have produced.
+    void SimulateHoverTickForAutomationTest(EGV2SpanHoverTransition TransitionForTest, FName SpanIdForTest, float DeltaTime);
+    float GetHoverFadeOpacityForAutomationTest() const { return HoverFadeOpacity; }
+    EGV2HoverFadeStage GetHoverFadeStageForAutomationTest() const { return HoverFadeStage; }
+    FName GetActiveHoverInstanceKeyForAutomationTest() const { return ActiveHoverInstanceKey; }
+#endif
 
 protected:
 
@@ -225,4 +258,16 @@ protected:
     FGV2SpanHoverState HoverState;
     FName ActiveHoverInstanceKey;
     TWeakObjectPtr<UUserWidget> ActiveHoverWidget;
+
+    // PEP-08: which span the currently-open overlay belongs to -- kept independent of
+    // HoverState.HoveredSpanId, which goes back to NAME_None the instant the cursor leaves
+    // the span (i.e. exactly when a Leaving fade begins and this is still needed, both to
+    // keep repositioning the overlay against its own anchor and to recognize a same-span
+    // Began as a cancel-and-resume rather than a fresh open).
+    FName ActiveHoverSpanId;
+    EGV2HoverFadeStage HoverFadeStage = EGV2HoverFadeStage::None;
+    float HoverFadeOpacity = 0.0f;
+    // Content-declared (FGV2RichTextHoverViewModel::Duration, PEP-06C), captured at open
+    // time from the span this overlay belongs to -- 0 means instant (no authored value).
+    float HoverFadeDurationSeconds = 0.0f;
 };

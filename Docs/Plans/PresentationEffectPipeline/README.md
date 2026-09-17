@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 2.5
+version: 2.6
 updated: 2026-09-17
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -542,9 +542,9 @@ UE `GV2.*` automation suite 201/201 зелёный (199 было после `PEP
 
 ### PEP-08 — Реализовать появление и уход с отменой
 
-- [ ] PEP-08 — Реализовать появление и уход с отменой
+- [x] PEP-08 — Реализовать появление и уход с отменой
 
-**Зависимость:** PEP-07. **Файлы:** вид эффекта прозрачности в исполнителе `PEP-04`; поле длительности в `hover` схемы v4 (заведено `PEP-06C`); содержимое пакета, задающее значение.
+**Зависимость:** PEP-07. **Файлы:** `PresentationEffectApply.h`/`.cpp` (вид `Transparency`, `Widget`/`Alpha` в `Apply`, `InvalidWidget`); `GV2ScreenAnchorHost.h`/`GV2ScreenWidgetBase.h`/`.cpp` (`GetAnchoredContentScreenRect`); `GV2RichTextWidgetBase.h`/`.cpp` (`EGV2HoverFadeStage`, `HandleHoverTransition`/`TickHoverFade`, тестовый `SimulateHoverTickForAutomationTest`); `GV2PresentationInteractionSink.h`/`GV2RuntimeSubsystem.h`/`.cpp` (`DurationSeconds` в `OpenHoverOverlay`, `duration_ms` в `Args`); `validate_presentation_apply_surface.py` (исключение для `FGV2PresentationEffectApply`); новые тесты `GV2PresentationEffectApplyTests.cpp`, `GV2RichTextHoverFadeTests.cpp`.
 
 **Инвариант:** раздел `Snapshot/effect ordering` контракта: отказ эффекта не инвалидирует snapshot и gameplay state. Дополнительно — правило `PEP-02` про self-dismissal: уход отменяем, и отмена не создаёт второго экземпляра окна.
 
@@ -575,6 +575,16 @@ UE `GV2.*` automation suite 201/201 зелёный (199 было после `PEP
 - Расширение сигнатуры `Apply` названо в change set; граф сборки по-прежнему не даёт модулю знать snapshot- и gameplay-типы, проверено `validate_presentation_apply_module_graph.py`.
 
 **Evidence:** снятая кривая прозрачности, прогон чередования, прогон отмены с зафиксированным значением.
+
+**Реализация.** `EPresentationEffectKind` получил первое значение — `Transparency` (`Count` стало 1); `FGV2PresentationEffectApply::Apply` расширен явно названным `UWidget* Widget` и `float Alpha` (комментарий в заголовке объясняет, почему это не ослабление `PEP-04`: гарантия держалась на графе сборки `GV2PresentationApply.Build.cs`, который не пускает `GV2RuntimeCore`/`GV2ContentCore`, а `UWidget` модуль и так знает через UMG). `EGV2PresentationEffectApplyReject` получил `InvalidWidget` — отдельная, не смешанная с `UnsupportedKind` причина отказа для `Widget == nullptr`. Гейт `validate_presentation_apply_surface.py` расширен именным исключением для `FGV2PresentationEffectApply` (сиблинг `FGV2PresentationApply`, тот же класс защищаемого физического рубежа, только с `UWidget*` вместо `FGV2PreparedPresentationTransaction&`).
+
+Очередь эффектов `PEP-03/07` эту задачу не проходит: appear/leave — не одноразовый сигнал через `TakePendingEffects`, а непрерывная анимация, тикающая каждый кадр. `EGV2HoverFadeStage{None, Appearing, Leaving}` живёт на `UGV2RichTextWidgetBase` (тот же модуль, что и `FGV2PresentationEffectApply` — вызов легален без пересечения границы `GV2RuntimeCore`). Механизм переноса пропорционального остатка — не отдельный расчёт, а следствие константной скорости (`1/HoverFadeDurationSeconds` в секунду): отмена ухода — это просто смена знака направления с той же самой скоростью, продолжая с текущего значения `HoverFadeOpacity`, а не с нуля и не скачком. `NativeTick` разбит на `HandleHoverTransition` (обработка перехода) + `TickHoverFade` (тик анимации); `HandleHoverTransition` вынесен отдельно специально для того, чтобы `GV2.Runtime.Presentation.HoverFadeAppearLeaveCancel` мог прогнать тот же самый продакшен-код через `#if WITH_DEV_AUTOMATION_TESTS`-обёртку `SimulateHoverTickForAutomationTest`, не полагаясь на управляемый курсор ОС (сопоставление курсор→переход уже проверено `GV2RichTextSpanHoverDetectorTests` из `PEP-06A`).
+
+«Наведение на само окно» реализовано не отдельным кросс-виджетным сигналом, а тем же детектором: `CaptureHoverableSpanAnchors` добавляет прямоугольник открытого окна как ещё один якорь для того же `SpanId`, если окно открыто — курсор на попапе засчитывается как «наведение на span» без единой новой связи между виджетами. Прямоугольник — не корневая геометрия окна (она всегда Fill/Fill на весь слой и сделала бы «курсор над попапом» истинным где угодно на экране), а прямоугольник РЕАЛЬНОГО видимого содержимого: новый метод `IGV2ScreenAnchorHost::GetAnchoredContentScreenRect()`.
+
+Длительность: `duration_ms` теперь также кладётся в `Args` эффекта открытия/закрытия (`PublishHoverEffect`, `OpenHoverOverlay` на `UGV2PresentationInteractionSink` получил параметр `DurationSeconds`) — для полноты DTO одноразового сигнала, а не потому что дренаж читает его обратно: сам тикер держит копию из `Span->Hover.Duration` напрямую. Перечислитель `GV2.Runtime.Presentation.HoverFadeDurationHasNoCppLiteral` сканирует `GV2RichTextWidgetBase.cpp` и подтверждён мутацией (замена чтения на литерал `2.0f` красит тест, затем откачена).
+
+`GV2.Runtime.Presentation.HoverFadeAppearLeaveCancel` доказывает прогоном: кривая непрозрачности линейна и совпадает с объявленной длительностью на обоих концах; окно не исчезает по истечении «длительности», пока наведение удерживается (таймер не единственный владелец) — исчезает строго по достижении нуля во время ухода; отмена продолжает точно с зафиксированного значения (0.75 → тот же 0.75, не 0 и не 1) и покрывает остаток пропорционально оставшейся дистанции; переключение между разными span закрывает предыдущее окно прежде, чем открыть новое — второго живого экземпляра не остаётся; два окна с длительностями 2с и 4с после одинакового прошедшего времени показывают разную непрозрачность (0.5, не одинаковое значение) — длительность подтверждена данными, а не рассуждением. UE `GV2.*` automation suite 205/205 зелёный. Портативный `ctest` не тронут (задача не коснулась `GV2RuntimeCore`).
 
 ---
 

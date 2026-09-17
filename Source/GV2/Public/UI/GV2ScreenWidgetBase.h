@@ -66,6 +66,12 @@ public:
     // content never sits partly off-screen -- the property the old Slate tooltip window
     // gave for free and PEP-06B silently lost.
     virtual void SetAnchoredContentPosition(const FVector2D& LocalPosition) override;
+
+    // PEP-08: the placed child's own real on-screen rect (empty if not anchor-authored or
+    // not yet painted) -- see IGV2ScreenAnchorHost's own doc comment for why this is not
+    // just this screen's own (Fill/Fill) geometry.
+    virtual FSlateRect GetAnchoredContentScreenRect() const override;
+
     // UPP-27 / UPP-28: Prepares every field's full mutation plan without modifying any widget.
     // Predicts deep child failures (STATUS-004) before commit.
     // PCC-06: [[nodiscard]] -- a discarded result is exactly the swallowed-failure shape

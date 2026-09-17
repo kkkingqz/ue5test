@@ -32,7 +32,10 @@ public:
     // ADR-0043 D2) -- only the runtime override knows which layer and how to reach the
     // reconciler. Returns the instance key CloseHoverOverlay needs; default is a no-op
     // failure, matching every other virtual on this sink.
-    virtual bool OpenHoverOverlay(UUserWidget* Widget, FName& OutInstanceKey, FString& OutError)
+    // PEP-08: DurationSeconds is content-declared (FGV2RichTextHoverViewModel::Duration,
+    // PEP-06C) -- named here, not hidden inside Args, so the override can put it in the
+    // published effect's own args.duration_ms alongside the participant key.
+    virtual bool OpenHoverOverlay(UUserWidget* Widget, float DurationSeconds, FName& OutInstanceKey, FString& OutError)
     {
         OutError = TEXT("core:diagnostic.ui_consumer.hover_overlay_unavailable: no active interaction sink");
         return false;

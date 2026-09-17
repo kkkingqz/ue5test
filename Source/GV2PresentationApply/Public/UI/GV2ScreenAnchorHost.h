@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Layout/SlateRect.h"
 #include "UObject/Interface.h"
 #include "GV2ScreenAnchorHost.generated.h"
 
@@ -41,4 +42,13 @@ public:
     // painted) cannot be positioned correctly; the caller is expected to have already
     // attached this widget to a live panel before calling.
     virtual void SetAnchoredContentPosition(const FVector2D& LocalPosition) = 0;
+
+    // PEP-08: the actual visible content's own on-screen rect, in the same absolute
+    // (desktop) space FGV2RichTextSpanAnchor::Rect uses -- NOT this host's own root, which
+    // is always Fill/Fill over the whole layer and would make "is the cursor over the
+    // popover" trivially true anywhere on screen. Lets a caller (the hover detector) treat
+    // "cursor moved onto the open popover itself" the same way it treats "cursor is still
+    // over the source span" -- both keep a hover alive, neither is a special case. An empty
+    // rect (FSlateRect()) means no content is currently placed (e.g. not yet painted).
+    virtual FSlateRect GetAnchoredContentScreenRect() const = 0;
 };

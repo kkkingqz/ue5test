@@ -115,7 +115,7 @@ public:
     // Reconciler itself (PSC-09A), so this override is the only place that decides which
     // layer a hover overlay lands in and forwards to the two calls PEP-06 already built for
     // exactly this purpose.
-    virtual bool OpenHoverOverlay(UUserWidget* Widget, FName& OutInstanceKey, FString& OutError) override;
+    virtual bool OpenHoverOverlay(UUserWidget* Widget, float DurationSeconds, FName& OutInstanceKey, FString& OutError) override;
     virtual void CloseHoverOverlay(FName InstanceKey) override;
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
@@ -153,7 +153,11 @@ private:
     // this path or DrainPresentationEffects reaches DispatchSemanticInput/DispatchCommand
     // or any other Lua-crossing entry point (GV2.Runtime.Presentation.
     // HoverEffectNeverCrossesLua enumerates the call sites, not just this comment).
-    void PublishHoverEffect(const TCHAR* EffectId, FName InstanceKey);
+    // PEP-08: DurationSeconds (0 for Close, where it names nothing) rides in Args as
+    // duration_ms alongside the participant key -- DTO completeness for the one-shot signal,
+    // not something the drain reads back: the fade ticker (GV2RichTextWidgetBase) already
+    // has the same value in hand from the span it resolved, and uses that copy directly.
+    void PublishHoverEffect(const TCHAR* EffectId, FName InstanceKey, float DurationSeconds);
 
     // PEP-07: the ONE production call site for FRuntimeSession::TakePendingEffects --
     // "one counter, one queue, one drain point" (the queue's own doc comment). Resolves

@@ -140,7 +140,15 @@ def is_physical_role_construct(name: str, declaration: str) -> bool:
     role interfaces are generated Unreal interfaces.
     """
     if "GENERATED_BODY" not in declaration:
-        return False
+        # PEP-08: FGV2PresentationEffectApply is the OTHER designated physical-mutation
+        # entry point PSC-11 sanctions, alongside FGV2PresentationApply::Apply (recognized
+        # above via TRANSACTION_APPLY's own distinctive FGV2PreparedPresentationTransaction&
+        # parameter shape). This sibling facade takes a plain UWidget* instead -- PEP-04's
+        # own doc comment: Apply's signature carries a widget, never a snapshot/gameplay
+        # type -- so it needs its own equally narrow, name-based recognition rather than a
+        # shape match; it is not a UCLASS/UINTERFACE, so it can never match the
+        # GENERATED_BODY-gated checks below.
+        return name == "FGV2PresentationEffectApply"
     if name.startswith("I"):
         return True
     # PEP-06B: GameInstanceSubsystem covers UGV2PresentationInteractionSink, the module's own

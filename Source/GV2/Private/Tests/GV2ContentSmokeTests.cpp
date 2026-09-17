@@ -1051,7 +1051,7 @@ bool FGV2HoverEffectQueueContract::RunTest(const FString& Parameters)
     FString OpenErrorA;
     TestTrue(
         *FString::Printf(TEXT("OpenHoverOverlay succeeds through the production entry point [Error: %s]"), *OpenErrorA),
-        Runtime->OpenHoverOverlay(HoverScreenA, InstanceKeyA, OpenErrorA));
+        Runtime->OpenHoverOverlay(HoverScreenA, 0.0f, InstanceKeyA, OpenErrorA));
 
     const std::string HashAfterHover = Coordinator->GetRuntimeSession().GetCanonicalStateHash();
     TestEqual(
@@ -1100,7 +1100,7 @@ bool FGV2HoverEffectQueueContract::RunTest(const FString& Parameters)
     FString OpenErrorB;
     TestTrue(
         *FString::Printf(TEXT("A second, unrelated hover open succeeds and drains the whole queue [Error: %s]"), *OpenErrorB),
-        Runtime->OpenHoverOverlay(HoverScreenB, InstanceKeyB, OpenErrorB));
+        Runtime->OpenHoverOverlay(HoverScreenB, 0.0f, InstanceKeyB, OpenErrorB));
 
     {
         const auto& Diagnostics = Runtime->GetLastDrainedEffectDiagnosticsForAutomationTest();
@@ -1199,7 +1199,7 @@ bool FGV2HoverEffectQueueContract::RunTest(const FString& Parameters)
         UGV2ScreenWidgetBase* HoverScreenC = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
         FName InstanceKeyC;
         FString OpenErrorC;
-        Runtime->OpenHoverOverlay(HoverScreenC, InstanceKeyC, OpenErrorC);
+        Runtime->OpenHoverOverlay(HoverScreenC, 0.0f, InstanceKeyC, OpenErrorC);
 
         const auto& Diagnostics = Runtime->GetLastDrainedEffectDiagnosticsForAutomationTest();
         bool bFoundRealDiscard = false;
