@@ -132,6 +132,15 @@ bool UGV2GameShellWidgetBase::IsLayerInteractive(FName Layer) const
     return Found != nullptr ? *Found : true;
 }
 
+// PEP-06: reads the panel's raw children, so after FGV2LayeredUiReconciler started
+// rebuilding a layer from document ∪ host-local registry, this returns both tiers
+// together, document order first then host-local order -- it has no concept of tier and
+// cannot filter by one. Audited callers (test-only; there are no production callers):
+// GV2LayeredReconciliationTests.cpp, GV2RuntimeSubsystemTests.cpp assert Contains() against
+// specific document-sourced widgets or order among a known document set -- none register a
+// host-local participant, so all are tier-indifferent as written. A future test asserting
+// order across both tiers should read HostLocalScreens/ActiveScreens directly rather than
+// add a tier filter here.
 TArray<UUserWidget*> UGV2GameShellWidgetBase::GetScreensInLayer(FName Layer) const
 {
     TArray<UUserWidget*> Screens;

@@ -83,6 +83,18 @@ public:
         TArray<TWeakObjectPtr<UGV2ScreenWidgetBase>> Modals; // In modal_stack order
     };
 
+    // PEP-06 (ADR-0042): a layer participant not sourced from the desired document --
+    // registered and unregistered by direct host-local calls (hover open/close today),
+    // never by PrepareReconcile/CommitReconcile's own document diff. Widget is a borrowed
+    // reference: once AttachHostLocalScreen parents it into the layer's panel, the panel
+    // owns it the same way it owns every document-tier child (PSC-11) -- this entry is a
+    // lookup index, not an owning pointer, mirroring FActiveScreenEntry's own shape.
+    struct FHostLocalScreenEntry
+    {
+        TWeakObjectPtr<UGV2ScreenWidgetBase> Widget;
+        int64 CreationOrder = 0;
+    };
+
     // PAH-02: Layer is the requested top-level Placement for ScreenId (every screen this
     // factory instantiates is a top-level route/overlay/modal instance -- embedded/tab
     // screens resolve through FGV2TabContainerTabsPropertyConsumer instead), so an
@@ -147,6 +159,37 @@ public:
     UGV2ScreenWidgetBase* GetActiveScreen(FName Layer, FName InstanceKey) const;
     const TMap<FScreenSlotKey, FActiveScreenEntry>& GetActiveScreens() const { return ActiveScreens; }
 
+    // PEP-06: every host-local instance key this reconciler ever issues carries this
+    // prefix, which no document-authored instance_key can (Lua identifiers never contain
+    // ':' -- the same reservation Stable IDs already rely on). This is the single source
+    // both AttachHostLocalScreen and the ownership ergate rely on to tell the two
+    // enumerators apart; a document instance never collides with a host-local one by
+    // construction, not by convention.
+    static bool IsHostLocalInstanceKey(FName InstanceKey);
+
+    // PEP-06 (ADR-0042): registers Widget as a host-local participant of Layer and
+    // reconciles that one layer's panel immediately -- above every document-tier
+    // participant, in creation order among other host-local participants. Widget must
+    // already be fully prepared and styled by the caller (its own PrepareScreenFields/
+    // GV2CentralStylePreparer pass); this call performs no Prepare of its own; PSC-10B is
+    // exactly this: whoever opens a host-local participant resolves nothing here. Returns
+    // the synthetic instance key the caller must keep and pass to DetachHostLocalScreen.
+    [[nodiscard]] bool AttachHostLocalScreen(
+        UGV2GameShellWidgetBase* Shell,
+        FName Layer,
+        UGV2ScreenWidgetBase* Widget,
+        FName& OutInstanceKey,
+        FString& OutError);
+
+    // PEP-06: unregisters a host-local participant and reconciles its layer's panel
+    // without it. Dropping it from the panel's rebuilt child list is what releases the
+    // Shell's ownership (PSC-11) -- this call does not call RemoveFromParent itself.
+    [[nodiscard]] bool DetachHostLocalScreen(
+        UGV2GameShellWidgetBase* Shell,
+        FName Layer,
+        FName InstanceKey,
+        FString& OutError);
+
     // PSC-14: refreshes only viewport-derived physical values on the already-committed
     // screen instances. It does not Prepare/reconcile a document and therefore preserves
     // widget identity and UI-local state.
@@ -172,7 +215,42 @@ private:
         FScreenFactory ScreenFactory,
         const FGV2PresentationPrepareContext& PrepareContext);
 
+    // PEP-06: one layer participant, from either tier -- document or host-local -- reduced
+    // to exactly what FGV2KeyedCollection::ReconcilePrepared needs. Building this uniformly
+    // for both tiers is what lets CommitLayerParticipants run one rebuild over their union
+    // instead of two.
+    struct FGV2LayerParticipant
+    {
+        FName Key;
+        // A transient, per-call reduction of an already-tracked TWeakObjectPtr
+        // (FActiveScreenEntry::Widget or FHostLocalScreenEntry::Widget) -- never itself
+        // the owning or lookup reference the ownership gate's untraced-pointer check
+        // exists for, but typed the same way regardless (validate_session_snapshot_
+        // ownership.py checks every member of every configured type unconditionally).
+        TWeakObjectPtr<UGV2ScreenWidgetBase> Widget;
+    };
+
+    // PEP-06: reconciles Layer's panel from Participants (the document-tier participants
+    // the caller already knows about -- freshly prepared for CommitReconcile's own
+    // per-layer step, or recovered from the panel's current children for the standalone
+    // Attach/DetachHostLocalScreen calls) plus this reconciler's own current
+    // HostLocalScreens registry for that layer, appended after in creation order --
+    // document tier below, host-local tier above. Shared by every commit path so they can
+    // never drift into different rebuild logic. OutPreviousOrder mirrors
+    // FGV2KeyedCollection::ReconcilePrepared's own parameter of the same purpose (only
+    // CommitReconcile's multi-layer transaction needs it, for cross-layer rollback).
+    bool CommitLayerParticipants(
+        UGV2GameShellWidgetBase* Shell,
+        FName Layer,
+        TArray<FGV2LayerParticipant> Participants,
+        FString& OutError,
+        TArray<UGV2ScreenWidgetBase*>* OutPreviousOrder = nullptr);
+
     TMap<FScreenSlotKey, FActiveScreenEntry> ActiveScreens;
+    // PEP-06: keyed the same way as ActiveScreens, but never touched by PrepareReconcile/
+    // CommitReconcile's own document diff -- see FHostLocalScreenEntry's own doc comment.
+    TMap<FScreenSlotKey, FHostLocalScreenEntry> HostLocalScreens;
+    int64 NextHostLocalCreationOrder = 1;
     EGV2PresentationHealth Health = EGV2PresentationHealth::Nominal;
     TOptional<FGV2UiDocumentViewModel> LastCommittedDocument;
 };

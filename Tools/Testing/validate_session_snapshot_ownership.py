@@ -76,6 +76,21 @@ EXPECTED_PREPARED_TYPES_MEMBERS: dict[str, dict[str, str]] = {
         "bHasModals": "bool",
         "Modals": "TArray<TWeakObjectPtr<UGV2ScreenWidgetBase>>",
     },
+    # PEP-06: a host-local layer participant's lookup entry -- Widget is a borrowed
+    # reference once AttachHostLocalScreen parents it into the layer's panel (the panel
+    # owns it, same as any document-tier child), mirroring FActiveScreenEntry's own shape.
+    "FHostLocalScreenEntry": {
+        "Widget": "TWeakObjectPtr<UGV2ScreenWidgetBase>",
+        "CreationOrder": "int64",
+    },
+    # PEP-06: one layer participant from either tier, reduced to what
+    # FGV2KeyedCollection::ReconcilePrepared needs -- a transient, per-call reduction of an
+    # already-tracked TWeakObjectPtr (FActiveScreenEntry::Widget or
+    # FHostLocalScreenEntry::Widget).
+    "FGV2LayerParticipant": {
+        "Key": "FName",
+        "Widget": "TWeakObjectPtr<UGV2ScreenWidgetBase>",
+    },
     "FPreparedCollectionItem": {
         "Key": "FName",
         "Widget": "TWeakObjectPtr<UWidget>",
@@ -147,6 +162,8 @@ PREPARED_TYPES_CONFIG: list[tuple[str, str, bool, bool]] = [
     ("FActiveScreenEntry", "reconciler", False, False),
     ("FPreparedScreenInstance", "reconciler", False, False),
     ("FPreparedReconciliationPlan", "reconciler", False, False),
+    ("FHostLocalScreenEntry", "reconciler", False, False),
+    ("FGV2LayerParticipant", "reconciler", False, False),
     ("FPreparedCollectionItem", "property_consumers", False, False),
     ("FGV2KeyedCollectionPropertyConsumer", "property_consumers", True, True),
     ("FPreparedTabItem", "property_consumers", False, False),
@@ -675,7 +692,27 @@ def run_self_test() -> bool:
         print("FAILED: gate did not flag non-const CompileResolvedTheme on UGV2UiTheme")
         return False
 
-    print("SUCCESS: validate_session_snapshot_ownership self-test passed (17/17 negative mutations caught)")
+    # Negative mutation 18 (PEP-06): FHostLocalScreenEntry::Widget uses untraced raw pointer
+    mutated_18 = dict(base_headers)
+    mutated_18["reconciler"] = mutated_18["reconciler"].replace(
+        "TWeakObjectPtr<UGV2ScreenWidgetBase> Widget;\n        int64 CreationOrder = 0;",
+        "UGV2ScreenWidgetBase* Widget;\n        int64 CreationOrder = 0;",
+    )
+    if not any("untraced raw/plain pointer" in err for err in find_prepared_types_ownership_violations(mutated_18)):
+        print("FAILED: gate did not flag FHostLocalScreenEntry::Widget as an untraced raw pointer")
+        return False
+
+    # Negative mutation 19 (PEP-06): unclassified member on FGV2LayerParticipant
+    mutated_19 = dict(base_headers)
+    mutated_19["reconciler"] = mutated_19["reconciler"].replace(
+        "TWeakObjectPtr<UGV2ScreenWidgetBase> Widget;\n    };\n\n    // PEP-06: reconciles Layer's panel",
+        "TWeakObjectPtr<UGV2ScreenWidgetBase> Widget;\n        bool RogueRankFlag;\n    };\n\n    // PEP-06: reconciles Layer's panel",
+    )
+    if not any("RogueRankFlag" in err for err in find_prepared_types_ownership_violations(mutated_19)):
+        print("FAILED: gate did not flag unclassified member RogueRankFlag on FGV2LayerParticipant")
+        return False
+
+    print("SUCCESS: validate_session_snapshot_ownership self-test passed (19/19 negative mutations caught)")
     return True
 
 

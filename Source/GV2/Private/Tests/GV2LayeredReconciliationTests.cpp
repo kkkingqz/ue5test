@@ -1785,6 +1785,149 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2HostLocalLayerParticipantContract,
+    "GV2.Runtime.UI.HostLocalLayerParticipantContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PEP-06 (ADR-0042): the panel's content stops being exactly the document and becomes
+// document ∪ a registry of non-document participants, in two tiers -- document below,
+// host-local above. This proves the mechanism with a synthetic host-local participant (its
+// own Done requirement: a registry given zero elements by this task would be a dead
+// mechanism, not a placeholder for PEP-06B's real popover). Fail-closed is unchanged: a
+// child named by neither enumerator is still dropped, not preserved.
+bool FGV2HostLocalLayerParticipantContract::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+    if (TestWorld == nullptr)
+    {
+        return false;
+    }
+    UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+        nullptr,
+        TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+    if (GameShellClass == nullptr)
+    {
+        GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+    }
+    UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
+    TestNotNull(TEXT("PEP-06: Game shell instantiated"), Shell);
+    GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
+    if (Shell == nullptr)
+    {
+        return false;
+    }
+
+    FGV2LayeredUiReconciler Reconciler;
+    auto MockFactory = [&](const FString&, FName) -> UGV2ScreenWidgetBase*
+    {
+        return CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    };
+
+    // 1. One document instance in overlay_stack, reconciled normally.
+    FGV2UiDocumentViewModel Doc;
+    Doc.UiInstanceId = TEXT("ui@pep06");
+    Doc.Revision = 1;
+    FGV2ScreenInstanceViewModel DocInstance;
+    DocInstance.Layer = UGV2GameShellWidgetBase::LayerOverlayStack;
+    DocInstance.InstanceKey = TEXT("doc_overlay");
+    DocInstance.ScreenId = TEXT("core:screen.overlay_probe");
+    Doc.Overlays.Add(DocInstance);
+    FString ReconcileError;
+    TestTrue(*FString::Printf(TEXT("PEP-06: initial document reconcile succeeds [Error: %s]"), *ReconcileError),
+        Reconciler.Reconcile(Shell, Doc, MockFactory, ReconcileError, *PrepareContext));
+    UGV2ScreenWidgetBase* DocWidget = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("doc_overlay"));
+    TestNotNull(TEXT("PEP-06: document widget created"), DocWidget);
+
+    // 2. Attach a synthetic host-local participant -- this task's own producer for the
+    // registry, per the plan-index rule that an introduced set must have one.
+    UGV2ScreenWidgetBase* HostLocalWidget = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    TestNotNull(TEXT("PEP-06: synthetic host-local widget created"), HostLocalWidget);
+    FName HostLocalKey;
+    FString AttachError;
+    TestTrue(*FString::Printf(TEXT("PEP-06: AttachHostLocalScreen succeeds [Error: %s]"), *AttachError),
+        Reconciler.AttachHostLocalScreen(Shell, UGV2GameShellWidgetBase::LayerOverlayStack, HostLocalWidget, HostLocalKey, AttachError));
+    TestTrue(TEXT("PEP-06: issued key uses the reserved host_local: prefix"),
+        FGV2LayeredUiReconciler::IsHostLocalInstanceKey(HostLocalKey));
+
+    TArray<UUserWidget*> Order = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack);
+    TestEqual(TEXT("PEP-06: overlay_stack has both tiers after attach"), Order.Num(), 2);
+    if (Order.Num() == 2)
+    {
+        TestEqual(TEXT("PEP-06: document tier stays below"), Order[0], Cast<UUserWidget>(DocWidget));
+        TestEqual(TEXT("PEP-06: host-local tier sits above"), Order[1], Cast<UUserWidget>(HostLocalWidget));
+    }
+
+    // 3. An ORDINARY document commit (a different revision, same overlay) must not drop the
+    // host-local participant -- proving CommitReconcile's own step 2 unions both
+    // enumerators, not just the standalone Attach/Detach calls.
+    FGV2UiDocumentViewModel Doc2;
+    Doc2.UiInstanceId = TEXT("ui@pep06");
+    Doc2.Revision = 2;
+    Doc2.Overlays.Add(DocInstance);
+    TestTrue(*FString::Printf(TEXT("PEP-06: second document reconcile succeeds [Error: %s]"), *ReconcileError),
+        Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError, *PrepareContext));
+
+    Order = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack);
+    TestEqual(TEXT("PEP-06: host-local participant survives an ordinary document commit"), Order.Num(), 2);
+    if (Order.Num() == 2)
+    {
+        TestEqual(TEXT("PEP-06: document tier still below after the second commit"), Order[0], Cast<UUserWidget>(DocWidget));
+        TestEqual(TEXT("PEP-06: host-local tier still above after the second commit"), Order[1], Cast<UUserWidget>(HostLocalWidget));
+    }
+
+    // 4. Fail-closed is unchanged: a child named by NEITHER enumerator (spliced directly
+    // into the panel, bypassing both AttachHostLocalScreen and the document) is dropped by
+    // the very next reconcile, not preserved. This is the mutation the plan's own Done
+    // criterion names: "ребёнок, не названный ни документом, ни реестром, отвергается".
+    UPanelWidget* OverlayHost = Shell->GetHostForLayer(UGV2GameShellWidgetBase::LayerOverlayStack);
+    TestNotNull(TEXT("PEP-06: overlay_stack host resolves"), OverlayHost);
+    UGV2ScreenWidgetBase* UnnamedWidget = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    if (OverlayHost != nullptr && UnnamedWidget != nullptr)
+    {
+        OverlayHost->AddChild(UnnamedWidget);
+        TestEqual(TEXT("PEP-06: unnamed child briefly present before the next reconcile"),
+            Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack).Num(), 3);
+
+        FGV2UiDocumentViewModel Doc3;
+        Doc3.UiInstanceId = TEXT("ui@pep06");
+        Doc3.Revision = 3;
+        Doc3.Overlays.Add(DocInstance);
+        TestTrue(*FString::Printf(TEXT("PEP-06: third document reconcile succeeds [Error: %s]"), *ReconcileError),
+            Reconciler.Reconcile(Shell, Doc3, MockFactory, ReconcileError, *PrepareContext));
+
+        Order = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack);
+        TestEqual(TEXT("PEP-06: unnamed child is dropped, not preserved"), Order.Num(), 2);
+        TestFalse(TEXT("PEP-06: unnamed child specifically is gone"), Order.Contains(Cast<UUserWidget>(UnnamedWidget)));
+        TestTrue(TEXT("PEP-06: both real tiers remain"),
+            Order.Contains(Cast<UUserWidget>(DocWidget)) && Order.Contains(Cast<UUserWidget>(HostLocalWidget)));
+    }
+
+    // 5. DetachHostLocalScreen removes exactly the host-local participant, leaving the
+    // document tier untouched.
+    FString DetachError;
+    TestTrue(*FString::Printf(TEXT("PEP-06: DetachHostLocalScreen succeeds [Error: %s]"), *DetachError),
+        Reconciler.DetachHostLocalScreen(Shell, UGV2GameShellWidgetBase::LayerOverlayStack, HostLocalKey, DetachError));
+    Order = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack);
+    TestEqual(TEXT("PEP-06: only the document tier remains after detach"), Order.Num(), 1);
+    if (Order.Num() == 1)
+    {
+        TestEqual(TEXT("PEP-06: remaining child is the document widget"), Order[0], Cast<UUserWidget>(DocWidget));
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2PresentationAuthorityPhaseContract,
     "GV2.Runtime.UI.PresentationAuthorityPhaseContract",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

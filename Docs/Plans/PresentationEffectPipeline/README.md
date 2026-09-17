@@ -1,8 +1,8 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 2.0
-updated: 2026-09-16
+version: 2.1
+updated: 2026-09-17
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
   - ../../UI/UIDocumentAndReconciliation.md
@@ -299,7 +299,7 @@ Classification (Compatibility Policy, ось Content schemas, pre-1.0): breaking
 
 ### PEP-06 — Принять в слой участника, не пришедшего из документа
 
-- [ ] PEP-06 — Принять в слой участника, не пришедшего из документа
+- [x] PEP-06 — Принять в слой участника, не пришедшего из документа
 
 **Зависимость:** PEP-05. **Файлы:** `FGV2LayeredUiReconciler` (`CommitReconcile`, шаг 2), `FGV2KeyedCollection::ReconcilePrepared` (`PreparedKeyedCollection.h`), `UGV2GameShellWidgetBase` (`GetScreensInLayer`, `SetTopModalInteractive`).
 
@@ -326,9 +326,11 @@ Classification (Compatibility Policy, ось Content schemas, pre-1.0): breaking
 
 **Evidence:** мутационная проба на неназванного ребёнка, прогон синтетического участника, вывод ownership-гейта, перечень вызывающих `GetScreensInLayer` с их разбором.
 
----
+**Реализация.** `ReconcilePrepared`'s вход стал объединением: `FGV2LayeredUiReconciler::CommitLayerParticipants` строит `Participants` из документных инстансов (свежих из `Plan` для обычного коммита, либо восстановленных из текущих детей панели для `Attach`/`DetachHostLocalScreen`, у которых своего `Plan` нет) и дописывает `HostLocalScreens`, отсортированный по `CreationOrder` — документный ярус всегда ниже, host-local всегда выше, порядком в списке, без отдельной панели. `AttachHostLocalScreen`/`DetachHostLocalScreen` немедленно пересобирают ровно один слой, а не ждут следующего document commit — иначе окно не появилось бы синхронно по наведению. Ключи реестра несут резервированный префикс `host_local:` (`IsHostLocalInstanceKey`), и `PrepareReconcile` отклоняет документный `instance_key` с этим префиксом — два перечислителя не пересекаются по построению, не по соглашению. `SetTopModalInteractive` получает `OrderedModals` из `Plan.Modals`, который остаётся документным по построению (строится в `PrepareReconcile` до того, как `CommitLayerParticipants` вообще узнаёт о `HostLocalScreens`) — записано явно комментарием на месте вызова. `GetScreensInLayer` разобран по вызывающим: все — тесты, ни один не регистрирует host-local участника, все безразличны к ярусу как есть.
 
-### PEP-06A — Ввести собственный детектор наведения и якорь спана
+Синтетический участник (`GV2.Runtime.UI.HostLocalLayerParticipantContract`) — единственный элемент реестра в этой задаче: переживает обычный document commit, стоит выше документного яруса, отделяется от него `DetachHostLocalScreen`, и — мутационная проба — ребёнок, добавленный в панель напрямую мимо обоих перечислителей, отбрасывается следующим `Reconcile()`, а не сохраняется. Гейт `validate_session_snapshot_ownership.py` расширен `FHostLocalScreenEntry`/`FGV2LayerParticipant` и двумя новыми мутациями собственного self-test (19/19).
+
+UE `GV2.*` automation suite 198/198 зелёный (добавился ровно один новый тест). Портативный ctest не тронут — задача не касается `GV2RuntimeCore`.
 
 - [ ] PEP-06A — Ввести собственный детектор наведения и якорь спана
 

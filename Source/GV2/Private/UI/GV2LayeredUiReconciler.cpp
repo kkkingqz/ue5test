@@ -59,6 +59,17 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
             return false;
         }
 
+        // PEP-06: the "host_local:" prefix is reserved for AttachHostLocalScreen's own
+        // generated keys -- a document-authored instance_key using it would let content
+        // collide with a live host-local participant's slot.
+        if (IsHostLocalInstanceKey(Instance.InstanceKey))
+        {
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_reconcile.reserved_instance_key: '%s' uses the reserved host_local: prefix"),
+                *Instance.InstanceKey.ToString());
+            return false;
+        }
+
         const FScreenSlotKey Key{Instance.Layer, Instance.InstanceKey};
         if (IncomingKeys.Contains(Key))
         {
@@ -151,6 +162,231 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
     // per-layer ClearChildren-and-rebuild swap that handles reordering and replacement.
 
     OutPlan.bHasModals = Document.Modals.Num() > 0;
+    return true;
+}
+
+bool FGV2LayeredUiReconciler::IsHostLocalInstanceKey(FName InstanceKey)
+{
+    return InstanceKey.ToString().StartsWith(TEXT("host_local:"));
+}
+
+// PEP-06 (ADR-0042): the union rebuild every commit path funnels through -- CommitReconcile's
+// own per-layer step (DocumentParticipants freshly built from this round's Plan) and
+// Attach/DetachHostLocalScreen (DocumentParticipants recovered from the panel's current
+// children, since neither call has a fresh Plan of its own). Host-local participants always
+// come from THIS reconciler's own HostLocalScreens registry, appended after
+// DocumentParticipants in creation order -- document tier below, host-local tier above,
+// exactly the two-tier order the plan names. A layer with no Host is a no-op success: the
+// caller has nothing to reconcile, not a failure.
+bool FGV2LayeredUiReconciler::CommitLayerParticipants(
+    UGV2GameShellWidgetBase* Shell,
+    FName Layer,
+    TArray<FGV2LayerParticipant> Participants,
+    FString& OutError,
+    TArray<UGV2ScreenWidgetBase*>* OutPreviousOrder)
+{
+    UPanelWidget* Host = Shell != nullptr ? Shell->GetHostForLayer(Layer) : nullptr;
+    if (Host == nullptr)
+    {
+        return true;
+    }
+
+    TArray<TPair<FScreenSlotKey, FHostLocalScreenEntry>> HostLocalForLayer;
+    for (const TPair<FScreenSlotKey, FHostLocalScreenEntry>& Pair : HostLocalScreens)
+    {
+        if (Pair.Key.Layer == Layer)
+        {
+            HostLocalForLayer.Add(Pair);
+        }
+    }
+    HostLocalForLayer.Sort([](const TPair<FScreenSlotKey, FHostLocalScreenEntry>& A, const TPair<FScreenSlotKey, FHostLocalScreenEntry>& B)
+    {
+        return A.Value.CreationOrder < B.Value.CreationOrder;
+    });
+    for (const TPair<FScreenSlotKey, FHostLocalScreenEntry>& Pair : HostLocalForLayer)
+    {
+        if (UGV2ScreenWidgetBase* Widget = Pair.Value.Widget.Get())
+        {
+            Participants.Add({Pair.Key.InstanceKey, Widget});
+        }
+    }
+
+    TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> SeedByKey;
+    for (const FGV2LayerParticipant& P : Participants)
+    {
+        SeedByKey.Add(P.Key, P.Widget.Get());
+    }
+
+    TArray<UGV2ScreenWidgetBase*> OrderedOut;
+    const bool bOk = FGV2KeyedCollection::ReconcilePrepared<UGV2ScreenWidgetBase, FGV2LayerParticipant, FGV2LayerReconcilePrepared>(
+        Host,
+        Participants,
+        SeedByKey,
+        [](const FGV2LayerParticipant& P) { return P.Key; },
+        []() -> UGV2ScreenWidgetBase* { return nullptr; },
+        [](UGV2ScreenWidgetBase&, const FGV2LayerParticipant&, FGV2LayerReconcilePrepared&) { return true; },
+        [](UGV2ScreenWidgetBase&, const FGV2LayerReconcilePrepared&) {},
+        OrderedOut,
+        nullptr,
+        OutPreviousOrder,
+        [](UPanelSlot& Slot)
+        {
+            UGV2GameShellWidgetBase::ApplyScreenSlotLayout(Slot);
+        });
+
+    if (!bOk)
+    {
+        OutError = FString::Printf(TEXT("core:diagnostic.ui_reconcile.host_local_rebuild_failed: layer='%s'"), *Layer.ToString());
+        return false;
+    }
+    return true;
+}
+
+bool FGV2LayeredUiReconciler::AttachHostLocalScreen(
+    UGV2GameShellWidgetBase* Shell,
+    FName Layer,
+    UGV2ScreenWidgetBase* Widget,
+    FName& OutInstanceKey,
+    FString& OutError)
+{
+    OutError.Reset();
+    if (Widget == nullptr)
+    {
+        OutError = TEXT("core:diagnostic.ui_reconcile.missing_target: AttachHostLocalScreen requires a widget");
+        return false;
+    }
+    if (Shell != nullptr && !Shell->HasHostForLayer(Layer))
+    {
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_reconcile.missing_layer_host: layer '%s' has no authored host in Shell"),
+            *Layer.ToString());
+        return false;
+    }
+
+    // Document-tier participants as of the last commit, recovered from the panel's own
+    // current children rather than a Plan this standalone call does not have -- every
+    // current child that is not already a known host-local widget is, by construction,
+    // document tier (see FGV2LayeredUiReconciler::ReconcileLayerParticipants's own doc
+    // comment above CommitLayerParticipants).
+    TArray<FGV2LayerParticipant> DocumentParticipants;
+    UPanelWidget* Host = Shell != nullptr ? Shell->GetHostForLayer(Layer) : nullptr;
+    if (Host != nullptr)
+    {
+        TSet<UGV2ScreenWidgetBase*> KnownHostLocalWidgets;
+        for (const TPair<FScreenSlotKey, FHostLocalScreenEntry>& Pair : HostLocalScreens)
+        {
+            if (Pair.Key.Layer == Layer)
+            {
+                if (UGV2ScreenWidgetBase* Existing = Pair.Value.Widget.Get())
+                {
+                    KnownHostLocalWidgets.Add(Existing);
+                }
+            }
+        }
+        for (UWidget* Child : Host->GetAllChildren())
+        {
+            UGV2ScreenWidgetBase* ScreenChild = Cast<UGV2ScreenWidgetBase>(Child);
+            if (ScreenChild == nullptr || KnownHostLocalWidgets.Contains(ScreenChild))
+            {
+                continue;
+            }
+            FName FoundKey = NAME_None;
+            for (const TPair<FScreenSlotKey, FActiveScreenEntry>& ActivePair : ActiveScreens)
+            {
+                if (ActivePair.Key.Layer == Layer && ActivePair.Value.Widget.Get() == ScreenChild)
+                {
+                    FoundKey = ActivePair.Key.InstanceKey;
+                    break;
+                }
+            }
+            if (!FoundKey.IsNone())
+            {
+                DocumentParticipants.Add({FoundKey, ScreenChild});
+            }
+        }
+    }
+
+    const FName NewKey(*FString::Printf(TEXT("host_local:%lld"), NextHostLocalCreationOrder));
+    const FScreenSlotKey SlotKey{Layer, NewKey};
+    HostLocalScreens.Add(SlotKey, {Widget, NextHostLocalCreationOrder});
+    ++NextHostLocalCreationOrder;
+
+    if (!CommitLayerParticipants(Shell, Layer, MoveTemp(DocumentParticipants), OutError))
+    {
+        HostLocalScreens.Remove(SlotKey);
+        return false;
+    }
+
+    OutInstanceKey = NewKey;
+    return true;
+}
+
+bool FGV2LayeredUiReconciler::DetachHostLocalScreen(
+    UGV2GameShellWidgetBase* Shell,
+    FName Layer,
+    FName InstanceKey,
+    FString& OutError)
+{
+    OutError.Reset();
+    const FScreenSlotKey SlotKey{Layer, InstanceKey};
+    const FHostLocalScreenEntry* Existing = HostLocalScreens.Find(SlotKey);
+    if (Existing == nullptr)
+    {
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_reconcile.unknown_host_local_key: '%s' in layer '%s'"),
+            *InstanceKey.ToString(), *Layer.ToString());
+        return false;
+    }
+
+    const FHostLocalScreenEntry Removed = *Existing;
+    HostLocalScreens.Remove(SlotKey);
+
+    TArray<FGV2LayerParticipant> DocumentParticipants;
+    UPanelWidget* Host = Shell != nullptr ? Shell->GetHostForLayer(Layer) : nullptr;
+    if (Host != nullptr)
+    {
+        TSet<UGV2ScreenWidgetBase*> KnownHostLocalWidgets;
+        for (const TPair<FScreenSlotKey, FHostLocalScreenEntry>& Pair : HostLocalScreens)
+        {
+            if (Pair.Key.Layer == Layer)
+            {
+                if (UGV2ScreenWidgetBase* Existing2 = Pair.Value.Widget.Get())
+                {
+                    KnownHostLocalWidgets.Add(Existing2);
+                }
+            }
+        }
+        UGV2ScreenWidgetBase* RemovedWidget = Removed.Widget.Get();
+        for (UWidget* Child : Host->GetAllChildren())
+        {
+            UGV2ScreenWidgetBase* ScreenChild = Cast<UGV2ScreenWidgetBase>(Child);
+            if (ScreenChild == nullptr || ScreenChild == RemovedWidget || KnownHostLocalWidgets.Contains(ScreenChild))
+            {
+                continue;
+            }
+            FName FoundKey = NAME_None;
+            for (const TPair<FScreenSlotKey, FActiveScreenEntry>& ActivePair : ActiveScreens)
+            {
+                if (ActivePair.Key.Layer == Layer && ActivePair.Value.Widget.Get() == ScreenChild)
+                {
+                    FoundKey = ActivePair.Key.InstanceKey;
+                    break;
+                }
+            }
+            if (!FoundKey.IsNone())
+            {
+                DocumentParticipants.Add({FoundKey, ScreenChild});
+            }
+        }
+    }
+
+    if (!CommitLayerParticipants(Shell, Layer, MoveTemp(DocumentParticipants), OutError))
+    {
+        // The registry entry is already gone; restoring it after a failed rebuild would
+        // reintroduce the same widget the panel may now disagree about. Fail loudly
+        // instead of guessing at a compensating state.
+        return false;
+    }
     return true;
 }
 
@@ -295,41 +531,24 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                 continue;
             }
 
-            TArray<const FPreparedScreenInstance*> LayerInstances;
+            // PEP-06: document-tier participants for this layer, from THIS round's fresh
+            // Plan -- authoritative, unlike the panel's own current children.
+            TArray<FGV2LayerParticipant> DocumentParticipants;
             for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
             {
                 if (Inst.Layer == Layer && Inst.TargetWidget.IsValid())
                 {
-                    LayerInstances.Add(&Inst);
+                    DocumentParticipants.Add({Inst.InstanceKey, Inst.TargetWidget.Get()});
                 }
-            }
-
-            TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> SeedByKey;
-            for (const FPreparedScreenInstance* Inst : LayerInstances)
-            {
-                SeedByKey.Add(Inst->InstanceKey, Inst->TargetWidget.Get());
             }
 
             FGV2LayerReconcileState& State = LayerStates.AddDefaulted_GetRef();
             State.Layer = Layer;
             State.Host = Host;
 
-            TArray<UGV2ScreenWidgetBase*> OrderedOut;
-            const bool bLayerReconciled = FGV2KeyedCollection::ReconcilePrepared<UGV2ScreenWidgetBase, const FPreparedScreenInstance*, FGV2LayerReconcilePrepared>(
-                Host,
-                LayerInstances,
-                SeedByKey,
-                [](const FPreparedScreenInstance* const& Inst) { return Inst->InstanceKey; },
-                []() -> UGV2ScreenWidgetBase* { return nullptr; },
-                [](UGV2ScreenWidgetBase&, const FPreparedScreenInstance* const&, FGV2LayerReconcilePrepared&) { return true; },
-                [](UGV2ScreenWidgetBase&, const FGV2LayerReconcilePrepared&) {},
-                OrderedOut,
-                nullptr,
-                &State.PreviousOrder,
-                [](UPanelSlot& Slot)
-                {
-                    UGV2GameShellWidgetBase::ApplyScreenSlotLayout(Slot);
-                });
+            FString LayerError;
+            const bool bLayerReconciled = CommitLayerParticipants(
+                Shell, Layer, MoveTemp(DocumentParticipants), LayerError, &State.PreviousOrder);
 
             if (!bLayerReconciled)
             {
@@ -378,7 +597,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                     bStructureRestoreFailed |= !FieldRollback.bRestored;
                 }
 
-                OutError = FString::Printf(TEXT("core:diagnostic.ui_reconcile.layer_reconcile_failed: layer='%s'"), *Layer.ToString());
+                OutError = FString::Printf(TEXT("core:diagnostic.ui_reconcile.layer_reconcile_failed: layer='%s': %s"), *Layer.ToString(), *LayerError);
                 if (bStructureRestoreFailed)
                 {
                     OutError = FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *OutError);
@@ -409,6 +628,15 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
             // Only top modal in modal stack is interactive. Decided here, written by the
             // Shell -- the reconciler names WHICH modals are in the stack and in what order,
             // and performs no widget mutation of its own.
+            //
+            // PEP-06: Plan.Modals is built in PrepareReconcile, straight from this round's
+            // document instances (line ~152 above) -- it is the document tier by
+            // construction and never includes a HostLocalScreens entry, which this
+            // function's own CommitLayerParticipants call only appends AFTER Plan.Modals
+            // already exists. A host-local participant registered in modal_stack -- or a
+            // future departing/fading modal, whose Z-slot ADR-0048 reserves without a
+            // producer in this plan -- is therefore never eligible to be "top" here: the
+            // topmost DOCUMENT modal always is, regardless of what else the panel holds.
             TArray<UUserWidget*> OrderedModals;
             OrderedModals.Reserve(Plan.Modals.Num());
             for (const TWeakObjectPtr<UGV2ScreenWidgetBase>& Modal : Plan.Modals)
@@ -536,12 +764,33 @@ bool FGV2LayeredUiReconciler::RefreshViewportPresentation(float ViewportHeight, 
         Operation.ViewportHeight = ViewportHeight;
         Transaction.AddViewportRefreshOperation(MoveTemp(Operation));
     }
+    // PEP-06: a host-local participant (e.g. the hover popover) is a full screen subtree
+    // like any other and needs the same viewport-derived refresh.
+    for (const TPair<FScreenSlotKey, FHostLocalScreenEntry>& Pair : HostLocalScreens)
+    {
+        UGV2ScreenWidgetBase* Root = Pair.Value.Widget.Get();
+        if (Root == nullptr || AddedRoots.Contains(Root))
+        {
+            continue;
+        }
+        AddedRoots.Add(Root);
+        GV2PresentationApply::FPreparedViewportRefreshOperation Operation;
+        Operation.RootWidget = Root;
+        Operation.ViewportHeight = ViewportHeight;
+        Transaction.AddViewportRefreshOperation(MoveTemp(Operation));
+    }
     return GV2ApplyTransaction(Transaction, OutError);
 }
 
 void FGV2LayeredUiReconciler::Reset()
 {
     ActiveScreens.Reset();
+    // PEP-06: a session boundary must not let a host-local participant (e.g. an open hover
+    // popover) survive into the next session's physical tree -- the widget itself is
+    // released by the Shell teardown that accompanies this call (UGV2RuntimeSubsystem::
+    // TeardownActiveProjection), this registry entry would otherwise dangle pointing at it.
+    HostLocalScreens.Reset();
+    NextHostLocalCreationOrder = 1;
     LastCommittedDocument.Reset();
     Health = EGV2PresentationHealth::Nominal;
 }
