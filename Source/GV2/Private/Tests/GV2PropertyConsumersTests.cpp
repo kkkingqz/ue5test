@@ -14,7 +14,6 @@
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2ModalWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
@@ -855,37 +854,11 @@ bool FGV2PropertyConsumersBasicWidgetsAndHostsTest::RunTest(const FString& Param
             TestEqual(TEXT("RichText key matches dialogue_body"), RichTextWidget->GetKey(), FName(TEXT("dialogue_body")));
         }
 
-        // 7d. UPP-18: UGV2RichTextPopoverWidgetBase as IGV2UiPropertyHost
-        {
-            UGV2RichTextPopoverWidgetBase* PopoverWidget = CreateWidget<UGV2RichTextPopoverWidgetBase>(TestWorld, UGV2RichTextPopoverWidgetBase::StaticClass());
-            PopoverWidget->WidgetTree = NewObject<UWidgetTree>(PopoverWidget);
-            UCommonTextBlock* InnerTitle = PopoverWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TitleText"));
-            PopoverWidget->WidgetTree->RootWidget = InnerTitle;
-
-            FGV2TextPropertyConsumer TextConsumer;
-            FGV2UiPropertyCapability TextCap;
-            TextCap.PropertyName = TEXT("title");
-            TextCap.SupportedKind = EGV2PreparedUiValueKind::Text;
-            TextCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
-
-            const FGV2TextViewModel TitleModel =
-                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Popover Title"));
-
-            FString PrepErr, CommitErr;
-            TestTrue(TEXT("Popover Title Prepare succeeds"), TextConsumer.Prepare(
-                FGV2PreparedUiValue::MakeText(TitleModel), TextCap, InnerTitle, PrepErr));
-            TestTrue(TEXT("Popover Title Commit succeeds"), TextConsumer.Commit(InnerTitle, CommitErr));
-
-            FGV2KeyPropertyConsumer KeyConsumer;
-            FGV2UiPropertyCapability KeyCap;
-            KeyCap.PropertyName = TEXT("key");
-            KeyCap.SupportedKind = EGV2PreparedUiValueKind::Key;
-            KeyCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
-
-            TestTrue(TEXT("Popover Key Prepare succeeds"), KeyConsumer.Prepare(FGV2PreparedUiValue::MakeKey(TEXT("info_popover")), KeyCap, PopoverWidget, PrepErr));
-            TestTrue(TEXT("Popover Key Commit succeeds"), KeyConsumer.Commit(PopoverWidget, CommitErr));
-            TestEqual(TEXT("Popover key matches info_popover"), PopoverWidget->GetKey(), FName(TEXT("info_popover")));
-        }
+        // PEP-06B: subtest 7d (UPP-18: UGV2RichTextPopoverWidgetBase as IGV2UiPropertyHost)
+        // is deleted, not replaced -- it only ever exercised the shared, generic
+        // FGV2TextPropertyConsumer/FGV2KeyPropertyConsumer paths against a host with no
+        // property surface of its own, which subtest 7c (RichText, immediately above) and
+        // the rest of this file's IGV2UiPropertyHost coverage already exercise.
 
         // 7b. DUC-03: FGV2KeyPropertyConsumer needs no edit for a host declared only in this
         // test -- UGV2NewHostAddedOnlyInTestWidget (GV2ForgeryTestWidgets.h) never appears in

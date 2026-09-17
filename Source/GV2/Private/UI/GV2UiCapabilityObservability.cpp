@@ -15,7 +15,6 @@
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"

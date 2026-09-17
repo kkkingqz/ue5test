@@ -39,7 +39,6 @@
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RecoveryScreenWidget.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
@@ -402,18 +401,11 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
             TestTrue(TEXT("RichText declares spans capability"), Caps.Properties.Contains(TEXT("spans")));
             TestTrue(TEXT("RichText declares key capability"), Caps.Properties.Contains(TEXT("key")));
         }
-
-        UGV2RichTextPopoverWidgetBase* Popover = NewObject<UGV2RichTextPopoverWidgetBase>();
-        TestNotNull(TEXT("Transient popover widget created"), Popover);
-        if (Popover != nullptr)
-        {
-            FGV2UiCapabilityBuilder Builder;
-            Popover->DescribeUiCapabilities(Builder);
-            const FGV2UiCapabilityTree Caps = Builder.Build();
-            // PEP-05: content is a nested screen (ContentBox), not a declared property of
-            // this host -- only host identity remains.
-            TestTrue(TEXT("Popover declares key capability"), Caps.Properties.Contains(TEXT("key")));
-        }
+        // PEP-06B: UGV2RichTextPopoverWidgetBase is deleted -- the hover popover's own
+        // capability surface no longer exists as a separate host; the resolved hover
+        // screen widget (an ordinary UGV2ScreenWidgetBase) carries whatever capabilities
+        // its own author screen declares, already covered by every other screen-widget
+        // contract test in this file. No replacement subtest is needed here.
     }
 
     return true;
@@ -435,15 +427,10 @@ bool FGV2UiKitThemeTokensAndTypographyContractTest::RunTest(const FString& Param
 
     TestNotNull(TEXT("Theme provides the default text style"), Theme->TextStyle.Get());
     TestNotNull(TEXT("Theme provides the rich text style"), Theme->RichTextStyle.Get());
-    TestNotNull(
-        TEXT("Theme provides the rich text popover class"),
-        Theme->RichTextPopoverClass.LoadSynchronous());
-    TestTrue(
-        TEXT("Theme provides a visible rich text popover background"),
-        Theme->RichTextPopoverBackground.DrawAs != ESlateBrushDrawType::NoDrawType);
-    TestTrue(
-        TEXT("Theme constrains rich text popover height for overflow scrolling"),
-        Theme->RichTextPopoverMaxHeight >= 64.0f);
+    // PEP-06B: RichTextPopoverClass/Background/MaxHeight are removed from UGV2UiTheme --
+    // the hover popover is no longer a Theme-resolved renderer class (deleted
+    // UGV2RichTextPopoverWidgetBase); the frame/background now belongs to the author
+    // screen's own WBP, which every other screen-widget contract test already covers.
     TestNotNull(TEXT("Theme provides the button style"), Theme->ButtonStyle.Get());
     TestNotNull(TEXT("Theme provides the button label style"), Theme->ButtonLabelStyle.Get());
     TestNotNull(TEXT("Theme provides the checkbox label style"), Theme->CheckboxLabelStyle.Get());
@@ -960,7 +947,9 @@ bool FGV2UiKitWidgetThemeApplicationContractTest::RunTest(const FString& Paramet
         {TEXT("WBP_ProgressBar"), UGV2ProgressBarWidgetBase::StaticClass()},
         {TEXT("WBP_Separator"), UGV2SeparatorWidgetBase::StaticClass()},
         {TEXT("WBP_LoadingIndicator"), UGV2LoadingIndicatorWidgetBase::StaticClass()},
-        {TEXT("WBP_RichTextPopover"), UGV2RichTextPopoverWidgetBase::StaticClass()},
+        // PEP-06B: WBP_RichTextPopover/UGV2RichTextPopoverWidgetBase is deleted -- the
+        // orphaned .uasset is removed from Content/ in the same change set (via
+        // unreal-mcp), so this table carries no entry or leftover asset for it to match.
         {TEXT("WBP_Icon"), UGV2IconWidgetBase::StaticClass()},
         {TEXT("WBP_Panel"), UGV2PanelWidgetBase::StaticClass()},
         {TEXT("WBP_ScrollArea"), UGV2ScrollAreaWidgetBase::StaticClass()},
@@ -1152,32 +1141,13 @@ bool FGV2UiKitWidgetThemeApplicationContractTest::RunTest(const FString& Paramet
                     ExpectedFont.Size);
                 }
             }
-            if (UGV2RichTextPopoverWidgetBase* Popover =
-                    Cast<UGV2RichTextPopoverWidgetBase>(Widget))
-            {
-                // PEP-05: content is a nested screen this popover never builds itself
-                // (PSC-10B) -- InitializePopover only re-parents an already-prepared
-                // instance into ContentBox. The screen widget below stands in for
-                // whatever FGV2RichTextSpansPropertyConsumer::Prepare would have already
-                // built and styled; this test is about the popover's OWN attach/style
-                // behavior, not about nested-screen preparation (covered in
-                // GV2.UI.Consumers.PropertyConsumers).
-                UGV2ScreenWidgetBase* HoverScreen = CreateWidget<UGV2ScreenWidgetBase>(
-                    TestWorld, UGV2ScreenWidgetBase::StaticClass());
-                TestNotNull(TEXT("Hover screen instantiates for popover test"), HoverScreen);
-                FGV2RichTextHoverViewModel HoverModel;
-                HoverModel.ScreenId = TEXT("core:screen.test_embedded");
-                HoverModel.ScreenWidget = HoverScreen;
-                TestTrue(
-                    TEXT("RichText popover initializes with an already-prepared nested screen"),
-                    Popover->InitializePopover(
-                        HoverModel,
-                        MakePreparedRichTextStyleForTest(*Theme)));
-                TestEqual(
-                    TEXT("Popover ContentBox hosts exactly the prepared nested screen"),
-                    Popover->GetPopoverModel().ScreenWidget.Get(),
-                    static_cast<UUserWidget*>(HoverScreen));
-            }
+            // PEP-06B: UGV2RichTextPopoverWidgetBase and its InitializePopover/
+            // GetPopoverModel attach-and-style contract are deleted -- the hover popover
+            // is now a host-local overlay_stack participant driven by
+            // UGV2RichTextWidgetBase::NativeTick (GV2RichTextSpanHoverDetectorTests
+            // already covers the detector; GV2LayeredReconciliationTests' host-local
+            // participant contract covers the attach/detach mechanism this now uses
+            // instead of InitializePopover). No direct replacement subtest is needed here.
         }
 
     UClass* TestScreenClass = LoadClass<UUserWidget>(

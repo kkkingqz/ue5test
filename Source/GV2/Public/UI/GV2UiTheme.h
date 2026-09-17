@@ -10,7 +10,6 @@
 
 class UCommonButtonStyle;
 class UCommonTextStyle;
-class UGV2RichTextPopoverWidgetBase;
 
 USTRUCT(BlueprintType)
 struct GV2_API FGV2TextStyleToken
@@ -80,21 +79,6 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography")
     FHyperlinkStyle RichTextInteractiveStyle;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rich Text Popover")
-    TSoftClassPtr<UGV2RichTextPopoverWidgetBase> RichTextPopoverClass;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rich Text Popover")
-    FSlateBrush RichTextPopoverBackground;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rich Text Popover")
-    FMargin RichTextPopoverPadding = FMargin(12.0f);
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rich Text Popover", meta = (ClampMin = "64.0"))
-    float RichTextPopoverMaxWidth = 360.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rich Text Popover", meta = (ClampMin = "64.0"))
-    float RichTextPopoverMaxHeight = 480.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Controls")
     TSubclassOf<UCommonButtonStyle> ButtonStyle;
@@ -223,13 +207,6 @@ public:
     TStrongObjectPtr<UClass> TextStyle;
     TStrongObjectPtr<UClass> RichTextStyle;
     FHyperlinkStyle RichTextInteractiveStyle;
-
-    // Rich Text Popover
-    TStrongObjectPtr<UClass> RichTextPopoverClass;
-    FSlateBrush RichTextPopoverBackground;
-    FMargin RichTextPopoverPadding = FMargin(12.0f);
-    float RichTextPopoverMaxWidth = 360.0f;
-    float RichTextPopoverMaxHeight = 480.0f;
 
     // Controls
     TStrongObjectPtr<UClass> ButtonStyle;

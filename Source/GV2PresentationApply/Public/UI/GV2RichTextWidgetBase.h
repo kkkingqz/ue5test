@@ -12,7 +12,6 @@
 #include "GV2RichTextWidgetBase.generated.h"
 
 class UCommonRichTextBlock;
-class UGV2RichTextPopoverWidgetBase;
 class UScrollBox;
 class IToolTip;
 struct FHyperlinkStyle;
@@ -138,22 +137,13 @@ public:
     void ApplyRichTextStyleValues(const GV2PresentationApply::FPreparedRichTextStyle& InStyle);
 
     const GV2PresentationApply::FPreparedRichTextStyle& GetPreparedRichTextStyle() const { return PreparedStyle; }
-    UClass* GetPreparedPopoverClass() const { return PreparedPopoverClass.Get(); }
-    void SetActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover);
-    void ClearActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover);
 
-    // PEP-06A: the tooltip route (CreateSpanToolTip/OnOpening/OnClosed) is untouched by
-    // this task and stays the live signal until PEP-06B removes it -- this is a second,
-    // independent detector existing alongside it, not yet consumed by anything.
-    //
-    // Walks the real rendered interactive-span sub-widgets this text block's decorator
-    // created (SRichTextHyperlink instances, found via SWidget::GetChildren()) and returns
-    // one anchor per span whose hover content is non-empty -- the exact predicate
-    // FGV2RichTextSpanToolTip::IsEmpty() already gates tooltip-opening on, so this
-    // detector's coverage set is identical to the one it will replace. Requires a real
+    // PEP-06B: walks the real rendered interactive-span sub-widgets this text block's
+    // decorator created (SRichTextHyperlink instances, found via SWidget::GetChildren())
+    // and returns one anchor per span whose hover content is non-empty. Requires a real
     // paint pass to have happened (the geometry comes from live Slate arrangement, not a
     // manual layout walk); returns an empty array before first paint or if RichTextBlock is
-    // unbound.
+    // unbound. Polled every NativeTick to drive the hover overlay below.
     TArray<FGV2RichTextSpanAnchor> CaptureHoverableSpanAnchors() const;
 
     // Pure point-in-rect test, no widget or cursor access -- callable with a synthetic
@@ -176,6 +166,20 @@ public:
 protected:
     virtual void NativePreConstruct() override;
     virtual void NativeDestruct() override;
+
+    // PEP-06B: replaces the old Slate-tooltip open/close signal (CreateSpanToolTip's
+    // FGV2RichTextSpanToolTip is now only a correlation vessel, never a visible tooltip --
+    // see its own doc comment in the .cpp). Every tick: recapture anchors, advance the
+    // hover state machine against the live cursor position, open/close/reposition the
+    // hover overlay to match. This is the sole caller of Open/CloseHoverOverlay.
+    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
+private:
+    void OpenHoverOverlayForSpan(FName SpanId);
+    void CloseActiveHoverOverlay();
+    void RepositionActiveHoverOverlay(FName SpanId, const TArray<FGV2RichTextSpanAnchor>& Anchors);
+
+protected:
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UCommonRichTextBlock> RichTextBlock;
@@ -200,12 +204,8 @@ protected:
 
     // FPreparedRichTextStyle is deliberately a non-reflected lower-module value, so nothing
     // in it is visible to the garbage collector. The widget therefore anchors every UObject
-    // the stored style references -- the popover class, and every style class in the token
-    // tables -- for as long as it holds the style. Anchoring only the popover class (as an
-    // earlier revision did) would have left the token tables' classes unreferenced.
-    UPROPERTY(Transient)
-    TSubclassOf<UUserWidget> PreparedPopoverClass;
-
+    // the stored style references -- every style class in the token tables -- for as long
+    // as it holds the style.
     UPROPERTY(Transient)
     TArray<TObjectPtr<UObject>> PreparedStyleAnchors;
 
@@ -215,8 +215,14 @@ protected:
     UPROPERTY(Transient)
     TArray<FGV2RichTextSpanViewModel> CurrentSpans;
 
-    UPROPERTY(Transient)
-    TWeakObjectPtr<UGV2RichTextPopoverWidgetBase> ActivePopoverForViewportRefresh;
-
     TMap<FName, int32> SpanIndexById;
+
+    // PEP-06B: the hover overlay currently open for this widget, if any -- transient,
+    // per-instance detector state, never serialized/reflected the same way HoverState below
+    // isn't. ActiveHoverWidget is the exact widget CloseHoverOverlay's owner (the sink) was
+    // handed at open time; not itself an owning reference (the sink/reconciler owns it once
+    // attached, PSC-11), used only to reposition it and to know it was this widget.
+    FGV2SpanHoverState HoverState;
+    FName ActiveHoverInstanceKey;
+    TWeakObjectPtr<UUserWidget> ActiveHoverWidget;
 };

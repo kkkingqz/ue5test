@@ -34,7 +34,6 @@
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"

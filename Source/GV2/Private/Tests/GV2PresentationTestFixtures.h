@@ -15,7 +15,6 @@
 #include "Application/GV2PackageClosure.h"
 #include "UI/GV2ImagePresentation.h"
 #include "UI/GV2ImageResourceCatalog.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiSchemaCache.h"
 #include "UI/GV2UiTheme.h"
@@ -203,39 +202,6 @@ inline bool ApplyPreparedTransaction(
 class FPrepareContextFixture final
 {
 public:
-    // PSC-10B: the popover renderer class is resolved ONCE, at snapshot build. A test that
-    // needs a session whose Theme declares no popover renderer must therefore make that true
-    // BEFORE the snapshot is built -- mutating the Theme asset afterwards no longer reaches
-    // anything, which is exactly the property the move to the snapshot bought.
-    struct FWithoutRichTextPopoverRenderer
-    {
-        explicit FWithoutRichTextPopoverRenderer(UGV2UiTheme* InTheme)
-            : Theme(InTheme)
-        {
-            if (Theme != nullptr)
-            {
-                Saved = Theme->RichTextPopoverClass;
-                Theme->RichTextPopoverClass = nullptr;
-            }
-        }
-        // Restores on ANY exit, including an early return from a failing assertion -- a
-        // plain assignment at the end of the block leaves the shared Theme asset broken for
-        // every later test when the block exits early.
-        ~FWithoutRichTextPopoverRenderer()
-        {
-            if (Theme != nullptr)
-            {
-                Theme->RichTextPopoverClass = Saved;
-            }
-        }
-        FWithoutRichTextPopoverRenderer(const FWithoutRichTextPopoverRenderer&) = delete;
-        FWithoutRichTextPopoverRenderer& operator=(const FWithoutRichTextPopoverRenderer&) = delete;
-
-    private:
-        UGV2UiTheme* Theme = nullptr;
-        TSoftClassPtr<UGV2RichTextPopoverWidgetBase> Saved;
-    };
-
     bool Initialize(FString& OutError)
     {
         OutError.Reset();
@@ -449,14 +415,6 @@ inline GV2PresentationApply::FPreparedRichTextStyle MakePreparedRichTextStyleFor
     Result.UnscaledSizeByToken = Theme.TextSizeTokens;
     Result.ScalePolicy = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, Result.DefaultTokenName);
     Result.InteractiveStyle = Theme.RichTextInteractiveStyle;
-    Result.PopoverClass = Theme.RichTextPopoverClass.LoadSynchronous();
-    Result.PopoverStyle.Background = Theme.RichTextPopoverBackground;
-    Result.PopoverStyle.Padding = Theme.RichTextPopoverPadding;
-    Result.PopoverStyle.MaxWidth = Theme.RichTextPopoverMaxWidth;
-    Result.PopoverStyle.MaxHeight = Theme.RichTextPopoverMaxHeight;
-    Result.PopoverStyle.ImageTint = Theme.ImageTint;
-    Result.PopoverStyle.Scale.ScaleCurve = Theme.TextScaleCurve;
-    Result.PopoverStyle.Scale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
     Result.bIsResolved = true;
     return Result;
 }

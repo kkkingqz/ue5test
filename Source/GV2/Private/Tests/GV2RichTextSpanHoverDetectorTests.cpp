@@ -8,14 +8,16 @@
 #include "UI/GV2UiTheme.h"
 #include "Widgets/SVirtualWindow.h"
 
-// PEP-06A: FSlateHyperlinkRun::Create takes OnClick/OnGenerateTooltip but no hover
-// callback -- IToolTip::OnOpening/OnClosed is today's only hover signal. This suite proves
+// PEP-06A/06B: FSlateHyperlinkRun::Create takes OnClick/OnGenerateTooltip but no hover
+// callback -- IToolTip::OnOpening/OnClosed was the original hover signal. This suite proves
 // the replacement: UGV2RichTextWidgetBase::CaptureHoverableSpanAnchors/HitTestSpanAnchors/
 // AdvanceSpanHoverState, fed synthetic points against a REAL rendered interactive span (no
 // synthesized cursor -- render for real, then query geometry, then do point math by hand,
-// the same idiom GV2ContentSmokeTests.cpp already uses). The tooltip route itself is
-// untouched by this task and is exercised unchanged below to prove the two mechanisms agree
-// on which spans matter.
+// the same idiom GV2ContentSmokeTests.cpp already uses). PEP-06B deleted the Slate-tooltip
+// popover entirely; FGV2RichTextSpanToolTip::IsEmpty() is now unconditionally true (it no
+// longer reflects hover content, only whether Slate should ever show ITS OWN popup, which
+// is never), so this test no longer compares against it -- coverage-set equivalence is
+// proven directly against CaptureHoverableSpanAnchors's own output below (section 2).
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2RichTextSpanHoverDetectorTest,
     "GV2.Runtime.Presentation.RichTextSpanHoverDetector",
@@ -68,9 +70,10 @@ bool FGV2RichTextSpanHoverDetectorTest::RunTest(const FString& Parameters)
 
     RichText->ApplyInteractiveRichText(Text, {HoverSpan, ClickOnlySpan});
 
-    // 1. Coverage-set equivalence (Done): the detector's span set must match today's
-    // tooltip-opening set exactly, checked directly against the still-untouched route.
-    TestFalse(TEXT("Tooltip is non-empty for the hover-bearing span"),
+    // 1. PEP-06B: the correlation vessel itself is inert now -- both spans' tooltip is
+    // unconditionally empty, regardless of hover content. Asserting that directly is what
+    // proves Slate's own tooltip popup can never open for either span any more.
+    TestTrue(TEXT("Tooltip is empty for the hover-bearing span (Slate popup never opens)"),
         RichText->CreateSpanToolTip(HoverSpan.SpanId)->IsEmpty());
     TestTrue(TEXT("Tooltip is empty for the binding-only span"),
         RichText->CreateSpanToolTip(ClickOnlySpan.SpanId)->IsEmpty());

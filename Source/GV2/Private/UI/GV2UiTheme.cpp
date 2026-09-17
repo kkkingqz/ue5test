@@ -1,7 +1,6 @@
 #include "UI/GV2UiTheme.h"
 #include "CommonButtonBase.h"
 #include "CommonTextBlock.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "Curves/RichCurve.h"
 #include "UObject/UnrealType.h"
 
@@ -354,22 +353,6 @@ bool FGV2ResolvedUiTheme::Compile(
     OutResolved.TextStyle = TStrongObjectPtr<UClass>(InTheme->TextStyle != nullptr ? InTheme->TextStyle.Get() : nullptr);
     OutResolved.RichTextStyle = TStrongObjectPtr<UClass>(InTheme->RichTextStyle != nullptr ? InTheme->RichTextStyle.Get() : nullptr);
     OutResolved.RichTextInteractiveStyle = InTheme->RichTextInteractiveStyle;
-
-    // Rich Text Popover
-    UClass* PopoverClass = nullptr;
-    if (!InTheme->RichTextPopoverClass.IsNull() && !IsInAsyncLoadingThread() && !IsGarbageCollecting())
-    {
-        PopoverClass = InTheme->RichTextPopoverClass.LoadSynchronous();
-    }
-    else
-    {
-        PopoverClass = InTheme->RichTextPopoverClass.Get();
-    }
-    OutResolved.RichTextPopoverClass = TStrongObjectPtr<UClass>(PopoverClass);
-    OutResolved.RichTextPopoverBackground = InTheme->RichTextPopoverBackground;
-    OutResolved.RichTextPopoverPadding = InTheme->RichTextPopoverPadding;
-    OutResolved.RichTextPopoverMaxWidth = InTheme->RichTextPopoverMaxWidth;
-    OutResolved.RichTextPopoverMaxHeight = InTheme->RichTextPopoverMaxHeight;
 
     // Controls
     OutResolved.ButtonStyle = TStrongObjectPtr<UClass>(InTheme->ButtonStyle != nullptr ? InTheme->ButtonStyle.Get() : nullptr);

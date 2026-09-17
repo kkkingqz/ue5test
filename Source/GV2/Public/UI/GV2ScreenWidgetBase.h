@@ -2,11 +2,14 @@
 
 #include "Bridge/GV2BridgeTypes.h"
 #include "CommonUserWidget.h"
+#include "UI/GV2ScreenAnchorHost.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiHostSemanticState.h"
 #include "UI/GV2TextPipelineHost.h"
 #include "GV2ScreenWidgetBase.generated.h"
+
+class UCanvasPanel;
 
 struct FGV2ScreenFieldPlan
 {
@@ -46,10 +49,20 @@ UCLASS(Blueprintable)
 class GV2_API UGV2ScreenWidgetBase
     : public UCommonUserWidget
     , public IGV2TextPipelineHost
+    , public IGV2ScreenAnchorHost
 {
     GENERATED_BODY()
 
 public:
+    // PEP-06B: implemented unconditionally on every screen, not just the ones a host-local
+    // participant actually anchors -- the same "generic capability, no-op where unused"
+    // shape GetScreenFieldIds() already has. Repositions this screen's own root canvas'
+    // single child if its WidgetTree->RootWidget is a UCanvasPanel with exactly one child;
+    // any other root shape (the overwhelming majority of screens, which are never anchored)
+    // makes this a documented no-op, not a silent failure -- a screen author who wants
+    // anchoring authors a UCanvasPanel root with one child, same as any other UMG canvas
+    // layout; nothing else changes for a screen that doesn't.
+    virtual void SetAnchoredContentPosition(const FVector2D& LocalPosition) override;
     // UPP-27 / UPP-28: Prepares every field's full mutation plan without modifying any widget.
     // Predicts deep child failures (STATUS-004) before commit.
     // PCC-06: [[nodiscard]] -- a discarded result is exactly the swallowed-failure shape

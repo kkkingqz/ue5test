@@ -4,12 +4,10 @@
 #include "Components/Image.h"
 #include "CommonTextBlock.h"
 #include "CommonRichTextBlock.h"
-#include "Components/Border.h"
 #include "Components/PanelWidget.h"
 #include "Components/ProgressBar.h"
 #include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
-#include "Components/VerticalBox.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2UiCapability.h"
 
@@ -129,30 +127,4 @@ void UGV2RichTextBoundTestWidget::BuildBoundSubWidgets()
         UScrollBox::StaticClass(), TEXT("RichTextScrollBox"));
     RichTextScrollBox->AddChild(RichTextBlock);
     WidgetTree->RootWidget = RichTextScrollBox;
-}
-
-void UGV2RichTextPopoverBoundTestWidget::BuildBoundSubWidgets()
-{
-    WidgetTree = NewObject<UWidgetTree>(this);
-    PopoverBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PopoverBorder"));
-    PopoverWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("PopoverWidth"));
-    ContentBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ContentBox"));
-    PopoverBorder->AddChild(PopoverWidth);
-    PopoverWidth->AddChild(ContentBox);
-    WidgetTree->RootWidget = PopoverBorder;
-}
-
-FSlateBrush UGV2RichTextPopoverBoundTestWidget::ReadAppliedBackground() const
-{
-    return PopoverBorder != nullptr ? PopoverBorder->Background : FSlateBrush();
-}
-
-FMargin UGV2RichTextPopoverBoundTestWidget::ReadAppliedPadding() const
-{
-    return PopoverBorder != nullptr ? PopoverBorder->GetPadding() : FMargin();
-}
-
-float UGV2RichTextPopoverBoundTestWidget::ReadAppliedMaxWidth() const
-{
-    return PopoverWidth != nullptr ? PopoverWidth->GetMaxDesiredWidth() : -1.0f;
 }

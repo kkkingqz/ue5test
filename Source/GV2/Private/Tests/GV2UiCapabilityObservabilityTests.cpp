@@ -19,7 +19,6 @@
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "CommonRichTextBlock.h"
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
@@ -364,35 +363,11 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("No failures for UGV2RichTextWidgetBase"), RichTextFailures.Num(), 0);
     }
 
-    // 11. UPP-18: UGV2RichTextPopoverWidgetBase implements IGV2UiPropertyHost and is observable
-    {
-        UGV2RichTextPopoverWidgetBase* PopoverWidget = CreateWidget<UGV2RichTextPopoverWidgetBase>(TestWorld, UGV2RichTextPopoverWidgetBase::StaticClass());
-        PopoverWidget->WidgetTree = NewObject<UWidgetTree>(PopoverWidget);
-        UVerticalBox* Root = PopoverWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
-        PopoverWidget->WidgetTree->RootWidget = Root;
-        UCommonTextBlock* TitleText = PopoverWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TitleText"));
-        Root->AddChildToVerticalBox(TitleText);
-        UGV2RichTextWidgetBase* DescriptionText = PopoverWidget->WidgetTree->ConstructWidget<UGV2RichTextWidgetBase>(UGV2RichTextWidgetBase::StaticClass(), TEXT("DescriptionText"));
-        DescriptionText->WidgetTree = NewObject<UWidgetTree>(DescriptionText);
-        UCommonRichTextBlock* InnerRichText = DescriptionText->WidgetTree->ConstructWidget<UCommonRichTextBlock>(UCommonRichTextBlock::StaticClass(), TEXT("RichTextBlock"));
-        DescriptionText->WidgetTree->RootWidget = InnerRichText;
-        Root->AddChildToVerticalBox(DescriptionText);
-        UImage* Icon = PopoverWidget->WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Icon"));
-        Root->AddChildToVerticalBox(Icon);
-
-        FGV2UiCapabilityBuilder Builder;
-        PopoverWidget->DescribeUiCapabilities(Builder);
-        const FGV2UiCapabilityTree PopoverCaps = Builder.Build();
-
-        TArray<FGV2UiObservabilityFailure> PopoverFailures;
-        const bool bPopoverObservable = RunUiCapabilityObservabilityHarness(PopoverWidget, PopoverCaps, PrepareContext, PopoverFailures);
-        for (const FGV2UiObservabilityFailure& Failure : PopoverFailures)
-        {
-            UE_LOG(LogTemp, Error, TEXT("PopoverObservabilityFailure: property '%s': %s"), *Failure.PropertyName, *Failure.Reason);
-        }
-        TestTrue(TEXT("UGV2RichTextPopoverWidgetBase capabilities are observable"), bPopoverObservable);
-        TestEqual(TEXT("No failures for UGV2RichTextPopoverWidgetBase"), PopoverFailures.Num(), 0);
-    }
+    // PEP-06B: subtest 11 (UPP-18: UGV2RichTextPopoverWidgetBase implements IGV2UiPropertyHost
+    // and is observable) is deleted, not replaced -- the deleted class never had any
+    // property surface of its own beyond hosting a nested screen (PEP-05), and the screen
+    // it now hosts as an ordinary overlay_stack participant is just a UGV2ScreenWidgetBase,
+    // already covered by every other IGV2UiPropertyHost observability subtest in this file.
 
     return true;
 }

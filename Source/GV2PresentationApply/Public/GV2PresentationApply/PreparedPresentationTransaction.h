@@ -433,23 +433,13 @@ struct GV2PRESENTATIONAPPLY_API FPreparedRichTextTokenStyle
     bool bResolved = false;
 };
 
-// PSC-10B: finished values for a RichText hover popover. The popover instance is created
-// after the screen transaction, but it still applies this role through the same transaction
-// facade: the creating RichText widget retains the value prepared for it, not a Theme.
-struct GV2PRESENTATIONAPPLY_API FPreparedRichTextPopoverStyle
-{
-    FSlateBrush Background;
-    FMargin Padding;
-    float MaxWidth = 0.0f;
-    float MaxHeight = 0.0f;
-    FLinearColor ImageTint = FLinearColor::White;
-    FPreparedViewportScalePolicy Scale;
-};
-
-// PSC-10B: everything UGV2RichTextWidgetBase and the hover popover it creates need, resolved
-// once in Prepare. The decorator's own resolution (run style, interactive style) reads THIS,
-// not a Theme: the token tables are finished values, so a synchronous Slate callback during
-// rendering can be served without any authority being reachable from it.
+// PEP-06B: everything UGV2RichTextWidgetBase needs, resolved once in Prepare. The decorator's
+// own resolution (run style, interactive style) reads THIS, not a Theme: the token tables are
+// finished values, so a synchronous Slate callback during rendering can be served without any
+// authority being reachable from it. The hover popover is gone (PEP-06B deleted
+// UGV2RichTextPopoverWidgetBase) -- a hovered span's own resolved screen widget
+// (FGV2RichTextSpanViewModel::Hover.ScreenWidget) is its own frame and its own style now, so
+// there is no popover-specific style role left to resolve here.
 struct GV2PRESENTATIONAPPLY_API FPreparedRichTextStyle
 {
     FName DefaultTokenName;
@@ -461,9 +451,6 @@ struct GV2PRESENTATIONAPPLY_API FPreparedRichTextStyle
     FPreparedTextScalePolicy ScalePolicy;
     FHyperlinkStyle InteractiveStyle;
 
-    // Already loaded during Prepare: the hover path must not perform a synchronous load.
-    TSubclassOf<UUserWidget> PopoverClass;
-    FPreparedRichTextPopoverStyle PopoverStyle;
     bool bIsResolved = false;
 };
 
@@ -508,7 +495,6 @@ using FPreparedCentralStylePayload = TVariant<
     FPreparedCheckboxStyle,
     FPreparedInputFieldStyle,
     FPreparedDropdownStyle,
-    FPreparedRichTextPopoverStyle,
     FPreparedRichTextStyle
 >;
 

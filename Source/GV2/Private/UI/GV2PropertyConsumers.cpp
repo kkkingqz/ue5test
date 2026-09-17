@@ -24,7 +24,6 @@
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2ModalWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
@@ -1770,21 +1769,10 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
         {
             if (!HoverVal->IsNull())
             {
-                // PSC-10B (ADR-0043 D1): the popover renderer class was loaded ONCE at
-                // snapshot build. Checking availability here must not be a synchronous
-                // load of its own -- this check runs as soon as Prepare sees ANY span
-                // carrying hover content, before resolving that content: authoring a
-                // hover with no way to ever render it is a content error, not something
-                // deferred to the moment a user happens to hover it.
-                const FGV2ResolvedUiTheme* Theme = PrepareContext != nullptr
-                    ? &PrepareContext->GetTheme()
-                    : nullptr;
-                if (Theme == nullptr || !Theme->IsValid() || Theme->RichTextPopoverClass.Get() == nullptr)
-                {
-                    OutError = TEXT("core:diagnostic.ui_consumer.missing_popover_renderer: RichText popover renderer unavailable in prepared session theme");
-                    return false;
-                }
-
+                // PEP-06B: the hover popover is gone as a Theme-resolved renderer class --
+                // a hovered span's content is now the resolved hover screen itself
+                // (host-local overlay_stack participant), so there is nothing left to check
+                // for availability here; the screen_id resolution below is the only gate.
                 if (!HoverVal->IsObject())
                 {
                     OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.item_kind_mismatch: Span '%s' hover must be an object"), *ItemKey.ToString());

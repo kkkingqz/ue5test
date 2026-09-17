@@ -3,7 +3,6 @@
 #include "Blueprint/UserWidget.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
@@ -147,22 +146,4 @@ class UGV2RichTextBoundTestWidget : public UGV2RichTextWidgetBase
 
 public:
     void BuildBoundSubWidgets();
-};
-
-/**
- * PSC-10B: a hover popover whose `meta = (BindWidget)` sub-widgets are populated the way a
- * Widget Blueprint would populate them, so a C++-only test can drive the real
- * InitializePopover entry point and read back the physical result.
- */
-UCLASS(meta = (GV2TestOnly))
-class UGV2RichTextPopoverBoundTestWidget : public UGV2RichTextPopoverWidgetBase
-{
-    GENERATED_BODY()
-
-public:
-    void BuildBoundSubWidgets();
-
-    FSlateBrush ReadAppliedBackground() const;
-    FMargin ReadAppliedPadding() const;
-    float ReadAppliedMaxWidth() const;
 };

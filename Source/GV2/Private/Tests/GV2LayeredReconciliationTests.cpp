@@ -6,8 +6,11 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/UserWidget.h"
+#include "CommonRichTextBlock.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/PanelWidget.h"
@@ -29,6 +32,8 @@
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2PresentationAuthorityProbe.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
+#include "UI/GV2RichTextWidgetBase.h"
+#include "UI/GV2ScreenAnchorHost.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
@@ -1923,6 +1928,147 @@ bool FGV2HostLocalLayerParticipantContract::RunTest(const FString& Parameters)
     {
         TestEqual(TEXT("PEP-06: remaining child is the document widget"), Order[0], Cast<UUserWidget>(DocWidget));
     }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2HoverOverlayAnchorAndLifecycleContract,
+    "GV2.UI.LayeredReconciliation.HoverOverlayAnchorAndLifecycle",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PEP-06B: the hover popover's OWN Done criteria, exercised against the mechanisms PEP-06B
+// built on top of PEP-06's host-local registry -- IGV2ScreenAnchorHost positioning, the
+// generic viewport-refresh recursion reaching a host-local participant, non-blocking of
+// lower layers via SelfHitTestInvisible, and session-replacement not surviving a Reset().
+bool FGV2HoverOverlayAnchorAndLifecycleContract::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+    if (TestWorld == nullptr)
+    {
+        return false;
+    }
+    UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+        nullptr,
+        TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+    if (GameShellClass == nullptr)
+    {
+        GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+    }
+    UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
+    TestNotNull(TEXT("PEP-06B: game shell instantiated"), Shell);
+    GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
+    if (Shell == nullptr)
+    {
+        return false;
+    }
+
+    // An anchor-authored hover screen: a UCanvasPanel root with exactly one child (a
+    // RichText widget, doubling as the viewport-scale probe below) -- the shape
+    // UGV2ScreenWidgetBase::SetAnchoredContentPosition requires to be anything but a no-op.
+    UGV2ScreenWidgetBase* HoverScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    TestNotNull(TEXT("PEP-06B: hover screen instantiates"), HoverScreen);
+    if (HoverScreen == nullptr)
+    {
+        return false;
+    }
+    HoverScreen->WidgetTree = NewObject<UWidgetTree>(HoverScreen);
+    UCanvasPanel* RootCanvas = HoverScreen->WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass(), TEXT("RootCanvas"));
+    HoverScreen->WidgetTree->RootWidget = RootCanvas;
+    UGV2RichTextBoundTestWidget* ContentText = HoverScreen->WidgetTree->ConstructWidget<UGV2RichTextBoundTestWidget>(
+        UGV2RichTextBoundTestWidget::StaticClass(), TEXT("ContentText"));
+    ContentText->BuildBoundSubWidgets();
+    UCanvasPanelSlot* ContentSlot = Cast<UCanvasPanelSlot>(RootCanvas->AddChild(ContentText));
+    TestNotNull(TEXT("PEP-06B: hover content slot is a canvas slot"), ContentSlot);
+
+    UGV2UiTheme* Theme = GV2PresentationTestFixtures::LoadConfiguredThemeForTest();
+    TestNotNull(TEXT("PEP-06B: theme is available"), Theme);
+    if (Theme != nullptr)
+    {
+        GV2PresentationApply::FPreparedRichTextStyle Style =
+            GV2PresentationTestFixtures::MakePreparedRichTextStyleForTest(*Theme);
+        // The shared fixture's default token carries UnscaledFontSize=0 (unscaled by
+        // design, for callers that don't care) -- ScalePreparedTokenStyleAtHeight only
+        // scales a token whose UnscaledFontSize is positive, so this probe needs its own
+        // nonzero size to actually exercise the height-dependent branch below.
+        Style.DefaultToken.UnscaledFontSize = 32.0f;
+        ContentText->ApplyRichTextStyleValues(Style);
+    }
+
+    // 1. Attach as a host-local overlay_stack participant (PEP-06's own mechanism).
+    FName InstanceKey;
+    FString AttachError;
+    FGV2LayeredUiReconciler Reconciler;
+    TestTrue(*FString::Printf(TEXT("PEP-06B: AttachHostLocalScreen succeeds [Error: %s]"), *AttachError),
+        Reconciler.AttachHostLocalScreen(Shell, UGV2GameShellWidgetBase::LayerOverlayStack, HoverScreen, InstanceKey, AttachError));
+
+    // 2. Non-blocking of lower layers: AttachHostLocalScreen must have made the participant
+    // itself self-hit-test-invisible -- the Fill/Fill root slot (uniform for every
+    // participant, ApplyScreenSlotLayout) covers the whole layer, so this flag is the only
+    // thing standing between "fills the layer" and "blocks everything under it".
+    TestEqual(TEXT("PEP-06B: hover screen is self-hit-test-invisible (does not block lower layers)"),
+        HoverScreen->GetVisibility(), ESlateVisibility::SelfHitTestInvisible);
+
+    // 3. Anchor positioning: no cursor anywhere in this test -- a direct call, read back
+    // from the real canvas slot, called twice with different points to prove the position
+    // reproduces (is a pure function of the input) rather than sticking from the first call.
+    IGV2ScreenAnchorHost* AnchorHost = Cast<IGV2ScreenAnchorHost>(HoverScreen);
+    TestNotNull(TEXT("PEP-06B: hover screen implements IGV2ScreenAnchorHost"), AnchorHost);
+    if (AnchorHost != nullptr)
+    {
+        AnchorHost->SetAnchoredContentPosition(FVector2D(10.0f, 20.0f));
+        TestEqual(TEXT("PEP-06B: first anchor position applies to the real canvas slot"),
+            ContentSlot->GetPosition(), FVector2D(10.0f, 20.0f));
+
+        AnchorHost->SetAnchoredContentPosition(FVector2D(123.0f, 45.0f));
+        TestEqual(TEXT("PEP-06B: a second, different anchor position reproduces (not stuck on the first)"),
+            ContentSlot->GetPosition(), FVector2D(123.0f, 45.0f));
+    }
+
+    // 4. Viewport scaling: RefreshViewportPresentation's own generic walk (PEP-06, extended
+    // for HostLocalScreens) must reach the hover screen's nested RichText the same way it
+    // reaches an ordinary document screen -- proven at two heights other than the
+    // reference, by reading back the actually-applied font size, not by re-deriving it.
+    if (Theme != nullptr)
+    {
+        const float ReferenceHeight = Theme->ReferenceViewportHeight;
+        const float HeightA = ReferenceHeight * 0.5f;
+        const float HeightB = ReferenceHeight * 1.5f;
+        TestNotEqual(TEXT("PEP-06B: the two probe heights actually differ from the reference"), HeightA, HeightB);
+
+        FString RefreshErrorA;
+        TestTrue(*FString::Printf(TEXT("PEP-06B: viewport refresh at height A succeeds [Error: %s]"), *RefreshErrorA),
+            Reconciler.RefreshViewportPresentation(HeightA, RefreshErrorA));
+        const float FontSizeA = ContentText->GetRichTextBlock()->GetCurrentDefaultTextStyle().Font.Size;
+
+        FString RefreshErrorB;
+        TestTrue(*FString::Printf(TEXT("PEP-06B: viewport refresh at height B succeeds [Error: %s]"), *RefreshErrorB),
+            Reconciler.RefreshViewportPresentation(HeightB, RefreshErrorB));
+        const float FontSizeB = ContentText->GetRichTextBlock()->GetCurrentDefaultTextStyle().Font.Size;
+
+        TestNotEqual(TEXT("PEP-06B: the hover screen's own text actually rescaled between the two heights"),
+            FontSizeA, FontSizeB);
+    }
+
+    // 5. Session replacement: Reset() is what a session boundary calls (UGV2RuntimeSubsystem::
+    // TeardownActiveProjection, alongside discarding the Shell itself) -- its own contract is
+    // clearing the HostLocalScreens registry, not clearing an about-to-be-discarded panel in
+    // place. Proven by the registry actually forgetting the key: a Detach against it after
+    // Reset() must fail, because Reset() left nothing there to detach.
+    Reconciler.Reset();
+    FString StaleDetachError;
+    TestFalse(TEXT("PEP-06B: the previous session's hover overlay key is gone from the registry after Reset()"),
+        Reconciler.DetachHostLocalScreen(Shell, UGV2GameShellWidgetBase::LayerOverlayStack, InstanceKey, StaleDetachError));
 
     return true;
 }

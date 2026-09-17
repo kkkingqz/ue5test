@@ -267,17 +267,6 @@ public:
     virtual void ApplyPreparedRichTextStyle(const GV2PresentationApply::FPreparedRichTextStyle& Style) = 0;
 };
 
-UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))
-class UGV2PreparedRichTextPopoverStyleTarget : public UInterface { GENERATED_BODY() };
-
-class GV2PRESENTATIONAPPLY_API IGV2PreparedRichTextPopoverStyleTarget
-{
-    GENERATED_BODY()
-
-public:
-    virtual void ApplyPreparedRichTextPopoverStyle(const GV2PresentationApply::FPreparedRichTextPopoverStyle& Style) = 0;
-};
-
 // PSC-14: the role implemented by widgets whose already-prepared physical presentation
 // depends on viewport height. It receives geometry only and must use values retained from
 // the accepted transaction; reaching a Theme, snapshot or other authority is forbidden.

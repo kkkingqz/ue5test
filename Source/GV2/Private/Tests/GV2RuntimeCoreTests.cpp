@@ -20,7 +20,6 @@
 #include "Tests/GV2ForgeryTestWidgets.h"
 #include "Tests/GV2PresentationTestFixtures.h"
 #include "UI/GV2CentralStylePreparer.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2ImageResourceCatalog.h"
@@ -2411,93 +2410,15 @@ bool FGV2CentralStyleImplementationInventoryTest::RunTest(const FString& Paramet
     return true;
 }
 
-// PSC-10B: the hover popover is the one styled surface created OUTSIDE a screen's
-// prepare/commit cycle. It must still receive finished values only -- resolved with its
-// owner during Prepare, delivered on creation, and written through the same Apply facade.
-// This drives the production entry point (UGV2RichTextPopoverWidgetBase::InitializePopover)
-// against a real session snapshot and reads back the physical result.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2HoverPopoverStyledFromPreparedValuesTest,
-    "GV2.Runtime.Presentation.HoverPopoverStyledFromPreparedValues",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2HoverPopoverStyledFromPreparedValuesTest::RunTest(const FString& Parameters)
-{
-    struct FSampleOverrideScope
-    {
-        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
-        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
-    } Scope;
-
-    FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
-    TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
-    const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
-    TestNotNull(TEXT("Session publishes a content snapshot"), Snapshot);
-    if (Snapshot == nullptr)
-    {
-        return false;
-    }
-    const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
-    const FGV2ResolvedUiTheme& Theme = PrepareContext.GetTheme();
-    TestTrue(TEXT("Snapshot owns a resolved Theme"), Theme.IsValid());
-    if (!Theme.IsValid())
-    {
-        Coordinator.EndSession();
-        return false;
-    }
-
-    // The owner's role, prepared exactly the way a screen's subtree walk prepares it.
-    UGV2RichTextWidgetBase* Owner = NewObject<UGV2RichTextWidgetBase>();
-    GV2PresentationApply::FGV2PreparedPresentationTransaction OwnerTransaction;
-    FString StyleError;
-    TestTrue(TEXT("Owner rich text subtree prepares"),
-        GV2CentralStylePreparer::PrepareForSubtree(Owner, PrepareContext, OwnerTransaction, StyleError));
-    TestEqual(TEXT("Owner rich text emits one central-style operation"), OwnerTransaction.GetOperations().Num(), 1);
-    if (OwnerTransaction.GetOperations().Num() != 1)
-    {
-        Coordinator.EndSession();
-        return false;
-    }
-    const GV2PresentationApply::FPreparedCentralStyleOperation& OwnerOperation =
-        OwnerTransaction.GetOperations()[0].Get<GV2PresentationApply::FPreparedCentralStyleOperation>();
-    const GV2PresentationApply::FPreparedRichTextStyle& OwnerStyle =
-        OwnerOperation.Payload.Get<GV2PresentationApply::FPreparedRichTextStyle>();
-
-    // The popover renderer class is a value the SNAPSHOT resolved, not something the hover
-    // path loads: an unloaded soft reference here would mean a synchronous load at hover.
-    TestEqual(TEXT("The prepared popover class is the one the snapshot resolved"),
-        OwnerStyle.PopoverClass.Get(), PrepareContext.GetTheme().RichTextPopoverClass.Get());
-
-    UGV2RichTextPopoverBoundTestWidget* Popover = NewObject<UGV2RichTextPopoverBoundTestWidget>();
-    Popover->BuildBoundSubWidgets();
-
-    // PEP-05 (PSC-10B): hover is a nested screen this popover never builds; this test is
-    // about its OWN style application, not nested-screen prepare (covered elsewhere).
-    FGV2RichTextHoverViewModel Model;
-    Model.ScreenId = TEXT("core:screen.test_embedded");
-    Model.ScreenWidget = NewObject<UGV2ScreenWidgetBase>();
-
-    TestTrue(TEXT("InitializePopover accepts a model plus its owner's prepared style"),
-        Popover->InitializePopover(Model, OwnerStyle));
-
-    TestEqual(TEXT("Popover background comes from the snapshot Theme"),
-        Popover->ReadAppliedBackground().GetResourceName(), Theme.RichTextPopoverBackground.GetResourceName());
-    TestEqual(TEXT("Popover padding comes from the snapshot Theme"),
-        Popover->ReadAppliedPadding().Left, Theme.RichTextPopoverPadding.Left);
-    const float ExpectedScale = Theme.EvaluateTextScale(Theme.ReferenceViewportHeight);
-    TestEqual(TEXT("Popover max width follows the same viewport-derived scale as its text"),
-        Popover->ReadAppliedMaxWidth(), Theme.RichTextPopoverMaxWidth * ExpectedScale);
-
-    // A popover offered no prepared style must refuse rather than render unstyled.
-    UGV2RichTextPopoverBoundTestWidget* Unstyled = NewObject<UGV2RichTextPopoverBoundTestWidget>();
-    Unstyled->BuildBoundSubWidgets();
-    TestFalse(TEXT("A popover with no prepared style refuses to initialize"),
-        Unstyled->InitializePopover(Model, GV2PresentationApply::FPreparedRichTextStyle()));
-
-    Coordinator.EndSession();
-    return true;
-}
+// PEP-06B: FGV2HoverPopoverStyledFromPreparedValuesTest (GV2.Runtime.Presentation.
+// HoverPopoverStyledFromPreparedValues) is deleted, not replaced -- it existed entirely to
+// drive UGV2RichTextPopoverWidgetBase::InitializePopover, which is gone along with the
+// class. The style values it asserted (OwnerStyle's resolved token/color/size tables) are
+// still asserted, on the same production entry point, by the surrounding central-style
+// reflection-walk tests in this file; the hover overlay's own attach/style/position
+// behavior is now covered by GV2RichTextSpanHoverDetectorTests (the detector) and
+// GV2LayeredReconciliationTests' host-local participant contract (the attach/detach
+// mechanism NativeTick now drives instead of InitializePopover).
 
 // PSC-10B: the snapshot's Theme contract, in both directions.
 //

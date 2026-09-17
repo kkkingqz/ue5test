@@ -205,11 +205,6 @@ void ApplyCentralStyleRole(UWidget* Widget, const FPreparedCentralStylePayload& 
         {
             if (IGV2PreparedRichTextStyleTarget* Role = Cast<IGV2PreparedRichTextStyleTarget>(Widget))
             { Role->ApplyPreparedRichTextStyle(Style); } else { Mismatch(TEXT("rich text")); }
-        },
-        [&](const FPreparedRichTextPopoverStyle& Style)
-        {
-            if (IGV2PreparedRichTextPopoverStyleTarget* Role = Cast<IGV2PreparedRichTextPopoverStyleTarget>(Widget))
-            { Role->ApplyPreparedRichTextPopoverStyle(Style); } else { Mismatch(TEXT("rich text popover")); }
         }
     }, Payload);
 }

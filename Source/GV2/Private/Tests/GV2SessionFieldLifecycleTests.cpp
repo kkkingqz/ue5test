@@ -568,54 +568,13 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
         }
     }
 
-    // 3b. REV3-09: RichText with hover spans fails validation when RichTextPopoverClass is unavailable
-    {
-        UGV2UiTheme* MutableTheme = GV2PresentationTestFixtures::GetAuthoringThemeForTest();
-        if (MutableTheme != nullptr)
-        {
-            // PSC-10B: the renderer class is resolved once at snapshot build, so the session
-            // under test must be built WITHOUT one -- clearing it on the Theme afterwards no
-            // longer reaches the value Prepare checks. The guard restores the shared asset on
-            // every exit path, not only the successful one.
-            GV2PresentationTestFixtures::FPrepareContextFixture::FWithoutRichTextPopoverRenderer
-                NoRenderer(MutableTheme);
-            GV2PresentationTestFixtures::FPrepareContextFixture RendererlessFixture;
-            FString RendererlessError;
-            const bool bRendererlessReady = RendererlessFixture.Initialize(RendererlessError);
-            TestTrue(
-                *FString::Printf(TEXT("REV3-09: rendererless session snapshot builds: %s"), *RendererlessError),
-                bRendererlessReady);
-            const FGV2PresentationPrepareContext* RendererlessContext = RendererlessFixture.Get();
-
-            TMap<FString, FGV2PreparedUiValue> HoverMap;
-            const FGV2TextViewModel TitleModel =
-                MakeResolvedLiteralTextForTest(Theme, TEXT("Definition"));
-            HoverMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(TitleModel));
-
-            TMap<FString, FGV2PreparedUiValue> SpanMap;
-            SpanMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("term")));
-            SpanMap.Add(TEXT("hover"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(HoverMap)));
-
-            TArray<FGV2PreparedUiValue> Elements;
-            Elements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(SpanMap)));
-            FGV2PreparedUiValue SpansVal = FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(Elements));
-
-            UGV2RichTextWidgetBase* RichTextWidget = NewObject<UGV2RichTextWidgetBase>(TestWorld);
-            FGV2RichTextSpansPropertyConsumer Consumer;
-            FGV2UiPropertyCapability Cap;
-            Cap.PropertyName = TEXT("spans");
-            Cap.TargetType = EGV2UiCapabilityTargetType::CustomControl;
-            Cap.SupportedKind = EGV2PreparedUiValueKind::Array;
-
-            FString PrepError;
-            Consumer.SetPrepareContext(RendererlessContext);
-            TestFalse(TEXT("REV3-09: RichText with hover spans rejects application when popover class is unavailable"),
-                Consumer.Prepare(SpansVal, Cap, RichTextWidget, PrepError));
-            TestTrue(
-                *FString::Printf(TEXT("REV3-09: rejection identifies the unavailable popover class [Error: %s]"), *PrepError),
-                PrepError.Contains(TEXT("popover"), ESearchCase::IgnoreCase));
-        }
-    }
+    // PEP-06B: subtest 3b (REV3-09: RichText with hover spans fails validation when
+    // RichTextPopoverClass is unavailable) is deleted, not replaced. The hover popover is
+    // no longer a Theme-resolved renderer class -- FGV2RichTextSpansPropertyConsumer::
+    // Prepare no longer checks for one (GV2PropertyConsumers.cpp); a span's hover content
+    // is validated the same way FGV2TabContainerTabsPropertyConsumer's own nested screen_id
+    // already is (screen_id resolves or the whole Prepare rejects), which the composition-
+    // cycle and screen_id-shape subtests elsewhere in this file already cover.
 
     TestWorld->DestroyWorld(false);
     GEngine->DestroyWorldContext(TestWorld);

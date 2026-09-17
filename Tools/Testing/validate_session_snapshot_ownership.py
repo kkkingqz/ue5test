@@ -675,9 +675,12 @@ def run_self_test() -> bool:
         return False
 
     # Negative mutation 16: FGV2ResolvedUiTheme misses TStrongObjectPtr<UClass>
+    # PEP-06B: RichTextPopoverClass is gone (UGV2RichTextPopoverWidgetBase deleted) --
+    # RichTextStyle is any other still-present TStrongObjectPtr<UClass> field in the same
+    # struct, equally valid as this mutation's target.
     mutated_theme_16 = base_theme_hdr.replace(
-        "TStrongObjectPtr<UClass> RichTextPopoverClass;",
-        "UClass* RichTextPopoverClass;",
+        "TStrongObjectPtr<UClass> RichTextStyle;",
+        "UClass* RichTextStyle;",
     )
     if not any("TStrongObjectPtr<UClass>" in err for err in find_snapshot_ownership_violations(base_snapshot_hdr, base_registry_hdr, base_registry_impl, mutated_theme_16)):
         print("FAILED: gate did not flag missing TStrongObjectPtr<UClass> in FGV2ResolvedUiTheme")

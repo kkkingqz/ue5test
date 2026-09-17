@@ -16,7 +16,6 @@
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
@@ -47,19 +46,6 @@ FPreparedRichTextTokenStyle ResolveRichTextTokenStyle(
         CommonStyle->ToTextBlockStyle(Result.BaseStyle);
         Result.bResolved = true;
     }
-    return Result;
-}
-
-FPreparedRichTextPopoverStyle ResolveRichTextPopoverStyle(const FGV2ResolvedUiTheme& Theme)
-{
-    FPreparedRichTextPopoverStyle Result;
-    Result.Background = Theme.RichTextPopoverBackground;
-    Result.Padding = Theme.RichTextPopoverPadding;
-    Result.MaxWidth = Theme.RichTextPopoverMaxWidth;
-    Result.MaxHeight = Theme.RichTextPopoverMaxHeight;
-    Result.ImageTint = Theme.ImageTint;
-    Result.Scale.ScaleCurve = Theme.TextScaleCurve;
-    Result.Scale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
     return Result;
 }
 
@@ -270,11 +256,6 @@ bool EmitForWidget(
         }
         Style.ScalePolicy = UGV2TextPipeline::ResolveScalePolicyForTheme(Theme, Style.DefaultTokenName);
         Style.InteractiveStyle = Theme.RichTextInteractiveStyle;
-        // PSC-10B (ADR-0043 D1): already loaded once at snapshot build. Prepare performs no
-        // load of its own -- this used to be a LoadSynchronous() per rich text widget per
-        // reconcile, which is a content-resolution capability on a per-frame path.
-        Style.PopoverClass = Theme.RichTextPopoverClass.Get();
-        Style.PopoverStyle = ResolveRichTextPopoverStyle(Theme);
         Style.bIsResolved = true;
 
         FPreparedCentralStyleOperation Operation;

@@ -109,6 +109,14 @@ public:
         SetActiveTab(ContainerPath, TabKey);
     }
 
+    // PEP-06B: the runtime-side half of the sink boundary UGV2PresentationInteractionSink
+    // declares -- GV2PresentationApply cannot name a layer or reach ActiveGameShell/
+    // Reconciler itself (PSC-09A), so this override is the only place that decides which
+    // layer a hover overlay lands in and forwards to the two calls PEP-06 already built for
+    // exactly this purpose.
+    virtual bool OpenHoverOverlay(UUserWidget* Widget, FName& OutInstanceKey, FString& OutError) override;
+    virtual void CloseHoverOverlay(FName InstanceKey) override;
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     FString GetActiveTab(const FString& ContainerPath) const;
 

@@ -4,108 +4,46 @@
 #include "CommonTextBlock.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/ScrollBox.h"
+#include "Framework/Application/SlateApplication.h"
+#include "GV2PresentationApply/GV2PresentationInteractionSink.h"
 #include "Styling/CoreStyle.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextSpanDecorator.h"
+#include "UI/GV2ScreenAnchorHost.h"
 #include "GV2WidgetTextApply.h"
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2UiInteractionEmitter.h"
-#include "UObject/StrongObjectPtr.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/SToolTip.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
 {
+// PEP-06B: the hover popover is no longer a Slate tooltip -- NativeTick below drives it as
+// an overlay_stack participant instead. This class survives only as the correlation vessel
+// CaptureHoverableSpanAnchors needs: FSlateHyperlinkRun::Create's OnGenerateTooltip is the
+// sole per-run hook the engine exposes, so a fresh instance closing over this run's span id
+// is what lets CaptureHoverableSpanAnchors read a live SRichTextHyperlink child widget's
+// GetToolTip() back to a span id. IsEmpty() is unconditionally true so Slate's native
+// tooltip popup never opens for these hyperlinks; every other method is an inert stub.
 class FGV2RichTextSpanToolTip final : public IToolTip
 {
 public:
-    FGV2RichTextSpanToolTip(UGV2RichTextWidgetBase* InOwner, const FName InSpanId)
-        : Owner(InOwner)
-        , SpanId(InSpanId)
-        , SlateToolTip(SNew(SToolTip).IsInteractive(true))
-    {
-    }
+    explicit FGV2RichTextSpanToolTip(const FName InSpanId) : SpanId(InSpanId) {}
 
-    virtual TSharedRef<SWidget> AsWidget() override { return SlateToolTip; }
-    virtual TSharedRef<SWidget> GetContentWidget() override { return SlateToolTip->GetContentWidget(); }
-    virtual void SetContentWidget(const TSharedRef<SWidget>& InContentWidget) override
-    {
-        SlateToolTip->SetContentWidget(InContentWidget);
-    }
-    virtual void ResetContentWidget() override { SlateToolTip->ResetContentWidget(); }
-    virtual bool IsEmpty() const override
-    {
-        const UGV2RichTextWidgetBase* Widget = Owner.Get();
-        const FGV2RichTextSpanViewModel* Span = Widget != nullptr
-            ? Widget->FindInteractiveSpan(SpanId)
-            : nullptr;
-        return Span == nullptr || Span->Hover.IsEmpty();
-    }
-    virtual bool IsInteractive() const override { return true; }
-    virtual void OnOpening() override
-    {
-        UGV2RichTextWidgetBase* Widget = Owner.Get();
-        const FGV2RichTextSpanViewModel* Span = Widget != nullptr
-            ? Widget->FindInteractiveSpan(SpanId)
-            : nullptr;
-        if (Widget == nullptr || Span == nullptr || Span->Hover.IsEmpty())
-        {
-            return;
-        }
+    virtual TSharedRef<SWidget> AsWidget() override { return SNullWidget::NullWidget; }
+    virtual TSharedRef<SWidget> GetContentWidget() override { return SNullWidget::NullWidget; }
+    virtual void SetContentWidget(const TSharedRef<SWidget>&) override {}
+    virtual void ResetContentWidget() override {}
+    virtual bool IsEmpty() const override { return true; }
+    virtual bool IsInteractive() const override { return false; }
+    virtual void OnOpening() override {}
+    virtual void OnClosed() override {}
+    virtual void OnSetInteractiveWindowLocation(FVector2D&) const override {}
 
-        const GV2PresentationApply::FPreparedRichTextStyle& PreparedStyle = Widget->GetPreparedRichTextStyle();
-        UClass* PopoverClass = PreparedStyle.bIsResolved
-            ? Widget->GetPreparedPopoverClass()
-            : nullptr;
-        if (PopoverClass != nullptr && Widget->GetWorld() != nullptr)
-        {
-            UGV2RichTextPopoverWidgetBase* Popover = CreateWidget<UGV2RichTextPopoverWidgetBase>(
-                Widget->GetWorld(),
-                PopoverClass);
-            const bool bPopoverInitialized = Popover != nullptr
-                && Popover->InitializePopover(Span->Hover, PreparedStyle);
-            if (bPopoverInitialized)
-            {
-                ActivePopover.Reset(Popover);
-                Widget->SetActivePopoverForViewportRefresh(Popover);
-                SlateToolTip->SetContentWidget(Popover->TakeWidget());
-                return;
-            }
-        }
-
-        UE_LOG(
-            LogTemp,
-            Error,
-            TEXT("RichText hover popover renderer unavailable (class=%s); hover content is not shown"),
-            PopoverClass != nullptr ? *PopoverClass->GetPathName() : TEXT("null"));
-        SlateToolTip->SetContentWidget(SNullWidget::NullWidget);
-    }
-    virtual void OnClosed() override
-    {
-        if (UGV2RichTextWidgetBase* Widget = Owner.Get())
-        {
-            Widget->ClearActivePopoverForViewportRefresh(ActivePopover.Get());
-        }
-        SlateToolTip->ResetContentWidget();
-        ActivePopover.Reset();
-    }
-    virtual void OnSetInteractiveWindowLocation(FVector2D& InOutDesiredLocation) const override
-    {
-        SlateToolTip->OnSetInteractiveWindowLocation(InOutDesiredLocation);
-    }
-
-    // PEP-06A: read-only, for CaptureHoverableSpanAnchors's own correlation below --
-    // OnGenerateTooltip is the only per-block hook FSlateHyperlinkRun::Create exposes, and
-    // this is the one place a fresh instance of this class already closes over the span id
-    // for exactly the widget it gets attached to. Never used by anything to change what
-    // this class does; the tooltip route itself is untouched.
     FName GetSpanId() const { return SpanId; }
 
 private:
-    TWeakObjectPtr<UGV2RichTextWidgetBase> Owner;
     FName SpanId;
-    TSharedRef<SToolTip> SlateToolTip;
-    TStrongObjectPtr<UGV2RichTextPopoverWidgetBase> ActivePopover;
 };
 }
 
@@ -120,23 +58,10 @@ void UGV2RichTextWidgetBase::RefreshPreparedViewportPresentation(float ViewportH
             Renderer->SetDefaultTextStyle(ScalePreparedTokenStyleAtHeight(TokenStyle, ViewportHeight));
         }
     }
-    if (UGV2RichTextPopoverWidgetBase* Popover = ActivePopoverForViewportRefresh.Get())
-    {
-        Popover->RefreshPreparedViewportPresentation(ViewportHeight);
-    }
-}
-
-void UGV2RichTextWidgetBase::SetActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover)
-{
-    ActivePopoverForViewportRefresh = Popover;
-}
-
-void UGV2RichTextWidgetBase::ClearActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover)
-{
-    if (ActivePopoverForViewportRefresh.Get() == Popover)
-    {
-        ActivePopoverForViewportRefresh.Reset();
-    }
+    // PEP-06B: the hover overlay is now an ordinary overlay_stack participant, discovered
+    // and refreshed by RefreshViewportSubtree's own generic WidgetTree->GetAllWidgets
+    // recursion (PresentationApplyFacade.cpp) the same way every other nested screen is --
+    // no manual forwarding needed here anymore.
 }
 
 void UGV2RichTextWidgetBase::NativePreConstruct()
@@ -154,14 +79,112 @@ void UGV2RichTextWidgetBase::NativePreConstruct()
 
 void UGV2RichTextWidgetBase::NativeDestruct()
 {
+    CloseActiveHoverOverlay();
     SpanIndexById.Reset();
     CurrentText = {};
     CurrentSpans.Reset();
     PreparedStyle = {};
-    PreparedPopoverClass = nullptr;
     PreparedStyleAnchors.Reset();
-    ActivePopoverForViewportRefresh.Reset();
     Super::NativeDestruct();
+}
+
+void UGV2RichTextWidgetBase::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+    Super::NativeTick(MyGeometry, InDeltaTime);
+
+    const TArray<FGV2RichTextSpanAnchor> Anchors = CaptureHoverableSpanAnchors();
+    TOptional<FVector2D> CursorPos;
+    if (FSlateApplication::IsInitialized())
+    {
+        CursorPos = FSlateApplication::Get().GetCursorPos();
+    }
+
+    FName TransitionedSpanId;
+    const EGV2SpanHoverTransition Transition = AdvanceSpanHoverState(HoverState, Anchors, CursorPos, TransitionedSpanId);
+    if (Transition == EGV2SpanHoverTransition::Ended)
+    {
+        CloseActiveHoverOverlay();
+    }
+    else if (Transition == EGV2SpanHoverTransition::Began || Transition == EGV2SpanHoverTransition::Changed)
+    {
+        // Changed means a different span took over with no gap reported -- close whatever
+        // was open first; Began means nothing was open, making this a no-op.
+        CloseActiveHoverOverlay();
+        OpenHoverOverlayForSpan(TransitionedSpanId);
+    }
+
+    // Reposition every tick, not only on the transition edge: the overlay's own geometry is
+    // one frame stale immediately after AttachHostLocalScreen (it has not been arranged in
+    // the panel yet this frame), and re-applying every tick self-heals that without needing
+    // a special first-frame case.
+    if (!ActiveHoverInstanceKey.IsNone() && !HoverState.HoveredSpanId.IsNone())
+    {
+        RepositionActiveHoverOverlay(HoverState.HoveredSpanId, Anchors);
+    }
+}
+
+void UGV2RichTextWidgetBase::OpenHoverOverlayForSpan(FName SpanId)
+{
+    const FGV2RichTextSpanViewModel* Span = FindInteractiveSpan(SpanId);
+    UUserWidget* HoverWidget = Span != nullptr ? Span->Hover.ScreenWidget.Get() : nullptr;
+    if (HoverWidget == nullptr)
+    {
+        return;
+    }
+
+    UGV2PresentationInteractionSink* Sink = UGV2PresentationInteractionSink::Find(this);
+    FName NewInstanceKey;
+    FString Error;
+    if (Sink == nullptr || !Sink->OpenHoverOverlay(HoverWidget, NewInstanceKey, Error))
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("RichText hover overlay open failed for span '%s': %s"),
+            *SpanId.ToString(),
+            Sink != nullptr ? *Error : TEXT("core:diagnostic.ui_consumer.no_interaction_sink"));
+        return;
+    }
+
+    ActiveHoverInstanceKey = NewInstanceKey;
+    ActiveHoverWidget = HoverWidget;
+}
+
+void UGV2RichTextWidgetBase::CloseActiveHoverOverlay()
+{
+    if (ActiveHoverInstanceKey.IsNone())
+    {
+        return;
+    }
+    if (UGV2PresentationInteractionSink* Sink = UGV2PresentationInteractionSink::Find(this))
+    {
+        Sink->CloseHoverOverlay(ActiveHoverInstanceKey);
+    }
+    ActiveHoverInstanceKey = NAME_None;
+    ActiveHoverWidget.Reset();
+}
+
+void UGV2RichTextWidgetBase::RepositionActiveHoverOverlay(
+    FName SpanId,
+    const TArray<FGV2RichTextSpanAnchor>& Anchors)
+{
+    UUserWidget* HoverWidget = ActiveHoverWidget.Get();
+    IGV2ScreenAnchorHost* AnchorHost = Cast<IGV2ScreenAnchorHost>(HoverWidget);
+    if (AnchorHost == nullptr)
+    {
+        return;
+    }
+    const FGV2RichTextSpanAnchor* Anchor = Anchors.FindByPredicate(
+        [SpanId](const FGV2RichTextSpanAnchor& Candidate) { return Candidate.SpanId == SpanId; });
+    if (Anchor == nullptr)
+    {
+        return;
+    }
+    // Below-left of the span's own rect -- an ordinary tooltip-style placement. The author
+    // screen's own canvas child controls its final visible size (PEP-06B's frame decision);
+    // this only places its anchor corner.
+    const FVector2D AnchorPoint(Anchor->Rect.Left, Anchor->Rect.Bottom);
+    AnchorHost->SetAnchoredContentPosition(HoverWidget->GetTickSpaceGeometry().AbsoluteToLocal(AnchorPoint));
 }
 
 bool UGV2RichTextWidgetBase::ApplyText(const FGV2TextViewModel& InText)
@@ -365,7 +388,7 @@ EGV2SubmitUiInteractionResult UGV2RichTextWidgetBase::SubmitSpanInteraction(
 
 TSharedRef<IToolTip> UGV2RichTextWidgetBase::CreateSpanToolTip(const FName SpanId)
 {
-    return MakeShared<FGV2RichTextSpanToolTip>(this, SpanId);
+    return MakeShared<FGV2RichTextSpanToolTip>(SpanId);
 }
 
 const GV2PresentationApply::FPreparedRichTextTokenStyle& UGV2RichTextWidgetBase::FindPreparedTokenStyle(FName StyleToken) const
@@ -415,7 +438,6 @@ FTextBlockStyle UGV2RichTextWidgetBase::ScalePreparedTokenStyleAtHeight(
 void UGV2RichTextWidgetBase::ApplyRichTextStyleValues(const GV2PresentationApply::FPreparedRichTextStyle& InStyle)
 {
     PreparedStyle = InStyle;
-    PreparedPopoverClass = InStyle.PopoverClass;
     PreparedStyleAnchors.Reset();
     auto AnchorClass = [this](const TSubclassOf<UCommonTextStyle>& StyleClass)
     {

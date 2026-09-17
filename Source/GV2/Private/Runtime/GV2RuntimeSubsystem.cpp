@@ -510,6 +510,35 @@ UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::GetActiveScreenInLayer(FName Layer, 
     return Reconciler->GetActiveScreen(Layer, InstanceKey);
 }
 
+bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, FName& OutInstanceKey, FString& OutError)
+{
+    UGV2ScreenWidgetBase* ScreenWidget = Cast<UGV2ScreenWidgetBase>(Widget);
+    if (ScreenWidget == nullptr || ActiveGameShell == nullptr || !Reconciler.IsValid())
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.hover_overlay_unavailable: no active game shell or hover screen widget");
+        return false;
+    }
+    return Reconciler->AttachHostLocalScreen(
+        ActiveGameShell,
+        UGV2GameShellWidgetBase::LayerOverlayStack,
+        ScreenWidget,
+        OutInstanceKey,
+        OutError);
+}
+
+void UGV2RuntimeSubsystem::CloseHoverOverlay(FName InstanceKey)
+{
+    if (ActiveGameShell == nullptr || !Reconciler.IsValid())
+    {
+        return;
+    }
+    FString Error;
+    if (!Reconciler->DetachHostLocalScreen(ActiveGameShell, UGV2GameShellWidgetBase::LayerOverlayStack, InstanceKey, Error))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Hover overlay detach failed: %s"), *Error);
+    }
+}
+
 void UGV2RuntimeSubsystem::SetActiveTab(const FString& ContainerPath, const FString& TabKey)
 {
     if (Coordinator.IsValid())

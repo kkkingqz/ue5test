@@ -6,7 +6,6 @@
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2ScreenRegistry.h"
-#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2UiTheme.h"
 
 namespace

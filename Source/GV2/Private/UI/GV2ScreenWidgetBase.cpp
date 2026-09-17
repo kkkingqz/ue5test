@@ -3,6 +3,8 @@
 #include "Bridge/GV2StableIdUE.h"
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/UserWidget.h"
+#include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/Widget.h"
 #include "UI/GV2ScreenFieldHost.h"
 #include "UI/GV2UiMutationPlan.h"
@@ -385,6 +387,21 @@ bool UGV2ScreenWidgetBase::CanApplyScreenFields(
     FGV2ScreenMutationPlan Plan;
     FString Error;
     return PrepareScreenFields(ScreenFields, Plan, Error, nullptr, &PrepareContext);
+}
+
+void UGV2ScreenWidgetBase::SetAnchoredContentPosition(const FVector2D& LocalPosition)
+{
+    UCanvasPanel* RootCanvas = WidgetTree != nullptr ? Cast<UCanvasPanel>(WidgetTree->RootWidget) : nullptr;
+    if (RootCanvas == nullptr || RootCanvas->GetChildrenCount() != 1)
+    {
+        // PEP-06B: not an anchor-authored screen (no canvas root, or more/fewer than one
+        // child) -- a documented no-op, not a failure a caller has to check for.
+        return;
+    }
+    if (UCanvasPanelSlot* Slot = Cast<UCanvasPanelSlot>(RootCanvas->GetChildAt(0)->Slot))
+    {
+        Slot->SetPosition(LocalPosition);
+    }
 }
 
 TArray<FName> UGV2ScreenWidgetBase::GetScreenFieldIds() const

@@ -143,8 +143,13 @@ def is_physical_role_construct(name: str, declaration: str) -> bool:
         return False
     if name.startswith("I"):
         return True
+    # PEP-06B: GameInstanceSubsystem covers UGV2PresentationInteractionSink, the module's own
+    # already-sanctioned "upward interaction ingress" boundary (its own header comment, unchanged
+    # by this task) -- OpenHoverOverlay is the first method on it to take a mutable UObject*
+    # (the hover screen widget being handed upward for the runtime side to attach), which is
+    # exactly the role this construct exists for, not a second physical entry surface.
     return name.startswith("U") and re.search(
-        r":\s*public\s+U[A-Za-z0-9_]*(?:Widget|ButtonBase|Decorator)\b",
+        r":\s*public\s+U[A-Za-z0-9_]*(?:Widget|ButtonBase|Decorator|GameInstanceSubsystem)\b",
         declaration,
     ) is not None
 

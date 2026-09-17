@@ -255,6 +255,14 @@ bool FGV2LayeredUiReconciler::AttachHostLocalScreen(
         OutError = TEXT("core:diagnostic.ui_reconcile.missing_target: AttachHostLocalScreen requires a widget");
         return false;
     }
+    // PEP-06B: every host-local participant fills its layer (the same Fill/Fill
+    // ApplyScreenSlotLayout policy every participant gets) but is never a full-screen
+    // blocker by nature -- it is a floating, anchored thing (the hover popover today, any
+    // future one tomorrow), not a modal. SelfHitTestInvisible on the root is what keeps
+    // lower layers reachable everywhere except the participant's own actual visible
+    // content (an anchor-authored screen's canvas child, or whatever a non-anchored
+    // host-local participant declares Visible on itself).
+    Widget->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
     if (Shell != nullptr && !Shell->HasHostForLayer(Layer))
     {
         OutError = FString::Printf(
