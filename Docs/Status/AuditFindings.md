@@ -4,7 +4,7 @@ status: informative
 version: 1.0
 updated: 2026-09-18
 depends_on:
-  - ../Plans/PresentationEffectPipeline/README.md
+  - ../Plans/Archive/PresentationEffectPipeline.md
   - ../UI/PresentationSnapshotAndEffects.md
   - ../UI/UIDocumentAndReconciliation.md
   - ../UI/WidgetRegistry.md

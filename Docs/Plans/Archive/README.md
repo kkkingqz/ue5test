@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.16
-updated: 2026-09-16
+version: 2.17
+updated: 2026-09-18
 depends_on:
   - ../README.md
 ---
@@ -24,6 +24,7 @@ depends_on:
 | [PresentationStructuralClosure](PresentationStructuralClosure.md) | 2026-09-11 | Один exact package set и immutable session snapshot, self-contained Prepare/Apply transaction, отдельный `GV2PresentationApply`, механические enumerators и восстановленное заполнение GameShell всей геометрии viewport |
 | [CppFoundationClosure](CppFoundationClosure.md) | 2026-09-14 | Достоверная приёмка вместо маркера в логе: actual set из UE discovery, идентичность бинарника из рантайма; один snapshot, compile-to-value Screen Registry, обязательное sealing реестров и две границы replacement; canonical state и seed целиком Lua-owned; продуктовый save/load на immutable generations с atomic publish; сцена как контракт данных и сквозной gameplay-срез без новой native логики. Поддержанная поверхность зафиксирована как Linux Editor/Development |
 | [TestSuiteRestructuring](TestSuiteRestructuring.md) | 2026-09-15 | Место теста определяет проверяемая граница движка, а не история файла: монолит в 12 341 строку растворён в шесть доменных файлов, механические утверждения переведены на синтетические фикстуры `core:`, content smoke сведён к трём тестам со структурными утверждениями и ожиданиями из контента, введены потолки размера файла и `RunTest`; правило двух категорий принято ADR-0046 и перенесено в contracts, ratchet заменён безусловным запретом с остатком под `STATUS-028` |
+| [PresentationEffectPipeline](PresentationEffectPipeline.md) | 2026-09-18 | Один механизм одноразовых эффектов с двумя равноправными источниками, общей очередью, монотонным `sequence` и типизированным отбрасыванием; всплывающее окно наведения переведено из Slate-тултипа в обычный экран `overlay_stack`, собранный из declared composites, с позицией и размером внутри себя и вторым видом окна без единой строки C++; появление и отменяемый уход 0↔100% за авторскую длительность; два вида ухода выражены типом — интерактивный stale структурно невыразим |
 | [SessionAuthorityCorrection](SessionAuthorityCorrection.md) | 2026-09-16 | Публичный session entry замкнут на transition policy; manifest читается один раз; Theme и effective resources входят в immutable identity; terminal failure типизирован; operation retention измерен production-path сценарием и ограничен детерминированно |
 | [CanonicalGameplayState](CanonicalGameplayState.md) | 2026-08-15 | Canonical state, module lifecycle hooks, instance identity, state hash в run digest, ActorRegistry и mutation window |
 | [CommandHandlerRegistry](CommandHandlerRegistry.md) | 2026-08-16 | Реестр обработчиков по `command_id` вместо цепочки, отказ на неизвестную команду, развязка `ingress` от игровых модулей, команды из пакета без C++ |
