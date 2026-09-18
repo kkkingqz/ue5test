@@ -73,7 +73,7 @@ Host-local эффект допустим тогда и только тогда, 
 - Наведение курсора остаётся UE-local: правила `SemanticInput` и `WidgetRegistry` не меняются и не получают исключений.
 - Всплывающее окно становится первым потребителем pipeline, а не первым исключением из него.
 - Появляется обязанность, которой раньше не было: всякий новый host-local эффект проверяется по критерию из п. 2 своим прогоном. Критерий дешёвый, но не бесплатный.
-- `STATUS-002` закрывается механизмом, а не первым эффектом: DTO, очередь, apply path, отбрасывание и тесты non-persistence — предмет отдельных задач `PEP-03` и `PEP-04` плана [PresentationEffectPipeline](../Plans/Archive/PresentationEffectPipeline.md).
+- `STATUS-002` закрывается механизмом, а не первым эффектом: DTO, очередь, apply path, отбрасывание и тесты non-persistence — предмет отдельных задач `PEP-03` и `PEP-04` плана [PresentationEffectPipeline](../Plans/PresentationEffectPipeline/README.md).
 
 ## Отклонённые альтернативы
 
