@@ -1,8 +1,8 @@
 ---
 title: Presentation Snapshot and Effects
-status: draft
-version: 0.8
-updated: 2026-09-15
+status: normative
+version: 1.0
+updated: 2026-09-18
 depends_on:
   - UIDocumentAndReconciliation.md
   - ImageResources.md
@@ -12,6 +12,7 @@ decisions:
   - ../ADR/0011-blueprint-screen-templates.md
   - ../ADR/0013-unified-text-pipeline.md
   - ../ADR/0047-one-shot-effect-pipeline-and-origins.md
+  - ../ADR/0048-widget-exit-lifecycle-and-input-gating.md
 ---
 
 # Presentation Snapshot and Effects
@@ -19,8 +20,8 @@ decisions:
 > **Владеет:** различием между восстановимым desired presentation и одноразовыми эффектами.
 > **Не владеет:** тем, что именно показывать, и порядком гейплейных фактов.
 > **Инварианты:** [INV-014](../Architecture/Invariants.md)
-> **Реализация:** частично — snapshot применяется, эффекты не реализованы.
-> **Проверки:** `GV2.Runtime.Presentation.*`.
+> **Реализация:** `Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2RuntimeSession.h` (`FPresentationEffect`, `PublishHostLocalEffect`/`TakePendingEffects`, `ResolveEffectTarget`); `Source/GV2PresentationApply/Public/GV2PresentationApply/PresentationEffectApply.h` (`FGV2PresentationEffectApply::Apply`, `EPresentationEffectKind`); `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp` (`PublishHoverEffect`/`DrainPresentationEffects` — единственная точка дренажа, host-local hover — первый производственный источник).
+> **Проверки:** `GV2.Runtime.Presentation.PresentationEffectConformance` (DTO, очередь, монотонность `sequence` при чередовании источников, три причины отбрасывания, non-persistence через реальный save/load), `GV2.Runtime.Presentation.PresentationEffectApply` (Game-Thread guard, exhaustive dispatch), `GV2.Runtime.Presentation.HoverEffectQueueContract` (реальный host-local продюсер и реальное отбрасывание), `GV2.Runtime.Presentation.HoverEffectNeverCrossesLua`.
 
 Сообщения презентации разделены на durable desired snapshot и one-shot effects. Snapshot достаточен для полного восстановления presentation; effect никогда не является единственным носителем важного состояния.
 

@@ -1,7 +1,7 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 2.7
+version: 2.8
 updated: 2026-09-18
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
@@ -132,9 +132,9 @@ Fail-closed свойство сохраняется целиком. Сегодн
 
 - [x] M0 — PEP-01…02 приняты по Done/Evidence.
 - [x] M1 — PEP-03…04 приняты по Done/Evidence.
-- [ ] M2 — PEP-05…06C и PEP-07 приняты по Done/Evidence.
-- [ ] M3 — PEP-08…09 приняты по Done/Evidence.
-- [ ] M4 — PEP-10 принят по Done/Evidence.
+- [x] M2 — PEP-05…06C и PEP-07 приняты по Done/Evidence.
+- [x] M3 — PEP-08…09 приняты по Done/Evidence.
+- [x] M4 — PEP-10 принят по Done/Evidence.
 
 ---
 
@@ -633,7 +633,7 @@ Self-dismissal (уход, начатый переходом `Ended` в `HandleHo
 
 ### PEP-10 — Перенести правила в contracts и закрыть расхождения
 
-- [ ] PEP-10 — Перенести правила в contracts и закрыть расхождения
+- [x] PEP-10 — Перенести правила в contracts и закрыть расхождения
 
 **Зависимость:** PEP-09. **Файлы:** `Docs/UI/PresentationSnapshotAndEffects.md`, `Docs/UI/UIDocumentAndReconciliation.md`, `Docs/UI/WidgetRegistry.md`, `Docs/Status/ImplementationStatus.md`.
 
@@ -657,6 +657,36 @@ Self-dismissal (уход, начатый переходом `Ended` в `HandleHo
 - Изменения множества automation test id за весь план перечислены поимённо с обоснованием.
 
 **Evidence:** таблица `STATUS-002` → проверка, diff contracts, итоговая сверка множества test id, полные прогоны.
+
+**Реализация.** Таблица `STATUS-002` → закрывающая проверка:
+
+| Часть формулировки | Закрывающая проверка |
+|---|---|
+| DTO (`effect_id`, `sequence`, `target`, `args`) | `GV2.Runtime.Presentation.PresentationEffectConformance` (типизация DTO, `ResolveEffectTarget`) |
+| Очередь (host-local + Lua, один счётчик) | тот же тест — публикация из обоих источников, монотонность `sequence` при чередовании |
+| Apply path (Game Thread, exhaustive dispatch) | `GV2.Runtime.Presentation.PresentationEffectApply` |
+| Stale target handling (три причины отбрасывания) | тот же conformance-тест — три типизированные причины отдельными assertion |
+| Non-persistence | тот же conformance-тест, шаг с реальными `SaveToSlot`/`StartFromSave` над портативной сессией |
+
+Все пять частей закрыты одной портативной функцией (`RunPresentationEffectConformance`, `Source/GV2RuntimeCore/Private/GV2PresentationEffectConformance.cpp`), обёрнутой UE-тестом `GV2.Runtime.Presentation.PresentationEffectConformance`, плюс production-биндинг `publish_effect` в `Scripts/boundary/outbound.lua` со своим Lua-spec `Tests/Lua/presentation/effect_queue_spec.lua` — исходная формулировка `STATUS-002` («нет production `publish_effect`/consumer») была уже неверна на момент этой задачи; строка удалена из `Docs/Status/ImplementationStatus.md` целиком (правило документа — удаление, не пометка «closed»).
+
+Правила перенесены в `Docs/UI/PresentationSnapshotAndEffects.md` как нормативные (`status: normative`, `version: 1.0`): раздел `Effect` теперь ссылается на реальные `FPresentationEffect`/`PublishHostLocalEffect`/`TakePendingEffects`/`ResolveEffectTarget`/`FGV2PresentationEffectApply::Apply`/`PublishHoverEffect`/`DrainPresentationEffects` вместо «частично, эффекты не реализованы»; добавлен `ADR-0048` в `decisions:`.
+
+`Docs/UI/WidgetRegistry.md` приведён к факту: убрано описание `UGV2RichTextPopoverWidgetBase`/`WBP_RichTextPopover` как существующего класса/ассета (ASCII-дерево, инвентарь Theme-полей, таблица Direct text owners, таблица Implemented vertical slice API), заменено описанием окна как host-local участника `overlay_stack` (`PEP-06`/`PEP-06B`), позиции/размера внутри себя (`IGV2ScreenAnchorHost`, `PEP-06B`/`PEP-06C`), fade-анимации через effect queue (`PEP-06C`/`PEP-08`) и двух видов ухода (`ADR-0048`/`PEP-09`); `Docs/UI/README.md` синхронизирован (снят `WBP_RichTextPopover` из инвентаря ассетов). Перечислитель — сплошной `grep -rn -i popover Docs/ Source/ GameData/ Content/`: все оставшиеся вхождения — либо новый текст, документирующий сам факт удаления, либо уже существующие исторические комментарии тестов из `PEP-06B` («судьба каждого теста поимённо»), ни одного описания несуществующего класса как текущего факта не осталось.
+
+Полный прогон вскрыл шесть ранее необнаруженных архитектурных расхождений, ни одно не относится к `STATUS-002`/`STATUS-003` — портативный `ctest` (134 теста, включая Python-гейты, сканирующие `Source/GV2/**`) не запускался ни разу за весь план: заявления «Портативный ctest не тронут» в `PEP-05…09` были неверны фактически (задачи действительно не трогали `GV2RuntimeCore`, но ctest сканирует весь `Source/GV2/**`, а не только его), просто ранее ни разу не проверялись прогоном. Все шесть — предсуществующие пробелы соответствующих задач, не новый код `PEP-10`:
+
+1. `FGV2RichTextSpansPropertyConsumer::Commit` (`PEP-05`) не имел GBF-07 классификации вовсе. Исправлено: `Commit` стал тонким делегатом (`rollback_delegate=RichTextSpansHover`), реальная граница — `CommitWithFailureInjector` (`rollback_boundary=RichTextSpansHover`), новое значение `RichTextSpansHover` (`ReplayInverse`) добавлено в `EGV2UiRollbackBoundary`, по образцу `FGV2TabContainerTabsPropertyConsumer`.
+2. `FGV2RichTextSpansPropertyConsumer::Prepare` (`PEP-05`) не имел PAH-08 маркера, хотя вызывает `GetCompiledSchema`. Исправлено маркером `phase=prepare`, по образцу `FGV2TabContainerTabsPropertyConsumer::Prepare`.
+3. `FGV2LayeredUiReconciler::CommitLayerParticipants` (`PEP-06`) — общий `ClearChildren`-и-перестройка примитив трёх вызывающих — не имел GBF-07 маркера с момента введения. Исправлено новым значением `HostLocalLayerParticipants` (`RestoreStructure` — отказ структурный, свойства для replay-инверсии здесь нет).
+4. `GV2ScreenAnchorHost.h` (`PEP-06B`) — чисто физический интерфейс позиционирования — не входил в allowlist `validate_apply_move_closure.py` и по умолчанию классифицировался gate'ом как authority-aware. Исправлено добавлением в `VALUE_OR_PHYSICAL_HEADERS` после проверки, что интерфейс не называет ни один authority-тип.
+5–6. `OpenHoverOverlay`/`CloseHoverOverlay` (`PEP-06B`/`PEP-07`) давали ложное срабатывание regex `validate_session_replacement_ownership.py` (`\bActiveGameShell\s*=` совпадает и с `==`). Исправлено заменой на `!ActiveGameShell` — то же самое сравнение без совпадения с паттерном присваивания.
+
+Побочный эффект находки 3: единственный UE-side automation тест, перечисляющий ожидаемый recovery по всем значениям перечисления (`GV2.UI.PrepareCommitPurityAndRollback`), жёстко предполагал ровно одно `RestoreStructure`-значение (`ShellAttach`); после добавления `HostLocalLayerParticipants` тест обновлён на оба значения.
+
+Множество automation test id за весь план (сверка от `PEP-04`, где счётчик впервые стабилен, до этой задачи, каждое изменение с обоснованием — с точностью до предыдущих Реализация-записей): `197 (PEP-05) → 198 (PEP-06, +1 синтетический участник) → 199 (PEP-06A, +1 детектор) → 199 (PEP-06B, нетто ноль: удалены `HoverPopoverStyledFromPreparedValues` и шесть подтестов внутри существующих `IMPLEMENT_SIMPLE_AUTOMATION_TEST`, добавлен `HoverOverlayAnchorAndLifecycle`) → 201 (PEP-06C, +2: `ScreenAnchorHostViewportClamp`, `HoverWindowSelectableFromData`) → 203 (PEP-07, +2: `HoverEffectQueueContract`, `HoverEffectNeverCrossesLua`) → 205 (PEP-08, +2: `HoverFadeAppearLeaveCancel`, `HoverFadeDurationHasNoCppLiteral`) → 207 (PEP-09, +2: `HoverDepartureInputGating`, `HostLocalDepartureAcceptsInputIsExhaustive`)`. `PEP-10` не вводит и не удаляет ни одного test id — шесть найденных расхождений закрыты правкой существующих gate-классификаций и одного уже существующего теста (`PrepareCommitPurityAndRollback`, изменена не структура теста, а ожидаемое значение внутри существующего перечислителя), без новых `IMPLEMENT_SIMPLE_AUTOMATION_TEST`. Итоговый счётчик остаётся `207`, что подтверждено прогоном ниже.
+
+Полные прогоны после всех правок: портативный `ctest` — `134/134` (100%). UE `Automation RunTests GV2` — `207/207`, exit code `0`, регрессий нет. Самотесты пяти затронутых гейтов (`validate_ui_rollback_boundaries.py`, `validate_presentation_authority_phase.py`, `validate_apply_move_closure.py`, `validate_session_replacement_ownership.py`, `validate_property_consumer_transaction_coverage.py`) и десяти регулярно проверяемых гейтов плана (`validate_session_snapshot_ownership.py`, `validate_test_content_coupling.py`, `validate_presentation_apply_module_graph.py`, `validate_presentation_apply_surface.py`, `validate_central_style_runtime_boundary.py`, `validate_ui_schema_authority.py`, `validate_presentation_apply_field_inventory.py`, `validate_session_content_snapshot_field_inventory.py`, `validate_headless_hash_fields.py`, `validate_pre_ready_content_discovery.py`) пройдены явным `--self-test` прогоном каждого; `Tools/Documentation/validate_docs.py` — `192` Markdown-файла, без ошибок.
 
 ---
 

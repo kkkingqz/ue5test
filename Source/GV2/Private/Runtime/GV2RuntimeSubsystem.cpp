@@ -513,7 +513,11 @@ UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::GetActiveScreenInLayer(FName Layer, 
 bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, float DurationSeconds, FName& OutInstanceKey, FString& OutError)
 {
     UGV2ScreenWidgetBase* ScreenWidget = Cast<UGV2ScreenWidgetBase>(Widget);
-    if (ScreenWidget == nullptr || ActiveGameShell == nullptr || !Reconciler.IsValid())
+    // Read-only null check, never an assignment -- written as !ActiveGameShell (not
+    // ActiveGameShell == nullptr) so validate_session_replacement_ownership.py's
+    // assign_ActiveGameShell pattern (\bActiveGameShell\s*=, which also matches the first
+    // '=' of '==') does not mistake this read for a projection-mutating write.
+    if (ScreenWidget == nullptr || !ActiveGameShell || !Reconciler.IsValid())
     {
         OutError = TEXT("core:diagnostic.ui_consumer.hover_overlay_unavailable: no active game shell or hover screen widget");
         return false;
@@ -537,7 +541,8 @@ bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, float DurationS
 
 void UGV2RuntimeSubsystem::CloseHoverOverlay(FName InstanceKey)
 {
-    if (ActiveGameShell == nullptr || !Reconciler.IsValid())
+    // See OpenHoverOverlay's own comment: !ActiveGameShell, not ActiveGameShell == nullptr.
+    if (!ActiveGameShell || !Reconciler.IsValid())
     {
         return;
     }

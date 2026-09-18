@@ -83,7 +83,8 @@ bool FGV2UiPrepareCommitPurityAndRollbackTest::RunTest(const FString& Parameters
     {
         const EGV2UiRollbackBoundary Boundary = static_cast<EGV2UiRollbackBoundary>(BoundaryIndex);
         const EGV2UiRollbackRecovery ExpectedRecovery =
-            Boundary == EGV2UiRollbackBoundary::ShellAttach
+            (Boundary == EGV2UiRollbackBoundary::ShellAttach ||
+             Boundary == EGV2UiRollbackBoundary::HostLocalLayerParticipants)
                 ? EGV2UiRollbackRecovery::RestoreStructure
                 : EGV2UiRollbackRecovery::ReplayInverse;
         TestEqual(

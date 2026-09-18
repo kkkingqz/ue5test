@@ -1,8 +1,8 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.18
-updated: 2026-09-10
+version: 3.19
+updated: 2026-09-18
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ImageResources.md
@@ -60,7 +60,6 @@ Entry регистрируется до registry freeze. Duplicate ID с нес�
 UGV2ScreenWidgetBase
 UGV2TextWidgetBase            implements IGV2UiPropertyHost, IGV2ScreenFieldHost
 UGV2RichTextWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
-UGV2RichTextPopoverWidgetBase  transient value sink for prepared RichText popovers; deliberately NOT IGV2UiStyleConsumer
 UGV2ImageWidgetBase           implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
 UGV2ButtonWidgetBase          implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
 UGV2CheckboxWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
@@ -77,7 +76,7 @@ UGV2LoadingIndicatorWidgetBase implements IGV2UiStyleConsumer
 
 Prepared-effect Widget bases, capability descriptors и value-only interfaces находятся в `GV2PresentationApply`; schema validation, semantic Prepare, composition bases и authority-aware registries остаются в `GV2`. Виджет сообщает поддерживаемое **физическое действие** отдельной ролью `IGV2Prepared*Target` (`PreparedApplyTargets.h`). Единственный `FGV2PresentationApply::Apply` маршрутизирует операцию по роли, а не по списку concrete classes: так derived/custom Widget получает тот же путь без новой ветки. Отсутствие роли — диагностируемое несоответствие, а не тихий no-op; множество объявленных ролей сверяется с множеством реализаций (`Tools/Testing/validate_central_style_runtime_boundary.py`). `IGV2UiPropertyHost` и `IGV2UiBindingTarget` наследуют `IGV2PreparedKeyTarget`/`IGV2PreparedBindingTarget`, поэтому новый host с `key` или `binding` не требует правки диспетчера (DUC-03).
 
-DUC-02 made eight base elements addressable as a top-level Screen Field the same way the four Location composites already were: `UGV2TextWidgetBase`, `UGV2RichTextWidgetBase`, `UGV2ImageWidgetBase`, `UGV2ButtonWidgetBase`, `UGV2CheckboxWidgetBase`, `UGV2InputFieldWidgetBase`, `UGV2ProgressBarWidgetBase`, `UGV2PortraitWidgetBase` now implement `IGV2ScreenFieldHost` too, delegating `GetScreenFieldId()` to the same shared `HostIdentity` every `IGV2UiPropertyHost` carries (DUC-01) — no separate per-class field, no dedicated C++ subclass. The remaining reusable widgets (`UGV2DropdownSelectWidgetBase`, `UGV2ButtonListWidgetBase`, `UGV2ModalWidgetBase`, `UGV2TabContainerWidgetBase`, `UGV2RichTextPopoverWidgetBase`, `UGV2ListViewWidgetBase`) are collection/composite-ish or transient-projection widgets outside DUC-02's scope and remain addressable only as a nested property host (inside a `CollectionHost` composite or a parent's capability tree), not as an independent top-level Screen Field — см. [Screen Templates § Screen Field Host and Property Host contract](ScreenTemplates.md#screen-field-host-and-property-host-contract).
+DUC-02 made eight base elements addressable as a top-level Screen Field the same way the four Location composites already were: `UGV2TextWidgetBase`, `UGV2RichTextWidgetBase`, `UGV2ImageWidgetBase`, `UGV2ButtonWidgetBase`, `UGV2CheckboxWidgetBase`, `UGV2InputFieldWidgetBase`, `UGV2ProgressBarWidgetBase`, `UGV2PortraitWidgetBase` now implement `IGV2ScreenFieldHost` too, delegating `GetScreenFieldId()` to the same shared `HostIdentity` every `IGV2UiPropertyHost` carries (DUC-01) — no separate per-class field, no dedicated C++ subclass. The remaining reusable widgets (`UGV2DropdownSelectWidgetBase`, `UGV2ButtonListWidgetBase`, `UGV2ModalWidgetBase`, `UGV2TabContainerWidgetBase`, `UGV2ListViewWidgetBase`) are collection/composite-ish widgets outside DUC-02's scope and remain addressable only as a nested property host (inside a `CollectionHost` composite or a parent's capability tree), not as an independent top-level Screen Field — см. [Screen Templates § Screen Field Host and Property Host contract](ScreenTemplates.md#screen-field-host-and-property-host-contract).
 
 ```text
 WBP_ScreenBase (abstract)
@@ -87,12 +86,9 @@ WBP_ScreenBase (abstract)
     ├── ClassSelectField: WBP_DropdownSelect
     ├── CheckboxField: WBP_Checkbox
     └── ButtonList: WBP_ButtonList
-
-WBP_RichTextPopover
-├── TitleText: UCommonTextBlock
-├── DescriptionText: WBP_RichText
-└── Icon: UImage (optional resource projection)
 ```
+
+Hover content is not a dedicated widget class or tree shape (`PEP-06B` removed `WBP_RichTextPopover`/`UGV2RichTextPopoverWidgetBase`): a span's `hover` names an ordinary `screen_id`, resolved and prepared exactly like any other nested screen, and its own author-authored WBP owns its frame, size and background like any other screen — см. [Interactive RichText contract](#interactive-richtext-contract) ниже.
 
 Blueprint отвечает за layout/composition/animation. Central theme задаёт default visual style. Native adapter применяет typed presentation value, управляет rebuild/local events и передаёт Semantic Input Adapter-у opaque binding handle.
 
@@ -134,7 +130,6 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 | `UGV2ScreenWidgetBase` | Screen orchestrator (`PrepareScreenFields`, `CommitScreenFields`, `CanApplyScreenFields`, `ApplyScreenFields`) | Aggregate contract | Dynamic hosts находятся через Widget tree по `IGV2ScreenFieldHost` |
 | `UGV2TextWidgetBase` | Property host: `text` (Text) | `core:schema.ui_field.text.v1` — addressable (DUC-02) | `TextBlock: UCommonTextBlock` |
 | `UGV2RichTextWidgetBase` | Property host: `text` (Text), `spans` (RichTextSpans) | `core:schema.ui_field.rich_text.v3` — addressable (DUC-02) | `RichTextScrollBox: UScrollBox`, `RichTextBlock: UCommonRichTextBlock` |
-| `UGV2RichTextPopoverWidgetBase` | Presentation popover: `InitializePopover(FGV2RichTextHoverViewModel, FPreparedRichTextStyle)` — единственная точка входа, стиль обязателен | Transient tooltip projection | `PopoverBorder: UBorder`, `PopoverWidth: USizeBox`, `TitleText: UCommonTextBlock`, `DescriptionText: WBP_RichText`; optional `Icon` |
 | `UGV2ImageWidgetBase` | Property host: `resource_id` (Ref), `key` (Key); `ApplyResolvedImageResource` (принимает уже разрешённый ресурс — `PSC-10C`) | `core:schema.ui_field.image.v1` — addressable (DUC-02) | `Image: UImage` |
 | `UGV2ButtonWidgetBase` | Property host: `text` (Text), `binding` (Binding), `key` (Key); implements `IGV2UiBindingTarget` | Leaf interaction element — addressable (DUC-02), no dedicated top-level schema yet | `LabelText: UCommonTextBlock` |
 | `UGV2CheckboxWidgetBase` | Property host: `key` (Key), `text` (Text), `is_checked` (Scalar), `binding` (Binding); `SubmitCheckboxState(bool)` | `core:schema.ui_field.checkbox.v1` — addressable (DUC-02) | `Checkbox: UCheckBox`, `LabelText: UCommonTextBlock` |
@@ -178,7 +173,7 @@ Repeated-field items обязаны иметь deterministic `key`. Общий `
 
 `DA_UITheme_Default : UGV2UiTheme` является source of truth default visual values UI-kit. `UGV2UiThemeSettings.ThemeAsset` выбирает identity active theme через UE-only project config, но резолюция происходит один раз — при построении session content snapshot (ADR-0043 D1), не заново на каждый `Commit`. Prepare получает Theme только через `FGV2PresentationPrepareContext` и переносит в transaction готовые CommonUI/Slate classes, brushes, colors, spacing и scale policies. Theme object, token lookup и configured accessors Apply-фазе недоступны. Lua, headless runtime и Screen Field DTO не получают asset locator или theme UObject.
 
-`IGV2UiStyleConsumer` является marker-интерфейсом фактических runtime style targets. Их множество перечисляет reflection/inventory gate; каждый target обязан иметь ветку в `GV2CentralStylePreparer` и exhaustive Apply visitor. `DropdownSelect` владеет стилем собственного поддерева, поэтому общий обход не стилизует его `HeaderButton` второй раз. Новые collection entries и nested tabs готовят свою central-style transaction до публикации и применяют её после commit дочерних свойств. Hover-popover создаётся позже, но получает сохранённый prepared payload владельца и применяет его новой value-only transaction без повторного Prepare.
+`IGV2UiStyleConsumer` является marker-интерфейсом фактических runtime style targets. Их множество перечисляет reflection/inventory gate; каждый target обязан иметь ветку в `GV2CentralStylePreparer` и exhaustive Apply visitor. `DropdownSelect` владеет стилем собственного поддерева, поэтому общий обход не стилизует его `HeaderButton` второй раз. Новые collection entries и nested tabs готовят свою central-style transaction до публикации и применяют её после commit дочерних свойств. Hover-экран стилизуется тем же путём, что и любой другой nested screen, при Prepare владельца — окно ничего не разрешает само (`PSC-10B`) и никакой отдельной popover-транзакции не существует.
 
 Viewport-зависимые физические значения обязаны обновляться через `ViewportRefresh` той же transaction façade. Фактическое множество таких Widget-классов выводится из canonical text/scale call sites (`validate_viewport_refresh_coverage.py`); каждый реализует `IGV2PreparedViewportRefreshTarget` и пересчитывает только font/popup geometry из сохранённых prepared values. Повторный central-style Prepare или document reconcile при resize запрещён: он заново принял бы semantic decisions и сбросил бы UI-local state. Production test `GV2.Runtime.Presentation.CommittedPresentationRespondsToViewportResize` выполняет реальный engine resize и проверяет изменение шрифта без замены committed Widget.
 
@@ -186,7 +181,7 @@ Theme обязан задавать:
 
 - `TextStyle`, `RichTextStyle`, `ButtonStyle`, `ButtonLabelStyle`, `CheckboxStyle`, `CheckboxLabelStyle`;
 - `InputFieldStyle`, `InputFieldLabelStyle`;
-- `RichTextInteractiveStyle`, `RichTextPopoverClass`, `RichTextPopoverBackground`, `RichTextPopoverPadding`, `RichTextPopoverMaxWidth`, `RichTextPopoverMaxHeight`;
+- `RichTextInteractiveStyle`;
 - `ButtonListItemPadding` и `ImageTint`;
 - `ProgressBarStyle` и `ProgressFillColor`;
 - `SeparatorBrush` и `SeparatorThickness`;
@@ -223,13 +218,13 @@ Text-bearing Widget Blueprint обязан либо наследовать nativ
 
 `WBP_RichText` обязан автоматически переносить текст по фактически выделенной ширине. Используется `AllowPerCharacterWrapping`: обычный текст переносится по словам, а непрерывный oversized token при необходимости может быть разорван. `RichTextBlock` обязан находиться внутри вертикального `RichTextScrollBox`; если desired height текста превышает выделенную Screen Template высоту, содержимое прокручивается, а не изменяет размер экрана и не рисуется за границами блока. Каждое применение нового Screen Field сбрасывает scroll offset в начало. Concrete Screen Template обязан ограничить высоту экземпляра `WBP_RichText` layout-правилом (`Fill`, `SizeBox` либо эквивалентным), иначе ScrollBox не получает конечный viewport и не может определить overflow.
 
-Composite Widget не может создавать собственный direct `UCommonRichTextBlock` для runtime-authored текста. Он обязан вкладывать `WBP_RichText` и передавать ему структурированное значение свойства через универсальный конвейер свойств либо использовать другой утверждённый pipeline component. Поэтому `WBP_RichTextPopover.DescriptionText` имеет тип `WBP_RichText`; `PopoverWidth` ограничивает как width, так и height через theme tokens, а `DescriptionText` занимает оставшуюся после title/icon высоту. Popover автоматически наследует wrapping, clipping, scrolling и reset-on-apply без отдельной реализации этих правил.
+Composite Widget не может создавать собственный direct `UCommonRichTextBlock` для runtime-authored текста. Он обязан вкладывать `WBP_RichText` и передавать ему структурированное значение свойства через универсальный конвейер свойств либо использовать другой утверждённый pipeline component. Hover-экран — обычный Screen Template и подчиняется тому же правилу как любой другой: если он показывает runtime-authored текст, он вкладывает `WBP_RichText`, а не создаёт свой собственный `UCommonRichTextBlock`.
 
 Текущий полный `WBP_*` inventory:
 
 | Категория | Assets | Text Pipeline rule |
 |---|---|---|
-| Direct text owners | `WBP_Text`, `WBP_Button`, `WBP_Checkbox`, `WBP_InputField`, `WBP_RichText`, `WBP_RichTextPopover` | Native base применяет только `FGV2TextViewModel` через `UGV2TextPipeline` |
+| Direct text owners | `WBP_Text`, `WBP_Button`, `WBP_Checkbox`, `WBP_InputField`, `WBP_RichText` | Native base применяет только `FGV2TextViewModel` через `UGV2TextPipeline` |
 | Text composites | `WBP_ButtonList`, `WBP_DropdownSelect`, `WBP_Testscreen` | Текст существует только во вложенных pipeline components |
 | Сейчас не содержат text primitives | `WBP_Image`, `WBP_LoadingIndicator`, `WBP_Modal`, `WBP_Portrait`, `WBP_ProgressBar`, `WBP_Separator`, `WBP_ScreenBase`, `WBP_GameShell` | При добавлении runtime text обязан использовать pipeline component/native adapter |
 
@@ -247,7 +242,7 @@ Canonical localized markup:
 
 Parser преобразует вложенные scopes в flat internal `<gv2 ...>...</>` runs для Slate. Этот internal markup запрещено хранить в localization/content. Interactive run наследует полностью разрешённый font/typeface/size/outline окружающего scope и добавляет только hyperlink interaction state.
 
-Central style runtime-компонента является resolved operation общей `FGV2PreparedPresentationTransaction`. Theme resolution выполняется Prepare-фазой из session snapshot; физическое применение получает только prepared values. No-argument `IGV2UiStyleConsumer.ApplyCentralStyle()` удалён, а `NativePreConstruct` не применяет ни runtime style, ни image resource: `PSC-10C` распространил то же правило на `InitialResourceId`, так что lifecycle-колбэк остался чисто value-only design-time поверхностью. RichText run/interactive/popover styles тоже разрешаются заранее и входят в prepared RichText style payload; Slate decorator и создаваемый им popover не читают Theme при рендере.
+Central style runtime-компонента является resolved operation общей `FGV2PreparedPresentationTransaction`. Theme resolution выполняется Prepare-фазой из session snapshot; физическое применение получает только prepared values. No-argument `IGV2UiStyleConsumer.ApplyCentralStyle()` удалён, а `NativePreConstruct` не применяет ни runtime style, ни image resource: `PSC-10C` распространил то же правило на `InitialResourceId`, так что lifecycle-колбэк остался чисто value-only design-time поверхностью. RichText run/interactive styles тоже разрешаются заранее и входят в prepared RichText style payload; Slate decorator их не читает из Theme при рендере.
 
 Designer preview не является исключением к runtime authority boundary. При `IsDesignTime()` компонент может применить только сериализованные Widget/Blueprint defaults через pure value-only helper; configured Theme, snapshot, content lookup и loading ему недоступны. Preview остаётся структурной визуальной подсказкой, но не обязан воспроизводить выбранную runtime Theme до запуска Prepare. Отсутствующий required `BindWidget` остаётся failure; silent local fallback для production component запрещён.
 
@@ -255,7 +250,7 @@ Default CommonUI styles `BP_UIStyle_Text_Default` и `BP_UIStyle_ButtonLabel_Def
 
 `InputFieldStyle.TextStyle` подчиняется тому же правилу и хранится только в active theme. Текущий default использует explicit engine Roboto `Regular` размером 16; Widget Blueprint не задаёт собственный font и не зависит от platform fallback.
 
-`WBP_Text`, `WBP_RichText`, `WBP_Image`, `WBP_Button`, `WBP_Checkbox`, `WBP_InputField`, `WBP_ButtonList`, `WBP_DropdownSelect`, `WBP_ProgressBar`, `WBP_Separator` и `WBP_LoadingIndicator` составляют нейтральный baseline UI-kit. `WBP_RichTextPopover` является общей transient support surface интерактивного RichText. Добавление Widget в UI-kit не создаёт автоматически Screen Field schema: boundary schema добавляется только вместе с concrete presentation scenario.
+`WBP_Text`, `WBP_RichText`, `WBP_Image`, `WBP_Button`, `WBP_Checkbox`, `WBP_InputField`, `WBP_ButtonList`, `WBP_DropdownSelect`, `WBP_ProgressBar`, `WBP_Separator` и `WBP_LoadingIndicator` составляют нейтральный baseline UI-kit. Добавление Widget в UI-kit не создаёт автоматически Screen Field schema: boundary schema добавляется только вместе с concrete presentation scenario.
 
 ## DropdownSelect contract
 
@@ -275,15 +270,13 @@ Input schema: `core:schema.ui_input.dropdown_selected.v1` — required string fi
 
 Каждый `span_id` обязан быть unique lowercase `snake_case`, присутствовать в markup минимум один раз и иметь declarative `hover` content либо opaque click binding. Unknown tag, dangling descriptor, duplicate ID, дополнительный tag attribute и malformed interactive markup отклоняют Screen Field до apply. Один span может встречаться в localized message несколько раз и использует один semantic binding item.
 
-Hover title/description и optional `image_resource_id` являются value-only presentation data. Decorator создаёт tooltip лениво при открытии, а закрытие уничтожает transient popover. Hover/unhover не пересекают Lua boundary. Не разрешённый optional image скрывается без подмены raw asset path.
+`hover` называет `screen_id` (и optional nested field values), разрешённый и подготовленный тем же путём, что и любой другой nested screen (`FGV2TabItemEntry` использует тот же route для вкладок) — не собственным popover-типом. Hover-окно **ничего не разрешает само** (`PSC-10B`): к моменту, когда наведение решает его открыть, оно уже полностью разрешено и стилизовано владельцем-RichText-виджетом при его собственном Prepare, а открытие лишь берёт готовую ссылку (`Span.Hover.ScreenWidget`) и прикрепляет её.
 
-Popover **ничего не разрешает сам** (`PSC-10B`). Он создаётся по hover, то есть вне цикла prepare/commit экрана, и поэтому не может быть target собственной подготовленной операции — все значения ему передаёт создающий его RichText-виджет, который получил их из Prepare:
+Окно — обычный host-local участник `overlay_stack` (`PEP-06`/`PEP-06B`), а не отдельная транзиентная сущность вне дерева слоя: `AttachHostLocalScreen`/`DetachHostLocalScreen` управляют его физическим временем жизни так же, как документный участник, только вне desired-документа. Позиция и размер живут внутри самого окна, не в слое: `ApplyScreenSlotLayout` — единая Fill/Fill политика для всех участников, а окно само ставит своё видимое содержимое в прямоугольник якоря спана через `IGV2ScreenAnchorHost::SetAnchoredContentPosition`/`GetAnchoredContentScreenRect` (`PEP-06B`/`PEP-06C`) и несёт собственную рамку/фон/габариты в своём WBP — второй вид окна добавляется без единой строки C++, другим `screen_id`.
 
-- title/description приходят уже resolved (`bHasResolvedPresentation`) и применяются approved Text Pipeline adapters;
-- optional icon применяется из `FGV2RichTextHoverViewModel::ResolvedImageBrush`, разрешённого в Prepare через snapshot's image catalog; во время открытия tooltip никакой catalog не консультируется;
-- собственный стиль (`FPreparedRichTextPopoverStyle`) и стиль вложенного описания приходят единственным аргументом `InitializePopover(Model, Style)` и записываются через ту же exhaustive Apply façade.
+Появление и уход ведут `RenderOpacity` 0↔100% за содержимым объявленную `hover.duration` (`PEP-06C`/`PEP-08`), а не мгновенным attach/detach: окно физически снимается только по достижении нуля во время ухода, никогда по таймеру. Возврат курсора на текст либо на само окно во время ухода отменяет уход и продолжает от текущей непрозрачности, а не с нуля и не скачком (`PEP-08`). Два вида ухода несут противоположные правила приёма ввода (`ADR-0048`, `PEP-09`): элемент, убранный реконсиляцией (её span/экран исчез), гасит ввод в момент логического удаления и структурно невыразим как интерактивный; окно, уводящее себя наведением, остаётся интерактивным до конца и взаимодействие с ним отменяет уход.
 
-Собственный Blueprint resolver, direct brush mutation для runtime `resource_id`, а также инициализация popover без подготовленного стиля запрещены: `InitializePopover` отвергает вызов, у которого стиль не разрешён, вместо того чтобы отрисоваться нестилизованным.
+Наведение и уход остаются UE-local и Semantic Input не создают (см. [Semantic Input](SemanticInput.md)); открытие и закрытие всё же проходят через общую one-shot effect queue как host-local источник — первый её реальный потребитель (`PEP-07`, [Presentation Snapshot and Effects § Effect](PresentationSnapshotAndEffects.md#effect)), а не собственный путь мимо неё. Не разрешённый optional image внутри hover-экрана скрывается без подмены raw asset path тем же правилом, что и для любого другого экрана.
 
 Click span получает только `FGV2UiBindingHandle`. `SubmitSpanInteraction(span_id)` использует общий `SubmitUiInteraction(handle, {})`; decorator не хранит `command_id`, bound args или Lua callback. Reapply/reset/destruct RichText удаляет local span lookup, а смена UI revision инвалидирует handles через общий binding registry.
 
@@ -324,4 +317,4 @@ Unknown/incompatible element registration или Screen Field schema делае�
 
 ## Tests
 
-Tests покрывают duplicate registration, registry freeze, trusted factory resolution, no raw asset path, element schema validation, required/optional fields, duplicate/unknown field rejection, двухфазный atomic apply (Prepare/Commit), opaque handle propagation и отсутствие gameplay authority. `GV2ScreenFieldMaterializer` тесты фиксируют схематическую материализацию и отсутствие schema-specific C++ адаптеров и DTO; тесты `GV2.UI.Consumers.*` и `GV2.UI.CapabilityObservabilityHarness` проверяют потребители свойств и их двухфазный жизненный цикл. `GV2.UI.CapabilityObservabilityCompositeSweep` reflection-ом сверяет каждый production property-host boundary с реальным `WBP_*` и проверяет общую identity surface. UI-kit test загружает active theme, проверяет native parents, mandatory `BindWidget`, `IGV2UiStyleConsumer` и successful style apply. Для `WBP_RichText` он дополнительно проверяет automatic/per-character wrapping и вертикальный `RichTextScrollBox`; для popover — composition через те же text/image leaf adapters и ограниченную theme height; для input/dropdown — submit через общий emitter и Lua-owned desired-state republish. Asset audit обязан перечислять все `WBP_*`, запрещать direct runtime text/content-image primitives в composites, local dynamic collection factories и direct Runtime Subsystem ingress вне общего emitter. Runtime source audit запрещает concrete `screen_id`/`field_id` branches.
+Tests покрывают duplicate registration, registry freeze, trusted factory resolution, no raw asset path, element schema validation, required/optional fields, duplicate/unknown field rejection, двухфазный atomic apply (Prepare/Commit), opaque handle propagation и отсутствие gameplay authority. `GV2ScreenFieldMaterializer` тесты фиксируют схематическую материализацию и отсутствие schema-specific C++ адаптеров и DTO; тесты `GV2.UI.Consumers.*` и `GV2.UI.CapabilityObservabilityHarness` проверяют потребители свойств и их двухфазный жизненный цикл. `GV2.UI.CapabilityObservabilityCompositeSweep` reflection-ом сверяет каждый production property-host boundary с реальным `WBP_*` и проверяет общую identity surface. UI-kit test загружает active theme, проверяет native parents, mandatory `BindWidget`, `IGV2UiStyleConsumer` и successful style apply. Для `WBP_RichText` он дополнительно проверяет automatic/per-character wrapping и вертикальный `RichTextScrollBox`; для input/dropdown — submit через общий emitter и Lua-owned desired-state republish. `GV2.Runtime.Presentation.HoverFadeAppearLeaveCancel`, `HoverEffectQueueContract`, `HoverDepartureInputGating` и `HostLocalDepartureAcceptsInputIsExhaustive` покрывают hover-окно как host-local участника: непрерывную кривую непрозрачности, отмену ухода с промежуточного значения, реальный отбрасываемый эффект и структурную невыразимость интерактивного stale. Asset audit обязан перечислять все `WBP_*`, запрещать direct runtime text/content-image primitives в composites, local dynamic collection factories и direct Runtime Subsystem ingress вне общего emitter. Runtime source audit запрещает concrete `screen_id`/`field_id` branches.

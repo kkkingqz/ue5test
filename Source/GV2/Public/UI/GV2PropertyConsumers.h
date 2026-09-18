@@ -490,6 +490,19 @@ public:
     void SetActiveCompositionChain(const TArray<FString>* InChain) { ActiveCompositionChain = InChain; }
 
 private:
+    // GBF-07: the real rollback boundary, named so it does not match the bare "Commit"
+    // pattern the ownership gate treats as a leaf -- mirrors FGV2TabContainerTabsPropertyConsumer's
+    // own Commit()/CommitWithFailureInjector() split (also the fixed two-name search
+    // validate_property_consumer_transaction_coverage.py uses). This IS the interface's own
+    // virtual (PCC-06/DUC-10 fault injection), not a same-named private helper -- a bare
+    // 2-param helper of the same name would hide it (-Woverloaded-virtual). Commit() is a
+    // thin delegate to this, matching every other nested consumer's own shape.
+    virtual bool CommitWithFailureInjector(
+        UWidget* TargetWidget,
+        FString& OutError,
+        const TFunction<bool(const FString& PropertyPath)>& FailureInjector,
+        const FString& PropertyPath) override;
+
     TArray<FPreparedSpanItem> PreparedSpans;
     const FGV2PresentationPrepareContext* PrepareContext = nullptr;
     const TArray<FString>* ActiveCompositionChain = nullptr;

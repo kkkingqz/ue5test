@@ -18,6 +18,10 @@ EGV2UiRollbackRecovery GetUiRollbackBoundaryRecovery(EGV2UiRollbackBoundary Boun
         return EGV2UiRollbackRecovery::ReplayInverse;
     case EGV2UiRollbackBoundary::ShellAttach:
         return EGV2UiRollbackRecovery::RestoreStructure;
+    case EGV2UiRollbackBoundary::HostLocalLayerParticipants:
+        return EGV2UiRollbackRecovery::RestoreStructure;
+    case EGV2UiRollbackBoundary::RichTextSpansHover:
+        return EGV2UiRollbackRecovery::ReplayInverse;
     case EGV2UiRollbackBoundary::Count:
         checkNoEntry();
         return EGV2UiRollbackRecovery::ReplayInverse;

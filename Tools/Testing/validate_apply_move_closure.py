@@ -53,6 +53,10 @@ VALUE_OR_PHYSICAL_HEADERS = {
     "UI/GV2UiInteractionEmitter.h",
     "UI/GV2UiBindingTarget.h",
     "UI/GV2UiPropertyHost.h",
+    # PEP-06B: a pure physical-positioning interface (LocalPosition in/out, a screen rect
+    # out) already living in GV2PresentationApply -- no snapshot, catalog, registry or Theme
+    # type reachable from it, unlike everything else this gate excludes by default.
+    "UI/GV2ScreenAnchorHost.h",
 }
 
 # The measured authority-aware closure, 2026-09-09. May shrink; may not grow.

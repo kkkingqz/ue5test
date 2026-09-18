@@ -1672,6 +1672,9 @@ bool FGV2RichTextSpansPropertyConsumer::CanConsume(const FGV2PreparedUiValue& Va
     return Value.IsArray();
 }
 
+// PAH-08: phase=prepare -- resolves each span's hover screen and nested field schemas
+// off-tree; this is the legitimate both-phases-in-one-file case the gate's function
+// granularity exists for (its Commit is in this same translation unit).
 bool FGV2RichTextSpansPropertyConsumer::Prepare(
     const FGV2PreparedUiValue& Value,
     const FGV2UiPropertyCapability& Capability,
@@ -1997,8 +2000,19 @@ bool FGV2RichTextSpansPropertyConsumer::BuildPreparedOperation(
     return true;
 }
 
-// GBF-07: rollback_boundary=RichTextSpansHover
+// GBF-07: rollback_delegate=RichTextSpansHover
 bool FGV2RichTextSpansPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
+{
+    const TFunction<bool(const FString& PropertyPath)> NoFailureInjector;
+    return CommitWithFailureInjector(TargetWidget, OutError, NoFailureInjector, FString());
+}
+
+// GBF-07: rollback_boundary=RichTextSpansHover
+bool FGV2RichTextSpansPropertyConsumer::CommitWithFailureInjector(
+    UWidget* TargetWidget,
+    FString& OutError,
+    const TFunction<bool(const FString& PropertyPath)>& FailureInjector,
+    const FString& PropertyPath)
 {
     // GBF-05: nothing was accepted, so there is nothing to publish -- mirrors
     // FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector's own guard.
@@ -2009,15 +2023,25 @@ bool FGV2RichTextSpansPropertyConsumer::Commit(UWidget* TargetWidget, FString& O
 
     // Commit each span's own hover nested screen fields first, through the same
     // CommitScreenFields a top-level screen uses (DUC-09), with sibling rollback on
-    // failure -- mirrors FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector.
+    // failure -- mirrors FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector,
+    // including forwarding a scoped FailureInjector down to each span's own child commit.
     for (int32 SpanIndex = 0; SpanIndex < PreparedSpans.Num(); ++SpanIndex)
     {
         FPreparedSpanItem& Item = PreparedSpans[SpanIndex];
         if (Item.bHoverHasChildPlan && Item.HoverChildScreenPlan.IsValid() && Item.Span.Hover.ScreenWidget.IsValid())
         {
             UGV2ScreenWidgetBase* ChildWidget = Cast<UGV2ScreenWidgetBase>(Item.Span.Hover.ScreenWidget.Get());
+            TFunction<bool(const FString& PropertyPath)> ChildFailureInjector;
+            if (FailureInjector)
+            {
+                const FString ChildPrefix = FString::Printf(TEXT("%s.%s"), *PropertyPath, *Item.Span.Key.ToString());
+                ChildFailureInjector = [FailureInjector, ChildPrefix](const FString& ChildPropertyPath)
+                {
+                    return FailureInjector(FString::Printf(TEXT("%s.%s"), *ChildPrefix, *ChildPropertyPath));
+                };
+            }
             FString ChildCommitError;
-            if (ChildWidget == nullptr || !ChildWidget->CommitScreenFields(*Item.HoverChildScreenPlan, ChildCommitError, nullptr))
+            if (ChildWidget == nullptr || !ChildWidget->CommitScreenFields(*Item.HoverChildScreenPlan, ChildCommitError, ChildFailureInjector))
             {
                 bool bSiblingRollbackFailed = false;
                 for (int32 RollbackIndex = SpanIndex - 1; RollbackIndex >= 0; --RollbackIndex)

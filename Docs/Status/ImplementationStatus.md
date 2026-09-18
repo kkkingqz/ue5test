@@ -1,7 +1,7 @@
 ---
 title: Confirmed Contract Gaps
 status: informative
-version: 2.29
+version: 2.30
 updated: 2026-09-18
 depends_on:
   - ../README.md
@@ -30,7 +30,6 @@ depends_on:
 
 | ID | Состояние | Нормативное требование | Точное расхождение | Evidence |
 |---|---|---|---|---|
-| `STATUS-002` | `missing` | [Presentation Snapshot and Effects § Effect](../UI/PresentationSnapshotAndEffects.md#effect), [§ ordering](../UI/PresentationSnapshotAndEffects.md#snapshoteffect-ordering) | UI document/reconciliation реализованы, но public one-shot effect DTO/queue/apply path, stale target handling и effect non-persistence tests отсутствуют. | В `Scripts/`, `Source/` и `Tests/` нет production `publish_effect`/effect queue consumer; `Scripts/authoring/presentation.lua` публикует только desired UI document. |
 | `STATUS-026` | `known_nonconformance` | [Runtime Facade and Registries § Host-side freeze sequence](../Architecture/RuntimeFacadeAndRegistries.md#host-side-freeze-sequence): функции registry lifecycle не экспортируются в authoring/gameplay | `core:module.runtime.test_isolation` объявлен зависимостью `core:module.bootstrap.main`, поэтому модуль изоляции реестров загружается в каждой production-сессии, а не только в тестовом прогоне. Сама capability закрыта: `registry_lifecycle.take_isolation_handle()` отдаёт handle ровно один раз, его забирает `test_isolation` при загрузке, и любой последующий вызов получает `nil`, поэтому подменить запечатанный реестр из пакета нельзя (`UnauthorizedIsolation`). Расхождение в том, что модуль присутствует в игровом профиле вообще. **Условие закрытия:** у загрузчика появляется понятие профиля/видимости модулей, и `test_isolation` перестаёт входить в граф production-сессии; введение такого понятия требует отдельного ADR, а не правки внутри исправления. | `Scripts/bootstrap/manifest.lua` (`core:module.runtime.test_isolation` в dependencies `core:module.bootstrap.main`); `Scripts/bootstrap/registry_lifecycle.lua` (`take_isolation_handle`, `with_isolated_facade_slot`); спека `Tests/Lua/lifecycle/registry_sealing.lua` (`isolation_capability_is_single_use`). |
 
 Автозапуск job'а снят 2026-09-15: при отсутствии runner'а GitHub держал job в очереди предельные 24 часа (`The job has exceeded the maximum execution time while awaiting a runner for 24h0m0s` — run `34672222339` на `035ac04`; run `34842198597` простоял 16 часов до отмены), а `timeout-minutes: 45` не тикает до старта job'а. Ручной `workflow_dispatch` не уменьшает расхождение и не является его обходом: он лишь перестаёт выдавать суточное ожидание за прогон. **Условие закрытия неизменно:** зарегистрированный self-hosted runner, названный успешный прогон job `Unreal GV2 Acceptance` на `origin` и возвращённый автозапуск на push. | `.github/workflows/linux-ci.yml` (`unreal-acceptance`, `runs-on: [self-hosted, linux, x64]`, `if: github.event_name == 'workflow_dispatch'`); `gh run view 34672222339`; `gh api repos/kkkingqz/ue5test/actions/runners`; перенесён при архивации плана C++ Foundation Closure из открытого пункта evidence задачи CFC-02. |

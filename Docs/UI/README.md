@@ -1,8 +1,8 @@
 ---
 title: UI Documentation Index
 status: normative
-version: 2.1
-updated: 2026-09-15
+version: 2.2
+updated: 2026-09-18
 ---
 
 # UI Documentation
@@ -65,7 +65,7 @@ UI является перестраиваемой presentation projection. Lua 
 
 Ассеты строго структурированы по каталогам своих слоев:
 - `Content/UI/` — инфраструктура `core`: Game Shell (`Content/UI/Shell/`), реестр (`Content/UI/Registry/DA_ScreenRegistry`), `WBP_ScreenBase` (`Content/UI/Screens/`), базовые примитивы (`Content/UI/Widgets/`: `WBP_Text`, `WBP_Image`, `WBP_Button`, `WBP_Checkbox`, `WBP_InputField`, `WBP_DropdownSelect`, `WBP_ProgressBar`, `WBP_Separator`, `WBP_LoadingIndicator`) и тестовый экран `core:screen.test` (`WBP_Testscreen`, namespace `core`).
-- `Content/TextSystem/UI/` — тема и стили (`Content/TextSystem/UI/Styles/`: `DA_UITheme_Default`, `BP_UIStyle_*`) и композиты (`Content/TextSystem/UI/Widgets/`: `WBP_RichText`, `WBP_RichTextPopover`, `WBP_ButtonList`, `WBP_Modal`, `WBP_Portrait`).
+- `Content/TextSystem/UI/` — тема и стили (`Content/TextSystem/UI/Styles/`: `DA_UITheme_Default`, `BP_UIStyle_*`) и композиты (`Content/TextSystem/UI/Widgets/`: `WBP_RichText`, `WBP_ButtonList`, `WBP_Modal`, `WBP_Portrait`).
 - `Content/RH/UI/` — специфичные стили и экраны `rh`; открывается по факту появления первого ассета этого слоя.
 
 Правило проверяется реестром экранов (`UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace`, `Validate`): экран нижнего слоя не может ссылаться на ассет из верхнего слоя.

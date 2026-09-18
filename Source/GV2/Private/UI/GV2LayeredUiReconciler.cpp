@@ -178,6 +178,16 @@ bool FGV2LayeredUiReconciler::IsHostLocalInstanceKey(FName InstanceKey)
 // DocumentParticipants in creation order -- document tier below, host-local tier above,
 // exactly the two-tier order the plan names. A layer with no Host is a no-op success: the
 // caller has nothing to reconcile, not a failure.
+//
+// This IS its own rollback boundary (GBF-07 requires any non-bare-"Commit"-named root to be
+// one) even though the actual compensating action lives in its three different callers, not
+// inside this function: CommitReconcile (the separate Document boundary) treats a per-layer
+// failure here as part of its own rollback; AttachHostLocalScreen compensates explicitly
+// (removes the registry entry it just added); DetachHostLocalScreen deliberately does not
+// (its own comment: "Fail loudly instead of guessing at a compensating state"). The failure
+// mode this boundary's own recovery classification describes is structural (a rebuild that
+// did not complete), not a property mutation to replay the inverse of.
+// GBF-07: rollback_boundary=HostLocalLayerParticipants
 bool FGV2LayeredUiReconciler::CommitLayerParticipants(
     UGV2GameShellWidgetBase* Shell,
     FName Layer,
