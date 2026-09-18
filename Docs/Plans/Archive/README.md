@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.16
-updated: 2026-09-16
+version: 2.17
+updated: 2026-09-18
 depends_on:
   - ../README.md
 ---
@@ -25,6 +25,7 @@ depends_on:
 | [CppFoundationClosure](CppFoundationClosure.md) | 2026-09-14 | Достоверная приёмка вместо маркера в логе: actual set из UE discovery, идентичность бинарника из рантайма; один snapshot, compile-to-value Screen Registry, обязательное sealing реестров и две границы replacement; canonical state и seed целиком Lua-owned; продуктовый save/load на immutable generations с atomic publish; сцена как контракт данных и сквозной gameplay-срез без новой native логики. Поддержанная поверхность зафиксирована как Linux Editor/Development |
 | [TestSuiteRestructuring](TestSuiteRestructuring.md) | 2026-09-15 | Место теста определяет проверяемая граница движка, а не история файла: монолит в 12 341 строку растворён в шесть доменных файлов, механические утверждения переведены на синтетические фикстуры `core:`, content smoke сведён к трём тестам со структурными утверждениями и ожиданиями из контента, введены потолки размера файла и `RunTest`; правило двух категорий принято ADR-0046 и перенесено в contracts, ratchet заменён безусловным запретом с остатком под `STATUS-028` |
 | [SessionAuthorityCorrection](SessionAuthorityCorrection.md) | 2026-09-16 | Публичный session entry замкнут на transition policy; manifest читается один раз; Theme и effective resources входят в immutable identity; terminal failure типизирован; operation retention измерен production-path сценарием и ограничен детерминированно |
+| [PresentationEffectPipeline](PresentationEffectPipeline.md) | 2026-09-18 | Один механизм одноразовых эффектов презентации с двумя источниками (Lua/host-local), общей очередью и монотонным `sequence`; всплывающее окно наведения переселено из Slate-тултипа в обычный ui-блок `overlay_stack` с двумя видами ухода (`stale`/`self-dismissal`) и отменяемым fade-анимацией; полный прогон закрытия нашёл и исправил шесть предсуществующих gate-расхождений, ни разу не пойманных портативным ctest |
 | [CanonicalGameplayState](CanonicalGameplayState.md) | 2026-08-15 | Canonical state, module lifecycle hooks, instance identity, state hash в run digest, ActorRegistry и mutation window |
 | [CommandHandlerRegistry](CommandHandlerRegistry.md) | 2026-08-16 | Реестр обработчиков по `command_id` вместо цепочки, отказ на неизвестную команду, развязка `ingress` от игровых модулей, команды из пакета без C++ |
 | [CommandValidators](CommandValidators.md) | 2026-08-19 | Авторский `validate()` для независимых policy поверх чужих команд, единое декодирование аргументов, охранники побочных эффектов и явная заменяемость обработчика |
