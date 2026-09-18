@@ -239,6 +239,37 @@ void FGV2SessionCoordinator::ClearProjectionPublishSink()
     ProjectionPublishSink = nullptr;
 }
 
+void FGV2SessionCoordinator::SetEffectSink(FEffectSink InSink)
+{
+    EffectSink = MoveTemp(InSink);
+}
+
+void FGV2SessionCoordinator::ClearEffectSink()
+{
+    EffectSink = nullptr;
+}
+
+bool FGV2SessionCoordinator::DrainPresentationEffects()
+{
+    if (!RuntimeSession.IsStarted())
+    {
+        return true;
+    }
+
+    std::vector<GV2RuntimeCore::FPresentationEffect> Effects;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    if (!RuntimeSession.TakePendingEffects(Effects, Fault))
+    {
+        FailRuntime(Fault);
+        return false;
+    }
+    if (EffectSink && !Effects.empty())
+    {
+        EffectSink(Effects);
+    }
+    return true;
+}
+
 #if WITH_DEV_AUTOMATION_TESTS
 // PAH-04: pre_ready_discovery callers=none
 // Test-only overload that resolves its fixture set before delegating to the production
@@ -810,6 +841,11 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     const bool bReadyOk = PublishReady(MoveTemp(Token), DocModel.Revision, Op.Kind);
     if (bReadyOk)
     {
+        if (!DrainPresentationEffects())
+        {
+            TransitionPolicy.RecordRuntimeFailure(Op.OperationId, {"PresentationEffectDrainFailed", "Failed to drain presentation effects after session start."});
+            return false;
+        }
         ActivePackageSet = InResolvedPackageSet;
         TransitionPolicy.RecordOutcome(Op.OperationId, ESessionNonFailureOutcome::Completed);
     }
@@ -1350,6 +1386,11 @@ void FGV2SessionCoordinator::PumpIngress()
             if (InteractionSink)
             {
                 InteractionSink(Item);
+            }
+
+            if (!DrainPresentationEffects())
+            {
+                return;
             }
 
             DrainPendingSaveRequests();

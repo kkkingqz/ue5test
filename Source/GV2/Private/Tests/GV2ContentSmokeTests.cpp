@@ -1077,7 +1077,36 @@ bool FGV2HoverEffectQueueContract::RunTest(const FString& Parameters)
         }
     }
 
-    // 3. A REAL discarded effect, not a synthetic one, with the rest of the session left
+    // 3. An accepted queued close is the cause of the physical detach. Removing the
+    // production dispatch from the drain must leave HoverScreenA attached and fail this
+    // assertion; observing a ResolveEffectTarget diagnostic is not enough.
+    GV2RuntimeCore::FPresentationEffect AcceptedCloseEffect;
+    AcceptedCloseEffect.EffectId = "core:effect.rich_text_hover_close";
+    AcceptedCloseEffect.bHasTarget = true;
+    AcceptedCloseEffect.TargetUiInstanceId = TCHAR_TO_UTF8(*InitialUiInstanceId);
+    AcceptedCloseEffect.TargetRevision = InitialRevision;
+    AcceptedCloseEffect.Args.emplace(
+        "instance_key",
+        GV2RuntimeCore::FValue(std::string(TCHAR_TO_UTF8(*InstanceKeyA.ToString()))));
+    GV2RuntimeCore::FRuntimeFault AcceptedClosePublishFault;
+    TestTrue(TEXT("An accepted close effect is queued through the production API"),
+        Coordinator->GetRuntimeSession().PublishHostLocalEffect(AcceptedCloseEffect, AcceptedClosePublishFault));
+
+    UGV2ScreenWidgetBase* HoverScreenB = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    TestNotNull(TEXT("Hover screen B instantiates"), HoverScreenB);
+    FName InstanceKeyB;
+    FString OpenErrorB;
+    TestTrue(
+        *FString::Printf(TEXT("A second hover open triggers the common drain [Error: %s]"), *OpenErrorB),
+        Runtime->OpenHoverOverlay(HoverScreenB, 0.0f, InstanceKeyB, OpenErrorB));
+    TestFalse(
+        TEXT("The accepted queued close physically detaches its addressed window"),
+        Runtime->GetActiveGameShell() != nullptr
+            && Runtime->GetActiveGameShell()
+                ->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack)
+                .Contains(Cast<UUserWidget>(HoverScreenA)));
+
+    // 4. A REAL discarded effect, not a synthetic one, with the rest of the session left
     // completely undisturbed: publish directly against a ui_instance_id that names no
     // document this session actually has (the exact same production API OpenHoverOverlay
     // itself calls, PublishHostLocalEffect -- not a hand-rolled ResolveEffectTarget unit
@@ -1089,18 +1118,21 @@ bool FGV2HoverEffectQueueContract::RunTest(const FString& Parameters)
     StaleTargetEffect.bHasTarget = true;
     StaleTargetEffect.TargetUiInstanceId = std::string(TCHAR_TO_UTF8(*InitialUiInstanceId)) + "_no_such_document";
     StaleTargetEffect.TargetRevision = InitialRevision;
+    StaleTargetEffect.Args.emplace(
+        "instance_key",
+        GV2RuntimeCore::FValue(std::string(TCHAR_TO_UTF8(*InstanceKeyB.ToString()))));
     GV2RuntimeCore::FRuntimeFault PublishFault;
     TestTrue(
         TEXT("Directly publishing a real host-local effect via the production API succeeds"),
         Coordinator->GetRuntimeSession().PublishHostLocalEffect(StaleTargetEffect, PublishFault));
 
-    UGV2ScreenWidgetBase* HoverScreenB = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
-    TestNotNull(TEXT("Hover screen B instantiates"), HoverScreenB);
-    FName InstanceKeyB;
-    FString OpenErrorB;
+    UGV2ScreenWidgetBase* HoverScreenC = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    TestNotNull(TEXT("Hover screen C instantiates"), HoverScreenC);
+    FName InstanceKeyC;
+    FString OpenErrorC;
     TestTrue(
-        *FString::Printf(TEXT("A second, unrelated hover open succeeds and drains the whole queue [Error: %s]"), *OpenErrorB),
-        Runtime->OpenHoverOverlay(HoverScreenB, 0.0f, InstanceKeyB, OpenErrorB));
+        *FString::Printf(TEXT("A third, unrelated hover open succeeds and drains the whole queue [Error: %s]"), *OpenErrorC),
+        Runtime->OpenHoverOverlay(HoverScreenC, 0.0f, InstanceKeyC, OpenErrorC));
 
     {
         const auto& Diagnostics = Runtime->GetLastDrainedEffectDiagnosticsForAutomationTest();
@@ -1122,9 +1154,8 @@ bool FGV2HoverEffectQueueContract::RunTest(const FString& Parameters)
             bFoundRealDiscard);
     }
 
-    // 4. A discarded effect does not close a window already opened directly (ADR-0048's own
-    // exit-lifecycle rule governs window validity independently) -- HoverScreenA is still a
-    // real child of overlay_stack, untouched by HoverScreenB's discard, and canonical state
+    // 5. A discarded effect does not close the addressed window -- HoverScreenB is still a
+    // real child of overlay_stack, untouched by HoverScreenC's drain, and canonical state
     // is still exactly what it was before any of this hover activity.
     // GetActiveScreenInLayer/Reconciler::GetActiveScreen only ever searches the document
     // tier's ActiveScreens map (PEP-06's own two-tier split) -- a host-local participant is
@@ -1132,22 +1163,19 @@ bool FGV2HoverEffectQueueContract::RunTest(const FString& Parameters)
     // the Shell's actual panel children instead, exactly as GV2LayeredReconciliationTests'
     // own host-local contracts do.
     TestTrue(
-        TEXT("The first hover window survives an unrelated effect's discard"),
+        TEXT("The addressed hover window survives its rejected close effect"),
         Runtime->GetActiveGameShell() != nullptr
             && Runtime->GetActiveGameShell()
                 ->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack)
-                .Contains(Cast<UUserWidget>(HoverScreenA)));
+                .Contains(Cast<UUserWidget>(HoverScreenB)));
     TestEqual(
         TEXT("Canonical state is still unaffected after the discard"),
         FString(UTF8_TO_TCHAR(Coordinator->GetRuntimeSession().GetCanonicalStateHash().c_str())),
         FString(UTF8_TO_TCHAR(HashBeforeHover.c_str())));
 
-    // 5. A genuine content-driven document change (real location travel, the same mechanism
-    // FGV2RhStartScreenFlow uses) also reaches a real reject reason for a stale target -- this
-    // is a heavier, more disruptive production path than section 3 (RH's own travel handling
-    // replaces the whole session), so this step only proves the queue reacts for real to it,
-    // without asserting anything about window survival (a legitimate session/shell rebuild is
-    // not the "discarded effect kills window" bug this task guards against).
+    // 6. A host effect deliberately queued without its producer's normal immediate drain is
+    // rejected when a real content-driven document change makes its target stale. This is
+    // the production replacement path for ResolveEffectTarget, not a pure-function probe.
     {
         GV2RuntimeCore::FPresentationEffect PreTravelEffect;
         PreTravelEffect.EffectId = "core:effect.rich_text_hover_close";
@@ -1196,26 +1224,21 @@ bool FGV2HoverEffectQueueContract::RunTest(const FString& Parameters)
                 EGV2SubmitUiInteractionResult::Accepted);
         }
 
-        UGV2ScreenWidgetBase* HoverScreenC = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
-        FName InstanceKeyC;
-        FString OpenErrorC;
-        Runtime->OpenHoverOverlay(HoverScreenC, 0.0f, InstanceKeyC, OpenErrorC);
-
         const auto& Diagnostics = Runtime->GetLastDrainedEffectDiagnosticsForAutomationTest();
         bool bFoundRealDiscard = false;
         for (const auto& Diagnostic : Diagnostics)
         {
-            if (Diagnostic.RejectReason != GV2RuntimeCore::EPresentationEffectRejectReason::None)
+            if (Diagnostic.EffectId == TEXT("core:effect.rich_text_hover_close"))
             {
-                bFoundRealDiscard = true;
+                bFoundRealDiscard = Diagnostic.RejectReason != GV2RuntimeCore::EPresentationEffectRejectReason::None;
             }
         }
         TestTrue(
-            TEXT("A real location-travel document change also produces a real reject reason"),
+            TEXT("A real location-travel document change rejects the pre-existing targeted effect"),
             bFoundRealDiscard);
     }
 
-    // 5. Rebuild guarantee: EndSession tears down the whole projection: the hover window does
+    // 7. Rebuild guarantee: EndSession tears down the whole projection: the hover window does
     // not survive it and is not restored by StartSession alone -- only a fresh hover would
     // recreate it, proven by NOT hovering again and finding the layer empty.
     Runtime->EndSession();

@@ -20,6 +20,10 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/SVirtualWindow.h"
 
 #include "Bridge/GV2BridgeTypes.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
@@ -2018,6 +2022,41 @@ bool FGV2HoverOverlayAnchorAndLifecycleContract::RunTest(const FString& Paramete
     // thing standing between "fills the layer" and "blocks everything under it".
     TestEqual(TEXT("PEP-06B: hover screen is self-hit-test-invisible (does not block lower layers)"),
         HoverScreen->GetVisibility(), ESlateVisibility::SelfHitTestInvisible);
+
+    // PEP-AF-03: the stated property is that a lower layer stays REACHABLE while the
+    // full-layer hover participant is open. Proven by a real Slate hit test over real
+    // arranged geometry -- LocateWindowUnderMouse walks the actual widget tree and honours
+    // each widget's actual visibility -- asserting the resulting path reaches the lower
+    // control. Reading ESlateVisibility off the participant (the assertion above) only
+    // states an intent about one widget; it cannot see that the participant's own root
+    // panel, a separate UWidget defaulting to Visible, would swallow the hit.
+    //
+    // Deliberately NOT FSlateApplication::RoutePointerDownEvent/RoutePointerUpEvent on this
+    // path: SVirtualWindow is not registered with FSlateApplication, so application-level
+    // click routing (capture, press/release pairing that SButton::OnClicked needs) has no
+    // supported meaning here, and the suite has no precedent for it -- every other
+    // SVirtualWindow use in these tests is geometry-only. Hit-test reachability is the
+    // property this task owns; click delivery is Slate's own, already-tested behaviour.
+    const TSharedRef<SButton> LowerLayerButton = SNew(SButton);
+    const TSharedRef<SOverlay> LayerStack = SNew(SOverlay)
+        + SOverlay::Slot()[LowerLayerButton]
+        + SOverlay::Slot()[HoverScreen->TakeWidget()];
+    const FVector2D InteractionViewportSize(800.0f, 600.0f);
+    const TSharedRef<SVirtualWindow> InteractionWindow = SNew(SVirtualWindow).Size(InteractionViewportSize);
+    InteractionWindow->SetContent(LayerStack);
+    GV2PresentationTestFixtures::GV2SimulateResponsiveFrame(InteractionWindow, InteractionViewportSize);
+
+    const FVector2D ProbePosition(700.0f, 500.0f);
+    const TArray<TSharedRef<SWindow>> InteractionWindows{InteractionWindow};
+    const FWidgetPath HitPath = FSlateApplication::Get().LocateWindowUnderMouse(
+        ProbePosition,
+        InteractionWindows,
+        false);
+    TestTrue(TEXT("PEP-06B: a real Slate hit test under the open hover window yields a path"),
+        HitPath.IsValid());
+    TestTrue(
+        TEXT("PEP-06B Done: the hit path reaches the lower-layer control through the open hover window"),
+        HitPath.ContainsWidget(&LowerLayerButton.Get()));
 
     // 3. Anchor positioning: no cursor anywhere in this test -- a direct call, read back
     // from the real canvas slot, called twice with different points to prove the position

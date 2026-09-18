@@ -20,8 +20,8 @@ decisions:
 > **Владеет:** различием между восстановимым desired presentation и одноразовыми эффектами.
 > **Не владеет:** тем, что именно показывать, и порядком гейплейных фактов.
 > **Инварианты:** [INV-014](../Architecture/Invariants.md)
-> **Реализация:** `Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2RuntimeSession.h` (`FPresentationEffect`, `PublishHostLocalEffect`/`TakePendingEffects`, `ResolveEffectTarget`); `Source/GV2PresentationApply/Public/GV2PresentationApply/PresentationEffectApply.h` (`FGV2PresentationEffectApply::Apply`, `EPresentationEffectKind`); `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp` (`PublishHoverEffect`/`DrainPresentationEffects` — единственная точка дренажа, host-local hover — первый производственный источник).
-> **Проверки:** `GV2.Runtime.Presentation.PresentationEffectConformance` (DTO, очередь, монотонность `sequence` при чередовании источников, три причины отбрасывания, non-persistence через реальный save/load), `GV2.Runtime.Presentation.PresentationEffectApply` (Game-Thread guard, exhaustive dispatch), `GV2.Runtime.Presentation.HoverEffectQueueContract` (реальный host-local продюсер и реальное отбрасывание), `GV2.Runtime.Presentation.HoverEffectNeverCrossesLua`.
+> **Реализация:** `Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2RuntimeSession.h` (`FPresentationEffect`, `PublishHostLocalEffect`/`TakePendingEffects`, `ResolveEffectTarget`); `FGV2SessionCoordinator::DrainPresentationEffects` (единственный pull после каждого protected runtime entry и по запросу host-local producer); `UGV2RuntimeSubsystem::HandlePresentationEffects` (общий resolve/apply path обоих источников); `Source/GV2PresentationApply/Public/GV2PresentationApply/PresentationEffectApply.h` (`FGV2PresentationEffectApply::Apply`, `EPresentationEffectKind`).
+> **Проверки:** `GV2.Runtime.Presentation.PresentationEffectConformance` (DTO, очередь, монотонность `sequence` при чередовании источников, три причины отбрасывания, non-persistence через реальный save/load), `GV2.Runtime.Presentation.PresentationEffectApply` (Game-Thread guard, exhaustive dispatch), `GV2.Runtime.Presentation.EffectsDrainAfterRuntimeEntry` (production drain после runtime entry без hover), `GV2.Runtime.Presentation.HoverEffectQueueContract` (accepted effect вызывает физическое действие, rejected effect его не вызывает), `GV2.Runtime.Presentation.HoverEffectNeverCrossesLua`.
 
 Сообщения презентации разделены на durable desired snapshot и one-shot effects. Snapshot достаточен для полного восстановления presentation; effect никогда не является единственным носителем важного состояния.
 
@@ -114,6 +114,7 @@ Gameplay state не меняется в результате rebuild.
 - Same/older revision ignored.
 - Effects have sequence and optional target identity.
 - `sequence` монотонно возрастает по всей очереди независимо от источника; второго счётчика не существует.
+- После каждого protected Lua entry host обязан немедленно вызвать единственную точку дренажа до выполнения несвязанной host-local работы. Поэтому committed Lua batch получает `sequence` до следующего host-local события; оставлять Lua batch до будущего hover запрещено.
 - Отбрасывание эффекта несёт типизированную причину: stale target, чужое поколение сессии, устаревшая ревизия. Общий булев отказ не допускается — он делает неотличимой доставку в чужую сессию от штатного отбрасывания.
 - Snapshot application is atomic at logical presentation level; partial apply cannot become interactive.
 - Failed effect does not invalidate snapshot or gameplay state.

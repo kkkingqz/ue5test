@@ -144,10 +144,10 @@ bool FGV2HostLocalDepartureAcceptsInputContract::RunTest(const FString& Paramete
     TestFalse(TEXT("A Stale departure never accepts input"), GV2HostLocalDepartureAcceptsInput(Stale));
     TestTrue(TEXT("A SelfDismissing departure always accepts input"), GV2HostLocalDepartureAcceptsInput(SelfDismissing));
 
-    // FGV2StaleHostLocalDeparture is an empty struct -- there is no field on it a caller
-    // could set to make it accept input, which is the structural claim this task makes.
-    // sizeof > 0 only because C++ forbids a zero-size object; it carries no DATA member.
-    static_assert(sizeof(FGV2StaleHostLocalDeparture) >= 1, "empty struct, no input-related field exists to set");
+    // The production header uses std::is_empty_v for the no-policy-data claim and an
+    // overload visitor for compiler exhaustiveness. These runtime assertions prove the
+    // two current alternatives reach their respective production overloads.
+    static_assert(std::is_empty_v<FGV2StaleHostLocalDeparture>);
 
     return true;
 }

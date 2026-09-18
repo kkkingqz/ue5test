@@ -1035,6 +1035,82 @@ bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PresentationEffectsDrainAfterRuntimeEntryTest,
+    "GV2.Runtime.Presentation.EffectsDrainAfterRuntimeEntry",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PresentationEffectsDrainAfterRuntimeEntryTest::RunTest(const FString& Parameters)
+{
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
+
+    TArray<FString> AppliedEffectIds;
+    Coordinator.SetEffectSink([&AppliedEffectIds](const std::vector<GV2RuntimeCore::FPresentationEffect>& Effects)
+    {
+        for (const GV2RuntimeCore::FPresentationEffect& Effect : Effects)
+        {
+            AppliedEffectIds.Add(UTF8_TO_TCHAR(Effect.EffectId.c_str()));
+        }
+    });
+
+    TestTrue(TEXT("Coordinator starts for effect-drain production-path test"),
+        Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+    AppliedEffectIds.Reset();
+
+    TArray<FGV2UiBindingHandle> Handles;
+    TestTrue(TEXT("A real semantic-input binding is published"),
+        Coordinator.PublishUiBindings(
+            TEXT("ui@1:1"),
+            2,
+            {MakeBindingDefinition(TEXT("effect_drain"), TEXT("core:command.test.effect_drain"))},
+            Handles));
+    if (Handles.Num() != 1)
+    {
+        return false;
+    }
+
+    const char* LuaPublishChunk = R"lua(
+return {
+    publish_effect_for_coordinator_drain = function()
+        local ok, err = game.ui.publish_effect({ effect_id = "core:effect.test.drain_after_entry" })
+        assert(ok, tostring(err))
+        return true
+    end,
+}
+)lua";
+    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> LuaCases;
+    GV2RuntimeCore::FRuntimeFault PublishFault;
+    TestTrue(TEXT("Lua publishes an effect into the real outbound queue"),
+        Coordinator.GetRuntimeSession().RunLuaSpec(
+            "effects_drain_after_runtime_entry",
+            LuaPublishChunk,
+            LuaCases,
+            PublishFault));
+    TestEqual(TEXT("The Lua publication case succeeds"), LuaCases.size(), size_t{1});
+    TestTrue(TEXT("The Lua publication itself does not re-enter the host apply sink"),
+        LuaCases.size() == 1 && LuaCases[0].Success);
+    TestEqual(TEXT("The effect remains pending until coordinator regains control"), AppliedEffectIds.Num(), 0);
+
+    TestEqual(TEXT("Semantic input executes through the production coordinator path"),
+        Coordinator.SubmitUiInteraction(Handles[0], {}),
+        EGV2SubmitUiInteractionResult::Accepted);
+    TestEqual(TEXT("The post-entry drain delivers exactly one queued effect without any hover event"),
+        AppliedEffectIds.Num(), 1);
+    if (AppliedEffectIds.Num() == 1)
+    {
+        TestEqual(TEXT("The delivered effect is the one queued before the entry"),
+            AppliedEffectIds[0], FString(TEXT("core:effect.test.drain_after_entry")));
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2RuntimeInputSchemaTest,
     "GV2.Runtime.Ingress.InputSchemaValidation",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

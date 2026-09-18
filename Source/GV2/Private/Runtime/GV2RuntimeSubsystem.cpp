@@ -178,6 +178,10 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     {
         PublishActiveProjection();
     });
+    Coordinator->SetEffectSink([this](const std::vector<GV2RuntimeCore::FPresentationEffect>& Effects)
+    {
+        HandlePresentationEffects(Effects);
+    });
 #if !UE_BUILD_SHIPPING
     StartGameInstanceHandle = FWorldDelegates::OnStartGameInstance.AddUObject(
         this,
@@ -205,6 +209,7 @@ void UGV2RuntimeSubsystem::Deinitialize()
         Coordinator->ClearDocumentSink();
         Coordinator->ClearProjectionTeardownSink();
         Coordinator->ClearProjectionPublishSink();
+        Coordinator->ClearEffectSink();
         Coordinator.Reset();
     }
     SaveSlotStorage.reset();
@@ -512,6 +517,8 @@ UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::GetActiveScreenInLayer(FName Layer, 
 
 bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, float DurationSeconds, FName& OutInstanceKey, FString& OutError)
 {
+    OutInstanceKey = NAME_None;
+    OutError.Reset();
     UGV2ScreenWidgetBase* ScreenWidget = Cast<UGV2ScreenWidgetBase>(Widget);
     // Read-only null check, never an assignment -- written as !ActiveGameShell (not
     // ActiveGameShell == nullptr) so validate_session_replacement_ownership.py's
@@ -522,20 +529,38 @@ bool UGV2RuntimeSubsystem::OpenHoverOverlay(UUserWidget* Widget, float DurationS
         OutError = TEXT("core:diagnostic.ui_consumer.hover_overlay_unavailable: no active game shell or hover screen widget");
         return false;
     }
-    // PEP-07: the physical action stays exactly what PEP-06B built (Attach is unconditional,
-    // never gated by the effect below) -- publishing only adds the queue's own proof of
-    // delivery/discard alongside it, per the plan's own "discarded effect is not obligated to
-    // close a window" rule.
-    if (!Reconciler->AttachHostLocalScreen(
-        ActiveGameShell,
-        UGV2GameShellWidgetBase::LayerOverlayStack,
-        ScreenWidget,
-        OutInstanceKey,
-        OutError))
+    if (PendingHoverOpenEffect.IsSet())
     {
+        OutError = TEXT("core:diagnostic.presentation_effect.reentrant_hover_open: another hover-open effect is being applied");
         return false;
     }
-    PublishHoverEffect(TEXT("core:effect.rich_text_hover_open"), OutInstanceKey, DurationSeconds);
+
+    const FString RequestId = FString::Printf(TEXT("hover_open:%llu"), NextHoverOpenRequestId++);
+    PendingHoverOpenEffect = FPendingHoverOpenEffect{RequestId, ScreenWidget};
+
+    GV2RuntimeCore::FValue::FObject Args;
+    Args.emplace("request_id", GV2RuntimeCore::FValue(std::string(TCHAR_TO_UTF8(*RequestId))));
+    Args.emplace(
+        "duration_ms",
+        GV2RuntimeCore::FValue(static_cast<std::int64_t>(FMath::RoundToInt(DurationSeconds * 1000.0f))));
+
+    FString PublishError;
+    const bool bPublished = PublishHoverEffect(
+        TEXT("core:effect.rich_text_hover_open"),
+        std::move(Args),
+        PublishError);
+    FPendingHoverOpenEffect Result = MoveTemp(PendingHoverOpenEffect.GetValue());
+    PendingHoverOpenEffect.Reset();
+    if (!bPublished || !Result.bHandled || !Result.bApplied)
+    {
+        OutError = !PublishError.IsEmpty()
+            ? MoveTemp(PublishError)
+            : (!Result.Error.IsEmpty()
+                ? MoveTemp(Result.Error)
+                : TEXT("core:diagnostic.presentation_effect.hover_open_not_applied: queued hover-open effect was not applied"));
+        return false;
+    }
+    OutInstanceKey = Result.InstanceKey;
     return true;
 }
 
@@ -546,12 +571,16 @@ void UGV2RuntimeSubsystem::CloseHoverOverlay(FName InstanceKey)
     {
         return;
     }
+    GV2RuntimeCore::FValue::FObject Args;
+    Args.emplace(
+        "instance_key",
+        GV2RuntimeCore::FValue(std::string(TCHAR_TO_UTF8(*InstanceKey.ToString()))));
+    Args.emplace("duration_ms", GV2RuntimeCore::FValue(std::int64_t{0}));
     FString Error;
-    if (!Reconciler->DetachHostLocalScreen(ActiveGameShell, UGV2GameShellWidgetBase::LayerOverlayStack, InstanceKey, Error))
+    if (!PublishHoverEffect(TEXT("core:effect.rich_text_hover_close"), std::move(Args), Error))
     {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Hover overlay detach failed: %s"), *Error);
+        UE_LOG(LogGV2Runtime, Error, TEXT("Hover overlay close effect failed: %s"), *Error);
     }
-    PublishHoverEffect(TEXT("core:effect.rich_text_hover_close"), InstanceKey, 0.0f);
 }
 
 void UGV2RuntimeSubsystem::SetHoverOverlayDeparture(
@@ -583,11 +612,16 @@ void UGV2RuntimeSubsystem::SetHoverOverlayDeparture(
 // truth. Args carries only the host-local participant key PEP-06's AttachHostLocalScreen
 // already returns/DetachHostLocalScreen already consumes -- the one piece of addressing data
 // a widget needs, resolved back through that same registry, never a second index.
-void UGV2RuntimeSubsystem::PublishHoverEffect(const TCHAR* EffectId, FName InstanceKey, float DurationSeconds)
+bool UGV2RuntimeSubsystem::PublishHoverEffect(
+    const TCHAR* EffectId,
+    GV2RuntimeCore::FValue::FObject Args,
+    FString& OutError)
 {
+    OutError.Reset();
     if (!Coordinator.IsValid())
     {
-        return;
+        OutError = TEXT("core:diagnostic.presentation_effect.runtime_unavailable: no session coordinator");
+        return false;
     }
 
     GV2RuntimeCore::FPresentationEffect Effect;
@@ -595,20 +629,18 @@ void UGV2RuntimeSubsystem::PublishHoverEffect(const TCHAR* EffectId, FName Insta
     Effect.bHasTarget = true;
     Effect.TargetUiInstanceId = TCHAR_TO_UTF8(*Coordinator->GetBindingRegistry().GetUiInstanceId());
     Effect.TargetRevision = Coordinator->GetBindingRegistry().GetRevision();
-    Effect.Args.emplace(
-        "instance_key",
-        GV2RuntimeCore::FValue(std::string(TCHAR_TO_UTF8(*InstanceKey.ToString()))));
-    Effect.Args.emplace(
-        "duration_ms",
-        GV2RuntimeCore::FValue(static_cast<std::int64_t>(FMath::RoundToInt(DurationSeconds * 1000.0f))));
+    Effect.Args = std::move(Args);
 
     GV2RuntimeCore::FRuntimeFault PublishFault;
     if (!Coordinator->GetRuntimeSession().PublishHostLocalEffect(Effect, PublishFault))
     {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Hover effect publish failed: %s"), UTF8_TO_TCHAR(PublishFault.Message.c_str()));
-        return;
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.presentation_effect.publish_failed: %s"),
+            UTF8_TO_TCHAR(PublishFault.Message.c_str()));
+        return false;
     }
     DrainPresentationEffects();
+    return Coordinator->GetStatus().bIsReady;
 }
 
 // PEP-07: the ONE production call to TakePendingEffects (GV2.Runtime.Presentation.
@@ -621,14 +653,16 @@ void UGV2RuntimeSubsystem::PublishHoverEffect(const TCHAR* EffectId, FName Insta
 // since the physical action already happened synchronously before publish.
 void UGV2RuntimeSubsystem::DrainPresentationEffects()
 {
-    if (!Coordinator.IsValid())
+    if (Coordinator.IsValid())
     {
-        return;
+        Coordinator->DrainPresentationEffects();
     }
+}
 
-    std::vector<GV2RuntimeCore::FPresentationEffect> Effects;
-    GV2RuntimeCore::FRuntimeFault DrainFault;
-    if (!Coordinator->GetRuntimeSession().TakePendingEffects(Effects, DrainFault))
+void UGV2RuntimeSubsystem::HandlePresentationEffects(
+    const std::vector<GV2RuntimeCore::FPresentationEffect>& Effects)
+{
+    if (!Coordinator.IsValid())
     {
         return;
     }
@@ -650,6 +684,74 @@ void UGV2RuntimeSubsystem::DrainPresentationEffects()
 #if WITH_DEV_AUTOMATION_TESTS
         LastDrainedEffectDiagnostics.Add({UTF8_TO_TCHAR(Effect.EffectId.c_str()), RejectReason});
 #endif
+        const FString EffectId = UTF8_TO_TCHAR(Effect.EffectId.c_str());
+        const auto ReadStringArg = [&Effect](const char* Name) -> TOptional<FString>
+        {
+            const auto It = Effect.Args.find(Name);
+            if (It == Effect.Args.end() || !std::holds_alternative<std::string>(It->second.Data))
+            {
+                return {};
+            }
+            return FString(UTF8_TO_TCHAR(std::get<std::string>(It->second.Data).c_str()));
+        };
+
+        if (EffectId == TEXT("core:effect.rich_text_hover_open"))
+        {
+            const TOptional<FString> RequestId = ReadStringArg("request_id");
+            if (PendingHoverOpenEffect.IsSet()
+                && RequestId.IsSet()
+                && PendingHoverOpenEffect->RequestId == *RequestId)
+            {
+                PendingHoverOpenEffect->bHandled = true;
+                if (RejectReason != GV2RuntimeCore::EPresentationEffectRejectReason::None)
+                {
+                    PendingHoverOpenEffect->Error = TEXT("core:diagnostic.presentation_effect.hover_open_target_rejected");
+                    continue;
+                }
+                UGV2ScreenWidgetBase* Widget = PendingHoverOpenEffect->Widget.Get();
+                if (Widget == nullptr || !ActiveGameShell || !Reconciler.IsValid())
+                {
+                    PendingHoverOpenEffect->Error = TEXT("core:diagnostic.presentation_effect.hover_open_target_missing");
+                    continue;
+                }
+                PendingHoverOpenEffect->bApplied = Reconciler->AttachHostLocalScreen(
+                    ActiveGameShell,
+                    UGV2GameShellWidgetBase::LayerOverlayStack,
+                    Widget,
+                    PendingHoverOpenEffect->InstanceKey,
+                    PendingHoverOpenEffect->Error);
+            }
+            continue;
+        }
+
+        if (EffectId == TEXT("core:effect.rich_text_hover_close"))
+        {
+            if (RejectReason != GV2RuntimeCore::EPresentationEffectRejectReason::None)
+            {
+                continue;
+            }
+            const TOptional<FString> InstanceKeyValue = ReadStringArg("instance_key");
+            if (!InstanceKeyValue.IsSet() || !ActiveGameShell || !Reconciler.IsValid())
+            {
+                UE_LOG(LogGV2Runtime, Error, TEXT("Accepted hover-close effect has no applicable instance_key"));
+                continue;
+            }
+            FString Error;
+            if (!Reconciler->DetachHostLocalScreen(
+                    ActiveGameShell,
+                    UGV2GameShellWidgetBase::LayerOverlayStack,
+                    FName(**InstanceKeyValue),
+                    Error))
+            {
+                UE_LOG(LogGV2Runtime, Error, TEXT("Hover overlay detach failed: %s"), *Error);
+            }
+            continue;
+        }
+
+        if (RejectReason == GV2RuntimeCore::EPresentationEffectRejectReason::None)
+        {
+            UE_LOG(LogGV2Runtime, Warning, TEXT("Unsupported presentation effect: %s"), *EffectId);
+        }
     }
 }
 

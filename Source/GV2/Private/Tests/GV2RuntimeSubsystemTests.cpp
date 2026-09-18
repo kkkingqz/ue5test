@@ -2818,7 +2818,7 @@ bool FGV2UiTabContainerLifecycleAndCycleContractTest::RunTest(const FString& Par
 namespace
 {
 // PEP-07: extracts the {...} body of UGV2RuntimeSubsystem::FunctionName's own definition
-// (not merely a call site) via brace matching -- good enough for the four small,
+// (not merely a call site) via brace matching -- good enough for the five small,
 // non-overloaded functions GV2.Runtime.Presentation.HoverEffectNeverCrossesLua targets.
 // Returns empty on no match, which the caller must treat as a scan failure, not a vacuous
 // pass over nothing.
@@ -2861,7 +2861,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 // PEP-07 (SemanticInput.md:110, WidgetRegistry.md:278): hover/unhover must never cross the
-// Lua boundary. This walks the actual call sites in the four functions the hover path now
+// Lua boundary. This walks the actual call sites in the five functions the hover path now
 // runs through, not just a comment claiming they don't -- a text scan, symmetric to DCA-15's
 // own idiom (GV2LayoutInvariantSourceTests.cpp), over a small, explicit function set rather
 // than a general call-graph walker.
@@ -2880,6 +2880,7 @@ bool FGV2HoverEffectNeverCrossesLuaContract::RunTest(const FString& Parameters)
         TEXT("CloseHoverOverlay"),
         TEXT("PublishHoverEffect"),
         TEXT("DrainPresentationEffects"),
+        TEXT("HandlePresentationEffects"),
     };
 
     // The exact set of symbols that name a Lua-crossing entry point reachable from this
@@ -2912,7 +2913,7 @@ bool FGV2HoverEffectNeverCrossesLuaContract::RunTest(const FString& Parameters)
                 Body.Contains(Symbol));
         }
     }
-    TestEqual(TEXT("All four hover-path functions were actually scanned"), FunctionsScanned, HoverFunctionNames.Num());
+    TestEqual(TEXT("Every named hover-path function was actually scanned"), FunctionsScanned, HoverFunctionNames.Num());
 
     // "One counter, one queue, one drain point" -- exactly one production call site may call
     // TakePendingEffects; a second would let two independent drain loops race the same queue.

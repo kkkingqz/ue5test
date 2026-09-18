@@ -445,7 +445,7 @@ python3 Tools/MCP/run_ue_tests.py --filter StartsWith:GV2
 
 Первая фиксируемая C++/Lua foundation surface — Linux Development: portable CMake/CTest и `gv2-headless`, `GV2Editor`/игровой UE host, synchronous desired presentation, централизованные text/image/Screen Fields/Semantic Input paths, commands/services/events, `Menu | NewGame | LoadSave | Restart | Reload | Shutdown`, opaque slot storage и Lua authoring.
 
-Shipping/cook/package, другие ОС и power-loss storage durability не входят в этот baseline без отдельного evidence. Enter/exit-анимации реконсиляции (`STATUS-003`) закрыты `PresentationEffectPipeline` (`PEP-02`/`PEP-06`–`PEP-09`, [ADR-0048](../ADR/0048-widget-exit-lifecycle-and-input-gating.md)).
+Shipping/cook/package, другие ОС и power-loss storage durability не входят в этот baseline без отдельного evidence. Различение stale/self-dismissal, input gating и реальный animated interval host-local hover закрыты `PresentationEffectPipeline` (`PEP-02`/`PEP-06`–`PEP-09`, [ADR-0048](../ADR/0048-widget-exit-lifecycle-and-input-gating.md)); общий animated swap документных экранов в baseline не входит.
 
 Universal acceptance assertion обязано называть actual enumerator, независимый oracle и production path. Для активного плана actual task set выводится из checkbox headings всех его файлов; ручное число или milestone summary не заменяет это множество. Для UE run actual set выводится discovery текущего build, а completed records обязаны совпасть с ним один к одному. Для enum/variant используется compiler/exhaustive dispatch. Неизвестная форма inventory считается отказом проверки.
 

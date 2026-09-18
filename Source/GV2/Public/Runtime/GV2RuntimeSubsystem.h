@@ -164,7 +164,10 @@ private:
     // duration_ms alongside the participant key -- DTO completeness for the one-shot signal,
     // not something the drain reads back: the fade ticker (GV2RichTextWidgetBase) already
     // has the same value in hand from the span it resolved, and uses that copy directly.
-    void PublishHoverEffect(const TCHAR* EffectId, FName InstanceKey, float DurationSeconds);
+    bool PublishHoverEffect(
+        const TCHAR* EffectId,
+        GV2RuntimeCore::FValue::FObject Args,
+        FString& OutError);
 
     // PEP-07: the ONE production call site for FRuntimeSession::TakePendingEffects --
     // "one counter, one queue, one drain point" (the queue's own doc comment). Resolves
@@ -174,6 +177,7 @@ private:
     // this drain is the queue's proof of delivery/discard, not a second gate on the
     // physical action AttachHostLocalScreen/DetachHostLocalScreen already performed.
     void DrainPresentationEffects();
+    void HandlePresentationEffects(const std::vector<GV2RuntimeCore::FPresentationEffect>& Effects);
 
 public:
 #if WITH_DEV_AUTOMATION_TESTS
@@ -210,6 +214,19 @@ public:
 #endif
 
 private:
+    struct FPendingHoverOpenEffect
+    {
+        FString RequestId;
+        TWeakObjectPtr<UGV2ScreenWidgetBase> Widget;
+        bool bHandled = false;
+        bool bApplied = false;
+        FName InstanceKey;
+        FString Error;
+    };
+
+    TOptional<FPendingHoverOpenEffect> PendingHoverOpenEffect;
+    uint64 NextHoverOpenRequestId = 1;
+
     TPimplPtr<FGV2SessionCoordinator> Coordinator;
     TPimplPtr<FGV2RepositoryPublisher> RepositoryPublisher;
     std::unique_ptr<GV2RuntimeCore::FFilesystemSaveSlotStorage> SaveSlotStorage;

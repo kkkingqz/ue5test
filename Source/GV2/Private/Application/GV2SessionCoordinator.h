@@ -17,6 +17,7 @@ public:
         const FGV2PresentationPrepareContext&)>;
     using FProjectionTeardownSink = TFunction<void()>;
     using FProjectionPublishSink = TFunction<void()>;
+    using FEffectSink = TFunction<void(const std::vector<GV2RuntimeCore::FPresentationEffect>&)>;
 
     explicit FGV2SessionCoordinator(int32 InIngressCapacity = 256);
 
@@ -28,6 +29,13 @@ public:
     void ClearProjectionTeardownSink();
     void SetProjectionPublishSink(FProjectionPublishSink InSink);
     void ClearProjectionPublishSink();
+    void SetEffectSink(FEffectSink InSink);
+    void ClearEffectSink();
+
+    // The single host drain for both Lua-published and host-local effects. Callers may
+    // request a drain after publishing a host-local effect; coordinator-owned protected
+    // runtime entries invoke the same method before returning to unrelated host work.
+    bool DrainPresentationEffects();
 
     // PCC-36: PinnedRepository must be a valid read handle obtained from the
     // Application-scope FGV2RepositoryPublisher current snapshot at the time
@@ -251,6 +259,7 @@ private:
     FDocumentSink DocumentSink;
     FProjectionTeardownSink ProjectionTeardownSink;
     FProjectionPublishSink ProjectionPublishSink;
+    FEffectSink EffectSink;
     TMap<FString, FString> ActiveTabsByContainerPath;
     int64 NextInputSequence = 1;
     int64 UiRevision = 0;

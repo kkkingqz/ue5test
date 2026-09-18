@@ -4,6 +4,8 @@
 #include "Misc/TVariant.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 
+#include <type_traits>
+
 #include "GV2PresentationInteractionSink.generated.h"
 
 class UUserWidget;
@@ -24,12 +26,23 @@ struct GV2PRESENTATIONAPPLY_API FGV2SelfDismissingHostLocalDeparture
 
 using FGV2HostLocalDepartureState = TVariant<FGV2StaleHostLocalDeparture, FGV2SelfDismissingHostLocalDeparture>;
 
+static_assert(std::is_empty_v<FGV2StaleHostLocalDeparture>,
+    "A stale departure must not carry an independently configurable input policy.");
+
+struct FGV2HostLocalDepartureInputVisitor
+{
+    bool operator()(const FGV2StaleHostLocalDeparture&) const { return false; }
+    bool operator()(const FGV2SelfDismissingHostLocalDeparture&) const { return true; }
+};
+
 // PEP-09: the ONE place "does this departure kind accept input" is decided -- a two-way
 // IsType check, not a stored bool, so the answer can never disagree with which alternative
 // the state actually is.
 inline bool GV2HostLocalDepartureAcceptsInput(const FGV2HostLocalDepartureState& Departure)
 {
-    return Departure.IsType<FGV2SelfDismissingHostLocalDeparture>();
+    // Visit is the enumerator: adding a third variant alternative without an explicit
+    // overload fails compilation instead of silently inheriting a default answer.
+    return Visit(FGV2HostLocalDepartureInputVisitor{}, Departure);
 }
 
 // Upward interaction ingress is deliberately separate from presentation Apply.  Widget
