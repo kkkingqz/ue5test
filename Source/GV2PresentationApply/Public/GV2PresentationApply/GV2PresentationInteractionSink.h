@@ -1,11 +1,36 @@
 #pragma once
 
 #include "GV2PresentationApply/GV2WidgetTypes.h"
+#include "Misc/TVariant.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 
 #include "GV2PresentationInteractionSink.generated.h"
 
 class UUserWidget;
+
+// PEP-09 (ADR-0048): the two kinds of exit, distinguished by TYPE, not by an orthogonal
+// "accepts input" flag any caller could set inconsistently. FGV2StaleHostLocalDeparture
+// carries no field at all for input acceptance -- there is nothing to set wrong, which is
+// what "interactive stale is unrepresentable" means concretely. A departure being
+// self-dismissing is what makes it interactive; that is intrinsic to the alternative
+// itself, not a property attached to it.
+struct GV2PRESENTATIONAPPLY_API FGV2StaleHostLocalDeparture
+{
+};
+
+struct GV2PRESENTATIONAPPLY_API FGV2SelfDismissingHostLocalDeparture
+{
+};
+
+using FGV2HostLocalDepartureState = TVariant<FGV2StaleHostLocalDeparture, FGV2SelfDismissingHostLocalDeparture>;
+
+// PEP-09: the ONE place "does this departure kind accept input" is decided -- a two-way
+// IsType check, not a stored bool, so the answer can never disagree with which alternative
+// the state actually is.
+inline bool GV2HostLocalDepartureAcceptsInput(const FGV2HostLocalDepartureState& Departure)
+{
+    return Departure.IsType<FGV2SelfDismissingHostLocalDeparture>();
+}
 
 // Upward interaction ingress is deliberately separate from presentation Apply.  Widget
 // lifecycle code can submit an opaque handle or a user-selected tab, while prepared
@@ -42,6 +67,14 @@ public:
     }
 
     virtual void CloseHoverOverlay(FName InstanceKey) {}
+
+    // PEP-09 (ADR-0048): names which of the two exits InstanceKey is undergoing, the moment
+    // that is DECIDED -- Stale as soon as reconciliation removes the span/screen this hover
+    // depended on (before any fade even reflects it), SelfDismissal as soon as the cursor
+    // leaves. Gates input immediately, independent of the physical detach the fade may still
+    // be playing out; a discarded/late call changes nothing already gated. Default is a
+    // no-op, matching every other virtual on this sink.
+    virtual void SetHoverOverlayDeparture(FName InstanceKey, const FGV2HostLocalDepartureState& Departure) {}
 
     static UGV2PresentationInteractionSink* Find(const UObject* WorldContext);
 };

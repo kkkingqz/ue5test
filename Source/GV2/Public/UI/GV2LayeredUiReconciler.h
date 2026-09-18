@@ -159,6 +159,12 @@ public:
     UGV2ScreenWidgetBase* GetActiveScreen(FName Layer, FName InstanceKey) const;
     const TMap<FScreenSlotKey, FActiveScreenEntry>& GetActiveScreens() const { return ActiveScreens; }
 
+    // PEP-09: read-only lookup into the host-local registry (PEP-06), for a caller (the
+    // runtime sink override) that only has the synthetic instance key AttachHostLocalScreen
+    // returned and needs the widget back to gate its input on departure -- never a second
+    // index, the same registry AttachHostLocalScreen/DetachHostLocalScreen already own.
+    UGV2ScreenWidgetBase* GetHostLocalScreen(FName Layer, FName InstanceKey) const;
+
     // PEP-06: every host-local instance key this reconciler ever issues carries this
     // prefix, which no document-authored instance_key can (Lua identifiers never contain
     // ':' -- the same reservation Stable IDs already rely on). This is the single source

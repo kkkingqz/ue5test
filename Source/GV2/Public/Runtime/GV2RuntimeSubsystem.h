@@ -118,6 +118,13 @@ public:
     virtual bool OpenHoverOverlay(UUserWidget* Widget, float DurationSeconds, FName& OutInstanceKey, FString& OutError) override;
     virtual void CloseHoverOverlay(FName InstanceKey) override;
 
+    // PEP-09 (ADR-0048): resolves InstanceKey through the SAME host-local registry
+    // Attach/DetachHostLocalScreen already own (GetHostLocalScreen, PEP-06 -- never a second
+    // index) and gates its input right here, synchronously, independent of whatever the fade
+    // is still doing physically. GV2HostLocalDepartureAcceptsInput is the one place that
+    // decides Stale vs SelfDismissal actually means disabled vs enabled.
+    virtual void SetHoverOverlayDeparture(FName InstanceKey, const FGV2HostLocalDepartureState& Departure) override;
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     FString GetActiveTab(const FString& ContainerPath) const;
 

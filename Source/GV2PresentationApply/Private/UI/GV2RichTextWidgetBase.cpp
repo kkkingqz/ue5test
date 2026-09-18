@@ -126,27 +126,44 @@ void UGV2RichTextWidgetBase::NativeTick(const FGeometry& MyGeometry, float InDel
 void UGV2RichTextWidgetBase::HandleHoverTransition(EGV2SpanHoverTransition Transition, FName TransitionedSpanId)
 {
     if (Transition == EGV2SpanHoverTransition::Began && HoverFadeStage == EGV2HoverFadeStage::Leaving
-        && TransitionedSpanId == ActiveHoverSpanId)
+        && TransitionedSpanId == ActiveHoverSpanId && !bActiveHoverIsStale)
     {
-        // PEP-08: cursor returned to the same span -- or to the still-open window itself,
+        // PEP-08/09: cursor returned to the same span -- or to the still-open window itself,
         // since CaptureHoverableSpanAnchors also anchors the open window's own rect under
         // ActiveHoverSpanId -- while it was leaving. Cancel: resume appearing from whatever
-        // opacity it already reached, not from zero and not with a snapped jump.
+        // opacity it already reached, not from zero and not with a snapped jump. Excluded
+        // for a Stale departure (ADR-0048): its content is already gone, re-hovering cannot
+        // un-remove it, so a same-span Began there falls through to the ordinary
+        // close-then-reopen branch below instead.
         HoverFadeStage = EGV2HoverFadeStage::Appearing;
     }
     else if (Transition == EGV2SpanHoverTransition::Began || Transition == EGV2SpanHoverTransition::Changed)
     {
         // Changed means a different span took over with no gap reported -- close whatever
-        // was open first; Began means nothing was open (or the leave already finished),
-        // making the close a no-op.
+        // was open first; Began means nothing was open (or the leave already finished, or it
+        // was Stale and therefore not cancellable), making the close a no-op or a real one.
         CloseActiveHoverOverlay();
         OpenHoverOverlayForSpan(TransitionedSpanId);
     }
     else if (Transition == EGV2SpanHoverTransition::Ended && !ActiveHoverInstanceKey.IsNone())
     {
         // The window itself is not destroyed here -- only the fade direction reverses.
-        // TickHoverFade is what actually closes it, once opacity reaches zero.
+        // TickHoverFade is what actually closes it, once opacity reaches zero. This branch
+        // is always a SelfDismissal (a Stale departure is decided in
+        // DetectStaleHoverBeforeSpansChange, from spans changing, never from a hover
+        // transition) -- ADR-0048's own rule that self-dismissal stays interactive is
+        // exactly "leave HoverFadeStage's own gating alone here".
         HoverFadeStage = EGV2HoverFadeStage::Leaving;
+        if (!bActiveHoverIsStale)
+        {
+            if (UGV2PresentationInteractionSink* Sink = UGV2PresentationInteractionSink::Find(this))
+            {
+                Sink->SetHoverOverlayDeparture(
+                    ActiveHoverInstanceKey,
+                    FGV2HostLocalDepartureState(
+                        TInPlaceType<FGV2SelfDismissingHostLocalDeparture>()));
+            }
+        }
     }
 }
 
@@ -194,6 +211,7 @@ void UGV2RichTextWidgetBase::OpenHoverOverlayForSpan(FName SpanId)
     // is never called while one is already open for a different span without CloseActiveHoverOverlay
     // running first), so there is no "current" opacity to continue from yet.
     HoverFadeOpacity = 0.0f;
+    bActiveHoverIsStale = false;
 }
 
 void UGV2RichTextWidgetBase::CloseActiveHoverOverlay()
@@ -212,6 +230,45 @@ void UGV2RichTextWidgetBase::CloseActiveHoverOverlay()
     HoverFadeStage = EGV2HoverFadeStage::None;
     HoverFadeOpacity = 0.0f;
     HoverFadeDurationSeconds = 0.0f;
+    bActiveHoverIsStale = false;
+}
+
+void UGV2RichTextWidgetBase::DetectStaleHoverBeforeSpansChange(const TArray<FGV2RichTextSpanViewModel>& NewSpans)
+{
+    if (ActiveHoverInstanceKey.IsNone() || bActiveHoverIsStale)
+    {
+        // Nothing open, or already marked Stale by an earlier call -- ADR-0048's rule fires
+        // once, at the first moment the shown state is found gone, not on every subsequent
+        // reconcile while the fade keeps playing.
+        return;
+    }
+    const FGV2RichTextSpanViewModel* StillThere = NewSpans.FindByPredicate(
+        [this](const FGV2RichTextSpanViewModel& Span) { return Span.SpanId == ActiveHoverSpanId; });
+    const bool bSpanRemoved = StillThere == nullptr;
+    const bool bScreenChanged = !bSpanRemoved && StillThere->Hover.ScreenWidget.Get() != ActiveHoverWidget.Get();
+    if (bSpanRemoved || bScreenChanged)
+    {
+        MarkActiveHoverStale();
+    }
+}
+
+void UGV2RichTextWidgetBase::MarkActiveHoverStale()
+{
+    // PEP-09 (ADR-0048): "Приём ввода прекращается в момент логического удаления... а не
+    // когда виджет снят с дерева." This runs BEFORE CurrentSpans is overwritten -- strictly
+    // before any fade, reposition, or physical detach reacts to the same fact.
+    bActiveHoverIsStale = true;
+    if (UGV2PresentationInteractionSink* Sink = UGV2PresentationInteractionSink::Find(this))
+    {
+        Sink->SetHoverOverlayDeparture(
+            ActiveHoverInstanceKey,
+            FGV2HostLocalDepartureState(
+                TInPlaceType<FGV2StaleHostLocalDeparture>()));
+    }
+    // The window still plays out its fade -- it may already have been Leaving (cursor left
+    // first) or still Appearing/steady (cursor never left); either way it now leaves for
+    // real, and TickHoverFade's own zero-opacity check is what physically closes it.
+    HoverFadeStage = EGV2HoverFadeStage::Leaving;
 }
 
 void UGV2RichTextWidgetBase::TickHoverFade(float DeltaTime)
@@ -311,6 +368,12 @@ bool UGV2RichTextWidgetBase::ApplyText(const FGV2TextViewModel& InText)
 
 bool UGV2RichTextWidgetBase::ApplySpans(const TArray<FGV2RichTextSpanViewModel>& InSpans)
 {
+    // PEP-09 (ADR-0048): the logical-removal moment for a currently-open hover overlay --
+    // strictly before CurrentSpans is replaced, so "is the span still there" is asked
+    // against the OLD spans one last time. ApplySpans is the one place both the real
+    // Prepare/Commit path (ApplyPreparedRichTextSpans) and the one-shot Blueprint API
+    // (ApplyInteractiveRichText) replace spans, so this is the one place that needs it.
+    DetectStaleHoverBeforeSpansChange(InSpans);
     CurrentSpans = InSpans;
     SpanIndexById.Reset();
     for (int32 Index = 0; Index < CurrentSpans.Num(); ++Index)

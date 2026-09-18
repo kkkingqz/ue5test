@@ -1,8 +1,8 @@
 ---
 title: Presentation Effect Pipeline Implementation Plan
 status: active
-version: 2.6
-updated: 2026-09-17
+version: 2.7
+updated: 2026-09-18
 depends_on:
   - ../../UI/PresentationSnapshotAndEffects.md
   - ../../UI/UIDocumentAndReconciliation.md
@@ -590,9 +590,9 @@ UE `GV2.*` automation suite 201/201 зелёный (199 было после `PEP
 
 ### PEP-09 — Развести ввод при двух видах ухода
 
-- [ ] PEP-09 — Развести ввод при двух видах ухода
+- [x] PEP-09 — Развести ввод при двух видах ухода
 
-**Зависимость:** PEP-08. **Файлы:** реализация состояний ухода из `PEP-02`; `FGV2LayeredUiReconciler`; binding registry.
+**Зависимость:** PEP-08. **Файлы:** `GV2PresentationInteractionSink.h` (`FGV2StaleHostLocalDeparture`/`FGV2SelfDismissingHostLocalDeparture`/`FGV2HostLocalDepartureState`, `GV2HostLocalDepartureAcceptsInput`, `SetHoverOverlayDeparture`); `GV2LayeredUiReconciler.h`/`.cpp` (`GetHostLocalScreen`); `GV2RuntimeSubsystem.h`/`.cpp` (`SetHoverOverlayDeparture` override); `GV2RichTextWidgetBase.h`/`.cpp` (`DetectStaleHoverBeforeSpansChange`, `MarkActiveHoverStale`, `bActiveHoverIsStale`); новый тест `GV2HoverDepartureTests.cpp`; `Docs/Status/ImplementationStatus.md`, `Docs/Architecture/BuildAndTooling.md` (снятие `STATUS-003`).
 
 **Инвариант:** [ADR-0041](../../ADR/0041-ui-commit-rollback-model.md) и правило `PEP-02`. Интерактивный stale-виджет — наблюдаемый дефект: клик по тому, чего уже нет, доходит до dispatcher. Именно этот класс отказа появляется впервые вместе с анимацией и до неё существовать не мог.
 
@@ -616,6 +616,16 @@ UE `GV2.*` automation suite 201/201 зелёный (199 было после `PEP
 - `STATUS-003` снят этим же change set.
 
 **Evidence:** мутационная проба, прогон stale-окна с убранным span, прогон клика на 40%.
+
+**Реализация.** Различие выражено типом, не флагом: `FGV2StaleHostLocalDeparture`/`FGV2SelfDismissingHostLocalDeparture` — пустые структуры (у stale физически нет поля, которое можно было бы взвести в «принимает ввод»), `FGV2HostLocalDepartureState = TVariant<...>`; единственная функция `GV2HostLocalDepartureAcceptsInput` отвечает на вопрос двусторонним `IsType<>`, а не хранимым булем. Типы объявлены в `GV2PresentationApply` (там же, где их различает `UGV2RichTextWidgetBase`), пересекают границу к `UGV2RuntimeSubsystem` тем же путём, что и `OpenHoverOverlay`/`CloseHoverOverlay` — новым методом `UGV2PresentationInteractionSink::SetHoverOverlayDeparture`.
+
+Логическое удаление — это `UGV2RichTextWidgetBase::ApplySpans` (единственное место, где `CurrentSpans` заменяется, и для настоящего Prepare/Commit пути, и для одношагового Blueprint API): `DetectStaleHoverBeforeSpansChange` проверяет СТАРЫЙ набор против НОВОГО непосредственно перед заменой — если span открытого окна пропал либо его `Hover.ScreenWidget` сменился на другой объект, `MarkActiveHoverStale` немедленно (в том же вызове) публикует `Stale` через `SetHoverOverlayDeparture` и переводит затухание в `Leaving`, не дожидаясь ни следующего тика, ни физического снятия. Обработчик `SetHoverOverlayDeparture` (`UGV2RuntimeSubsystem`) резолвит виджет через новый `FGV2LayeredUiReconciler::GetHostLocalScreen` (тот же реестр `PEP-06`, второго индекса не заведено) и переключает `SetIsEnabled` — это отключает приём ввода для всего поддерева на уровне Slate hit-testing, не соглашением в 24 местах физического снятия.
+
+Self-dismissal (уход, начатый переходом `Ended` в `HandleHoverTransition`) публикует `SelfDismissing` и НЕ трогает `SetIsEnabled` — окно остаётся интерактивным по умолчанию, и взаимодействие с ним на промежуточной непрозрачности отменяет уход (доказано прогоном: зафиксированное значение при отмене — не 0 и не 1). Ветка отмены ухода (`Began` при `HoverFadeStage == Leaving` для того же span) явно исключает `bActiveHoverIsStale`: re-hover на span, который реконсиляция уже убрала, не воскрешает окно — оно доигрывает уход и физически закрывается по достижении нуля, попадание курсора на него игнорируется.
+
+`GV2.Runtime.Presentation.HoverDepartureInputGating` доказывает прогоном: (1) self-dismissal принимает клик на промежуточной (не начальной) непрозрачности и продолжает от неё; (2) stale гасит ввод СИНХРОННО с `ApplySpans`, при этом окно ещё физически лежит в `overlay_stack` (промежуток между логическим и физическим снятием реален, не гипотетичен); (3) stale доигрывает затухание, не принимая ввод ни в одной точке, и повторное наведение на убранный span его не отменяет. `GV2.Runtime.Presentation.HostLocalDepartureAcceptsInputIsExhaustive` проверяет сам диспетчер напрямую и мутационно: временная замена `GV2HostLocalDepartureAcceptsInput` на всегда-`true` покрасила ОБА теста (прямой и поведенческий) — «интерактивный stale» перестаёт быть невыразимым только при ручной порче диспетчера, откачено.
+
+`STATUS-003` снят: строка удалена из `Docs/Status/ImplementationStatus.md` (правило документа — закрытие удаляет строку, не помечает «closed»), ссылка на STATUS-003 в `Docs/Architecture/BuildAndTooling.md` переписана на факт закрытия. UE `GV2.*` automation suite 207/207 зелёный. Портативный `ctest` не тронут (задача не коснулась `GV2RuntimeCore`).
 
 ---
 

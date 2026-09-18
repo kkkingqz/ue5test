@@ -190,6 +190,17 @@ private:
     void OpenHoverOverlayForSpan(FName SpanId);
     void CloseActiveHoverOverlay();
     void RepositionActiveHoverOverlay(FName SpanId, const TArray<FGV2RichTextSpanAnchor>& Anchors);
+    // PEP-09 (ADR-0048): called before CurrentSpans is overwritten with NewSpans -- the
+    // logical-removal moment ADR-0048 names, strictly earlier than anything the fade or a
+    // physical detach does. If the currently-open overlay's own span is gone from NewSpans,
+    // or the same span id now names a DIFFERENT resolved screen widget (reconciliation
+    // re-resolved it), the open overlay's shown state no longer exists: mark it Stale.
+    void DetectStaleHoverBeforeSpansChange(const TArray<FGV2RichTextSpanViewModel>& NewSpans);
+    // PEP-09: the ONE place a departure is marked Stale -- gates input immediately via the
+    // sink (independent of the fade, which may still be playing), forces/keeps the fade
+    // Leaving, and remembers the fact so a later same-span Began cannot cancel it (a stale
+    // departure's own content is gone; re-hovering cannot un-remove it).
+    void MarkActiveHoverStale();
     // PEP-08: advances the fade state machine by one tick and physically applies the
     // resulting opacity via FGV2PresentationEffectApply -- the sole caller of Apply for the
     // Transparency kind. Closes (physically detaches) the overlay itself once a Leaving fade
@@ -210,6 +221,7 @@ public:
     float GetHoverFadeOpacityForAutomationTest() const { return HoverFadeOpacity; }
     EGV2HoverFadeStage GetHoverFadeStageForAutomationTest() const { return HoverFadeStage; }
     FName GetActiveHoverInstanceKeyForAutomationTest() const { return ActiveHoverInstanceKey; }
+    bool GetActiveHoverIsStaleForAutomationTest() const { return bActiveHoverIsStale; }
 #endif
 
 protected:
@@ -270,4 +282,10 @@ protected:
     // Content-declared (FGV2RichTextHoverViewModel::Duration, PEP-06C), captured at open
     // time from the span this overlay belongs to -- 0 means instant (no authored value).
     float HoverFadeDurationSeconds = 0.0f;
+
+    // PEP-09 (ADR-0048): true from the moment DetectStaleHoverBeforeSpansChange decides this
+    // departure is Stale, reset only when a fresh overlay opens. Cheaper than re-deriving the
+    // kind from CurrentSpans every tick, and it is what stops a same-span Began from
+    // cancelling a leave that was never a self-dismissal to begin with.
+    bool bActiveHoverIsStale = false;
 };

@@ -549,6 +549,26 @@ void UGV2RuntimeSubsystem::CloseHoverOverlay(FName InstanceKey)
     PublishHoverEffect(TEXT("core:effect.rich_text_hover_close"), InstanceKey, 0.0f);
 }
 
+void UGV2RuntimeSubsystem::SetHoverOverlayDeparture(
+    FName InstanceKey,
+    const FGV2HostLocalDepartureState& Departure)
+{
+    if (!Reconciler.IsValid())
+    {
+        return;
+    }
+    UGV2ScreenWidgetBase* Widget = Reconciler->GetHostLocalScreen(UGV2GameShellWidgetBase::LayerOverlayStack, InstanceKey);
+    if (Widget == nullptr)
+    {
+        return;
+    }
+    // PEP-09 (ADR-0048): the ONE place Stale vs SelfDismissal turns into an actual UMG
+    // effect. Disabling the root disables its whole subtree for Slate's own hit-testing --
+    // no click reaches any control inside a stale hover screen, engine-enforced, not a
+    // convention this code has to uphold at 24 different physical removal sites.
+    Widget->SetIsEnabled(GV2HostLocalDepartureAcceptsInput(Departure));
+}
+
 // PEP-07 (ADR-0047): the host-local producer -- naming where every field comes from.
 // bHasTarget/TargetUiInstanceId/TargetRevision are the document coordinates this hover
 // belongs to, read from the coordinator's own single source of truth (FGV2UiBindingRegistry)

@@ -754,6 +754,13 @@ UGV2ScreenWidgetBase* FGV2LayeredUiReconciler::GetActiveScreen(FName Layer, FNam
     return Found != nullptr ? Found->Widget.Get() : nullptr;
 }
 
+UGV2ScreenWidgetBase* FGV2LayeredUiReconciler::GetHostLocalScreen(FName Layer, FName InstanceKey) const
+{
+    const FScreenSlotKey Key{Layer, InstanceKey};
+    const FHostLocalScreenEntry* Found = HostLocalScreens.Find(Key);
+    return Found != nullptr ? Found->Widget.Get() : nullptr;
+}
+
 bool FGV2LayeredUiReconciler::RefreshViewportPresentation(float ViewportHeight, FString& OutError) const
 {
     OutError.Reset();
