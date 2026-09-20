@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: informative
-version: 4.9
-updated: 2026-09-11
+version: 4.10
+updated: 2026-09-20
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -36,6 +36,7 @@ Proposal не изменяет нормативную архитектуру с�
 
 | Документ | Статус | Затронутые подсистемы | Описание |
 |---|---|---|---|
+| [ContainerizedExecutionEnvironmentProposal](ContainerizedExecutionEnvironmentProposal.md) | accepted for planning | Build/Tooling, Приёмка, Editor API | Три контейнера с узким RPC; пять решений по стыкам: полный лог terminal job, именованный серверный шаблон приёмки, Editor API в сети `ue-control`, отказ от worktree, состав сети как полномочие |
 | [ExternalProjectAdoptionProposal](ExternalProjectAdoptionProposal.md) | accepted for planning | Architecture, Dependencies | Матрица прямого использования, reference-only и отложенных внешних решений |
 | [ContentDiagnosticsAndToolingProposal](ContentDiagnosticsAndToolingProposal.md) | accepted for planning | Content, CI, Tooling | Source spans, deterministic diagnostics, CLI validation, fuzzing и будущий LSP |
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
