@@ -7,8 +7,21 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-if not (REPO_ROOT / "Source" / "GV2").exists():
-    REPO_ROOT = Path("/home/king/ue5/GV2")
+if not (REPO_ROOT / "Source" / "GV2").is_dir():
+    # Fail closed, not open. The previous form fell back to a hard-coded
+    # /home/king/ue5/GV2 when the derived root looked wrong. On any machine where
+    # that path does not exist -- another workstation, a container, an NFS mount at
+    # a different point -- the fallback did not restore the scan: SOURCE_ROOTS
+    # simply pointed at nothing, every walk found zero files, and a gate whose whole
+    # job is to enumerate discovery call sites reported success having enumerated
+    # none. A gate that passes because it looked nowhere is worse than one that is
+    # absent, because it is counted as evidence.
+    raise SystemExit(
+        "validate_pre_ready_content_discovery: cannot locate the repository root. "
+        f"Derived {REPO_ROOT} from this script's path, but {REPO_ROOT / 'Source' / 'GV2'} "
+        "is not a directory. The script must run from inside the repository "
+        "(Tools/Testing/), so that the root is three levels up."
+    )
 
 SOURCE_ROOTS = [
     REPO_ROOT / "Source" / "GV2" / "Public",
