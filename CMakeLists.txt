@@ -550,6 +550,15 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/run_ue_acceptance.py"
             "--self-test"
     )
+    # AEP-06: pure comparison logic for the two-producer equivalence proof
+    # (the proof itself needs an installed engine and is run manually — see
+    # Tools/Testing/prove_acceptance_producer_equivalence.py).
+    add_test(
+        NAME acceptance_producer_equivalence_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/test_prove_acceptance_producer_equivalence.py"
+    )
     # CFC-02A: automation fixture lifetime isolation and test ownership contract
     add_test(
         NAME test_fixture_ownership_contract

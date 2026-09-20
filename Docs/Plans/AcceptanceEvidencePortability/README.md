@@ -1,7 +1,7 @@
 ---
 title: Acceptance Evidence Portability Implementation Plan
 status: active
-version: 0.6
+version: 0.7
 updated: 2026-09-20
 depends_on:
   - ../../Architecture/BuildAndTooling.md
@@ -80,7 +80,7 @@ argv приёмки перестаёт быть деталью раннера и
 
 - [x] M0 — AEP-01…02 приняты по Done/Evidence.
 - [x] M1 — AEP-03…04 приняты по Done/Evidence.
-- [ ] M2 — AEP-05…06 приняты по Done/Evidence.
+- [x] M2 — AEP-05…06 приняты по Done/Evidence.
 - [ ] M3 — AEP-07 принят по Done/Evidence.
 
 ---
@@ -278,7 +278,7 @@ argv приёмки перестаёт быть деталью раннера и
 
 ### AEP-06 — Доказать эквивалентность двух производителей
 
-- [ ] AEP-06 — Доказать эквивалентность двух производителей
+- [x] AEP-06 — Доказать эквивалентность двух производителей
 
 **Зависимость:** AEP-05 и AEP-03. **Файлы:** тестовая обвязка в `Tools/Testing`.
 
@@ -301,6 +301,14 @@ argv приёмки перестаёт быть деталью раннера и
 - Второй производитель не использует оркестрацию раннера; перечислитель — его собственный код, а не флаг раннера.
 
 **Evidence:** два bundle, diff множеств test id, прогон валидации на втором bundle.
+
+**Реализация.** Новый скрипт `Tools/Testing/prove_acceptance_producer_equivalence.py`. Производитель A — локальный раннер: вызов `run_acceptance()` из `run_ue_acceptance.py` без изменений. Производитель B — `run_second_producer()` в том же новом скрипте: собственный `subprocess.run` над argv из `build_acceptance_argv()` (`AEP-05`), собственное управление report-директорией и лог-файлом, собственный парсинг `parse_discovery_from_log`/`normalize_ue_json_report`, собственная сборка bundle — `run_acceptance()` нигде не вызывается. Общие для обоих — только нормативные строительные блоки (`build_acceptance_argv`, `compute_run_identity`, `parse_discovery_from_log`, `normalize_ue_json_report`, `write_evidence_bundle`/`load_evidence_bundle`/`validate_evidence_bundle`): это ровно та поверхность, которую обязан воспроизвести любой будущий реальный производитель (`ue-build-service`), чтобы вообще считаться приёмкой GV2 — не оркестрация раннера.
+
+Сравнение (`compare_bundles`) — множества `discovered` (не числа: отдельный регрессионный тест `test_comparing_counts_alone_would_hide_a_real_divergence` кладёт РАВНОЕ количество, но РАЗНЫЕ множества, и проверяет, что расхождение всё равно поймано) плюс `build_fingerprint`/`engine_version` (`EQUIVALENCE_REQUIRED_IDENTITY_KEYS`); `run_id` явно исключён (`EQUIVALENCE_EXCLUDED_IDENTITY_KEYS = ("run_id",)`) и не участвует в сравнении — записано именованной константой, не выводится из умолчания сравнения.
+
+Реальный прогон (`--filter GV2`, полный набор, после пересборки `RunUBT.sh` для синхронизации бинарника с текущим деревом): производитель A — 208/208 тестов пройдено, bundle создан и провалидирован `run_acceptance()`'ем самостоятельно; производитель B — 208/208 тестов пройдено собственным независимым control flow, bundle провалидирован отдельно `validate_evidence_bundle` без единого послабления правил. Сравнение множеств `discovered`: `A only: []`, `B only: []` — полное совпадение, не по числу. `build_fingerprint` совпал побайтово (`d6a88fb6fa177c4ee88cd1cd252ec0c89a465d81c73ce462a8ee624130882a75`), `engine_version` совпал (`5.8`), `source_revision`/`source_diff_hash` тоже совпали (оба производителя — одно и то же дерево в один момент времени, хотя сравнение этих двух полей не требуется задачей — они совпали как следствие, не как проверяемое условие). `run_id` действительно разный (`fresh-65db1755` против `second-producer-4cebe410`) — подтверждает, что исключение из сравнения не маскирует тривиальное совпадение.
+
+Пара юнит-тестов `Tools/Testing/test_prove_acceptance_producer_equivalence.py` (`compare_bundles`, синтетические bundle, без UE) покрывает саму функцию сравнения перечислителем свойств: эквивалентные bundle с разными `run_id` проходят; расхождение `discovered`, `build_fingerprint`, `engine_version` каждое ловится отдельно; равное число при разных множествах всё равно ловится; отсутствующее поле `discovered` не роняет сравнение, а даёт диагностику. Новый CTest `acceptance_producer_equivalence_contract` (портативный, не требует движка) — 7/7. Полный портативный ctest: 135/135 (было 134, +1 новый гейт). `validate_docs.py` — 195 файлов без ошибок.
 
 ---
 
