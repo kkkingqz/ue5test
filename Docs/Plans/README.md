@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 4.5
+version: 4.6
 updated: 2026-09-20
 depends_on:
   - ../README.md
@@ -31,7 +31,6 @@ depends_on:
 
 ## Активные планы
 
-- [Acceptance Evidence Portability](AcceptanceEvidencePortability/README.md) — приёмочное evidence как переносимый артефакт: bundle со схемой, запрет sentinel в идентичности, ревизию выводит потребитель, форма запуска нормативна.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 

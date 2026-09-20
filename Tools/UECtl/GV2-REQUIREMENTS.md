@@ -215,5 +215,5 @@ Editor. Обе переопределяются окружением.
 
 Если два bundle не сходятся, переезжать рано — независимо от того, сколько endpoint'ов
 реализовано. Это же утверждение является задачей `AEP-06` плана
-[AcceptanceEvidencePortability](../../Docs/Plans/AcceptanceEvidencePortability/README.md), поэтому
+[AcceptanceEvidencePortability](../../Docs/Plans/Archive/AcceptanceEvidencePortability.md), поэтому
 проверка не заводится дважды: инфраструктура и репозиторий признают готовность по одному факту.

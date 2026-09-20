@@ -35,4 +35,4 @@
 | Что GV2 требует от контура исполнения | [`GV2-REQUIREMENTS.md`](GV2-REQUIREMENTS.md) — нумерованные требования, включая требования к `ue-build-service` |
 | Какая проверка в каком контуре исполняется | [Build and Tooling § Где какая проверка исполняется](../../Docs/Architecture/BuildAndTooling.md) |
 | Решения по стыкам (полный лог, шаблон приёмки, Editor API, отказ от worktree) | [ContainerizedExecutionEnvironmentProposal](../../Docs/Proposals/ContainerizedExecutionEnvironmentProposal.md) |
-| Переносимость приёмочного evidence | План [AcceptanceEvidencePortability](../../Docs/Plans/AcceptanceEvidencePortability/README.md) |
+| Переносимость приёмочного evidence | План [AcceptanceEvidencePortability](../../Docs/Plans/Archive/AcceptanceEvidencePortability.md) |
