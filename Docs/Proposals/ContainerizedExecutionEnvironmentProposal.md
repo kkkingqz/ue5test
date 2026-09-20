@@ -2,7 +2,7 @@
 title: Containerized Execution Environment Proposal
 status: draft
 proposal_state: accepted_for_planning
-version: 0.1
+version: 0.2
 updated: 2026-09-20
 depends_on:
   - ../Architecture/BuildAndTooling.md
@@ -76,8 +76,10 @@ decisions:
 | Путь к движку | `UE_ROOT`, `DEFAULT_UE_ROOT` в двух файлах | Готово: значение по умолчанию собрано в одну константу на файл |
 | Endpoint Editor API | `UNREAL_MCP_URL` | Готово: инструменты читают переменную; правило в `AGENTS.md` больше не предполагает локальный Editor |
 | Контур исполнения проверок | [Build and Tooling § Где какая проверка исполняется](../Architecture/BuildAndTooling.md) | Готово: три группы по требованиям к окружению зафиксированы нормативно |
-| Источник приёмочного evidence | `Tools/Testing/run_ue_acceptance.py`, `ue_test_report.py` | Открыто: решить, исполняется ли раннер внутри сервиса или заменяется шаблоном registry (решение B) |
+| Источник приёмочного evidence | `Tools/Testing/run_ue_acceptance.py`, `ue_test_report.py` | Закрыто планом [AcceptanceEvidencePortability](../Plans/AcceptanceEvidencePortability/README.md): evidence стало переносимым артефактом, и вопрос «кто исполняет» перестал влиять на доказательную силу |
 | Клиентский MCP-конфиг | `.mcp.json` | Открыто: хост Editor вместо `127.0.0.1` |
+
+**Решение B реализовано на стороне GV2.** Приёмочное evidence существует как bundle с версионированной схемой, валидируемый на машине без файлов производителя; `source_revision` и `source_diff_hash` выводит потребитель и замещает ими значения из bundle; заглушки в идентичности отвергаются перечислителем по AST вычислителей; форма запуска нормативна и сверяется гейтом с кодом. Эквивалентность доказана двумя производителями на одной ревизии: множества `discovered` совпали полностью (208 тестов, `A only: []`, `B only: []`), `build_fingerprint` — побайтово. Остаётся внешняя часть — сам `ue-build-service`; требования к нему перечислены в `Tools/UECtl/GV2-REQUIREMENTS.md` (`R-ACC-1…5`).
 
 Нумерованные требования к контуру, включая `ue-build-service`, вынесены в `Tools/UECtl/GV2-REQUIREMENTS.md` — рядом с вендоренным пакетом, который они ограничивают.
 

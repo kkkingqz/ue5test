@@ -81,7 +81,7 @@ argv приёмки перестаёт быть деталью раннера и
 - [x] M0 — AEP-01…02 приняты по Done/Evidence.
 - [x] M1 — AEP-03…04 приняты по Done/Evidence.
 - [x] M2 — AEP-05…06 приняты по Done/Evidence.
-- [ ] M3 — AEP-07 принят по Done/Evidence.
+- [x] M3 — AEP-07 принят по Done/Evidence.
 
 ---
 
@@ -316,7 +316,7 @@ argv приёмки перестаёт быть деталью раннера и
 
 ### AEP-07 — Перенести правила в contracts и снять открытый пункт
 
-- [ ] AEP-07 — Перенести правила в contracts и снять открытый пункт
+- [x] AEP-07 — Перенести правила в contracts и снять открытый пункт
 
 **Зависимость:** AEP-06. **Файлы:** `Docs/Architecture/BuildAndTooling.md`, `Docs/Proposals/ContainerizedExecutionEnvironmentProposal.md`.
 
@@ -338,6 +338,14 @@ argv приёмки перестаёт быть деталью раннера и
 - Полный CTest и полная UE-приёмка зелёные на ревизии закрытия.
 
 **Evidence:** diff contracts, diff предложения, полные прогоны.
+
+**Реализация.** В contracts перенесены три правила: «Приёмочное evidence как переносимый артефакт (AEP-01/02)», «Разделение полей идентичности по источнику (AEP-04)» и «Запрет заглушек в идентичности (AEP-03)»; добавлен раздел «Эквивалентность производителей evidence (AEP-06)». Четвёртое правило — нормативная форма запуска — перенесено самой задачей `AEP-05` и здесь не дублируется. Каждый раздел называет конкретные константы кода (`REQUIRED_BUNDLE_PARTS`, `EVIDENCE_BUNDLE_SCHEMA_VERSION`, `CONSUMER_DERIVED_IDENTITY_KEYS`/`EXECUTOR_PROVIDED_IDENTITY_KEYS`, `SENTINEL_IDENTITY_VALUES`/`SENTINEL_IDENTITY_PREFIXES`, `IDENTITY_SENTINEL_COMPUTERS`, `KNOWN_NON_SENTINEL_LITERAL_RETURNS`, `EQUIVALENCE_REQUIRED_IDENTITY_KEYS`/`EQUIVALENCE_EXCLUDED_IDENTITY_KEYS`) — имена сверены с `Tools/Testing/ue_test_report.py` перед записью, а не взяты из текста задач.
+
+Открытый пункт «Источник приёмочного evidence» в [ContainerizedExecutionEnvironmentProposal](../../Proposals/ContainerizedExecutionEnvironmentProposal.md) снят: вопрос «кто исполняет» перестал влиять на доказательную силу, поэтому он закрыт не выбором одного из двух вариантов, а исчезновением самой развилки. Оставшийся открытый пункт того же предложения (`.mcp.json`) к этому плану не относится и не трогался. Внешняя часть решения `B` — требования к `ue-build-service` `R-ACC-1…5` в `Tools/UECtl/GV2-REQUIREMENTS.md` — остаётся вне репозитория по построению.
+
+Остатка, требующего строки `STATUS-NNN`, нет: все четыре правила перенесены, оба прогона зелёные. Открытых строк в [Implementation Status](../../Status/ImplementationStatus.md) по-прежнему три — `STATUS-026`, `STATUS-028`, `STATUS-029`, — и ни одна не относится к этому плану.
+
+Полные прогоны на ревизии закрытия: портативный `ctest` — `135/135` (было 134 до `AEP-06`, +1 `acceptance_producer_equivalence_contract`); UBT `GV2Editor Linux Development` — success; UE `Automation RunTests GV2` fresh-process — `208/208`, failed/skipped `0`; `validate_docs.py` — 195 файлов.
 
 ## Правила выполнения и остановки
 
