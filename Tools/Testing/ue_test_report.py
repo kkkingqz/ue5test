@@ -11,15 +11,18 @@ Validates that:
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import inspect
 import json
 import os
 import re
 import subprocess
 import sys
+import textwrap
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 
 REQUIRED_IDENTITY_KEYS = (
@@ -552,7 +555,103 @@ def normalize_ue_json_report(
 
 
 
-REJECTED_IDENTITY_PREFIXES = ("missing_", "unknown_", "no_", "error:")
+# AEP-03: the named set of sentinel values an identity computer can return
+# when it could not determine the real value. Filled in for exactly the
+# literal strings compute_source_revision/compute_source_diff_hash/
+# compute_build_fingerprint/compute_engine_version can produce today — not a
+# speculative guess at future shapes. The dynamic "error:..." family (which
+# bakes in the caught exception's own text and so cannot be an exact literal)
+# is the one prefix this set still needs; SENTINEL_IDENTITY_PREFIXES carries it.
+#
+# validate_identity_sentinel_registration() below is the gate that keeps this
+# set honest: it parses the four computers' own source and fails if any of
+# them can return a bare string literal that is neither a member of
+# SENTINEL_IDENTITY_VALUES nor covered by SENTINEL_IDENTITY_PREFIXES — so a new
+# fallback sentinel added without registering it here fails that gate, rather
+# than silently sailing through validate_run's identity check as if it were a
+# real value.
+SENTINEL_IDENTITY_VALUES = frozenset({
+    "unknown_revision",
+    "unknown_diff",
+    "missing_binaries",
+    "unknown_uproject_missing",
+    "unknown_engine_association",
+})
+
+SENTINEL_IDENTITY_PREFIXES = ("error:",)
+
+
+def is_sentinel_identity_value(value: str) -> bool:
+    """True if `value` is a registered sentinel — exact member or dynamic-error prefix."""
+    return value in SENTINEL_IDENTITY_VALUES or any(value.startswith(p) for p in SENTINEL_IDENTITY_PREFIXES)
+
+
+# The exact functions the registration gate below scans. Order does not
+# matter; completeness does — every identity computer belongs here.
+IDENTITY_SENTINEL_COMPUTERS: tuple = (
+    compute_source_revision,
+    compute_source_diff_hash,
+    compute_build_fingerprint,
+    compute_engine_version,
+)
+
+
+# compute_source_diff_hash's own legitimate success value ("no diff against
+# HEAD, no untracked files") is a bare string literal too, exactly like a
+# sentinel is — the two are told apart by meaning, not shape, so the scan
+# below must be told about this one explicitly rather than mistake it for an
+# unregistered fallback. It is not, and must never become, a member of
+# SENTINEL_IDENTITY_VALUES: validate_run has to keep accepting it as real.
+KNOWN_NON_SENTINEL_LITERAL_RETURNS = frozenset({"clean"})
+
+
+def extract_literal_string_returns(func: Callable[..., str]) -> List[str]:
+    """Extracts every bare string literal one of `func`'s `return` statements can produce.
+
+    A real, successful return in these computers is a *computed* value
+    (`res.stdout.strip()`, `association.strip()`, a hex digest) in every case
+    but one: `compute_source_diff_hash`'s own `"clean"`, excluded explicitly via
+    KNOWN_NON_SENTINEL_LITERAL_RETURNS. Every other literal (or f-string) return
+    is, by construction, a fallback sentinel, and this function's result is
+    exactly the set validate_identity_sentinel_registration checks for
+    registration. For an f-string (e.g. `f"error:{f.name}:{e}"`), only the
+    static leading segment is returned (`"error:"`) — the interpolated part is
+    the caught exception's own text and cannot be a registered literal.
+    """
+    source = textwrap.dedent(inspect.getsource(func))
+    tree = ast.parse(source)
+    literals: List[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Return) or node.value is None:
+            continue
+        value = node.value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            if value.value not in KNOWN_NON_SENTINEL_LITERAL_RETURNS:
+                literals.append(value.value)
+        elif isinstance(value, ast.JoinedStr) and value.values:
+            first = value.values[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                literals.append(first.value)
+    return literals
+
+
+def validate_identity_sentinel_registration() -> List[str]:
+    """AEP-03 gate: every fallback literal an identity computer can return must be registered.
+
+    Returns a list of diagnostics (empty means the four computers introduce no
+    unregistered sentinel). Run as part of the ordinary test suite so a new
+    fallback return added later without updating SENTINEL_IDENTITY_VALUES /
+    SENTINEL_IDENTITY_PREFIXES fails here, not silently at runtime.
+    """
+    diagnostics: List[str] = []
+    for func in IDENTITY_SENTINEL_COMPUTERS:
+        for literal in extract_literal_string_returns(func):
+            if not is_sentinel_identity_value(literal):
+                diagnostics.append(
+                    f"{func.__name__} can return unregistered literal {literal!r}; "
+                    f"add it to SENTINEL_IDENTITY_VALUES or SENTINEL_IDENTITY_PREFIXES."
+                )
+    return diagnostics
 
 
 def validate_run(
@@ -582,7 +681,7 @@ def validate_run(
             val = run_identity.get(k)
             if not val or not isinstance(val, str) or not val.strip():
                 diagnostics.append(f"Expected run_identity has missing or empty key '{k}'.")
-            elif any(val.startswith(p) for p in REJECTED_IDENTITY_PREFIXES):
+            elif is_sentinel_identity_value(val):
                 diagnostics.append(f"Expected run_identity has rejected incomplete/error value for '{k}': '{val}'.")
 
     # 3. Validate report structure, schema version, and identity
@@ -603,7 +702,7 @@ def validate_run(
             act_v = rep_identity.get(k)
             if not act_v or not isinstance(act_v, str) or not act_v.strip():
                 diagnostics.append(f"Report run_identity has missing or empty key '{k}'.")
-            elif any(act_v.startswith(p) for p in REJECTED_IDENTITY_PREFIXES):
+            elif is_sentinel_identity_value(act_v):
                 diagnostics.append(f"Report run_identity has rejected incomplete/error value for '{k}': '{act_v}'.")
             elif isinstance(run_identity, dict):
                 exp_v = run_identity.get(k)

@@ -35,18 +35,24 @@ if str(REPO_ROOT) not in sys.path:
 
 from Tools.Testing.ue_test_report import (
     EVIDENCE_BUNDLE_SCHEMA_VERSION,
+    IDENTITY_SENTINEL_COMPUTERS,
     REQUIRED_BUNDLE_PARTS,
+    SENTINEL_IDENTITY_PREFIXES,
+    SENTINEL_IDENTITY_VALUES,
     build_evidence_bundle,
     compute_build_fingerprint,
     compute_engine_version,
     compute_run_identity,
     compute_source_diff_hash,
+    extract_literal_string_returns,
     extract_runtime_identity_from_mcp_data,
     extract_runtime_identity_from_ue_data,
+    is_sentinel_identity_value,
     load_evidence_bundle,
     normalize_mcp_report,
     normalize_ue_json_report,
     validate_evidence_bundle,
+    validate_identity_sentinel_registration,
     validate_run,
     write_evidence_bundle,
 )
@@ -265,8 +271,13 @@ class TestUeTestReport(unittest.TestCase):
         self.assertTrue(any("missing 'run_identity'" in d for d in diags))
 
     def test_negative_rejected_identity_prefixes(self) -> None:
-        """Verify validate_run rejects missing_*, unknown_*, no_*, error:* prefixes in expected or report identity."""
-        bad_prefixes = ["missing_binaries", "unknown_revision", "no_git", "error:untracked_failure"]
+        """AEP-03: validate_run must reject every registered sentinel value or prefix.
+
+        Iterates the real SENTINEL_IDENTITY_VALUES enumerator (plus one dynamic
+        "error:" prefix example) rather than a hand-picked list, so this test
+        stays accurate if the registered set ever grows.
+        """
+        bad_prefixes = list(SENTINEL_IDENTITY_VALUES) + ["error:untracked_failure"]
         for bad_val in bad_prefixes:
             # 1. In expected identity
             bad_expected = dict(self.identity)
@@ -728,6 +739,86 @@ class TestUeTestReport(unittest.TestCase):
         del report["schema_version"]
         diags = validate_run({"GV2.Test1"}, report, self.identity)
         self.assertTrue(any("missing required 'schema_version'" in d for d in diags))
+
+
+class TestIdentitySentinelRegistration(unittest.TestCase):
+    """AEP-03: sentinel identity values are a named, gated set — not a guessed prefix list."""
+
+    def test_gate_is_clean_on_real_identity_computers(self) -> None:
+        """The real four computers must introduce no unregistered fallback literal today."""
+        diagnostics = validate_identity_sentinel_registration()
+        self.assertEqual(diagnostics, [], f"Unregistered sentinel(s) found: {diagnostics}")
+
+    def test_identity_sentinel_computers_enumerator_is_exactly_four(self) -> None:
+        names = {f.__name__ for f in IDENTITY_SENTINEL_COMPUTERS}
+        self.assertEqual(
+            names,
+            {
+                "compute_source_revision",
+                "compute_source_diff_hash",
+                "compute_build_fingerprint",
+                "compute_engine_version",
+            },
+        )
+
+    def test_is_sentinel_identity_value_exact_members(self) -> None:
+        for value in SENTINEL_IDENTITY_VALUES:
+            with self.subTest(value=value):
+                self.assertTrue(is_sentinel_identity_value(value))
+
+    def test_is_sentinel_identity_value_dynamic_error_prefix(self) -> None:
+        for prefix in SENTINEL_IDENTITY_PREFIXES:
+            with self.subTest(prefix=prefix):
+                self.assertTrue(is_sentinel_identity_value(f"{prefix}some dynamic detail"))
+
+    def test_is_sentinel_identity_value_rejects_real_looking_values(self) -> None:
+        """A real revision hash, a real diff hash, and 'clean' must never be sentinels."""
+        self.assertFalse(is_sentinel_identity_value("clean"))
+        self.assertFalse(is_sentinel_identity_value("a" * 40))
+        self.assertFalse(is_sentinel_identity_value("5.8"))
+
+    def test_extract_literal_string_returns_excludes_clean(self) -> None:
+        """compute_source_diff_hash's own success literal ('clean') must never be extracted as a sentinel candidate."""
+        literals = extract_literal_string_returns(compute_source_diff_hash)
+        self.assertNotIn("clean", literals)
+        self.assertIn("unknown_diff", literals)
+        self.assertTrue(any(lit.startswith("error:") for lit in literals))
+
+    def test_mutation_unregistered_literal_return_is_detected(self) -> None:
+        """Mutational probe: a fake computer returning an unregistered literal must be flagged.
+
+        This proves the detection mechanism itself works, complementing the
+        "real computers are clean today" check above — the real computers
+        cannot be mutated in-place without defeating their own purpose, so the
+        probe is run against a stand-in with the same shape.
+        """
+
+        def fake_compute_something(repo_root):  # noqa: ANN001 - mirrors identity computer signature
+            try:
+                return "totally_fine"
+            except Exception:
+                return "not_a_registered_sentinel"
+
+        literals = extract_literal_string_returns(fake_compute_something)
+        unregistered = [lit for lit in literals if not is_sentinel_identity_value(lit)]
+        self.assertEqual(unregistered, ["totally_fine", "not_a_registered_sentinel"])
+
+    def test_mutation_registering_prefix_covers_new_dynamic_literal(self) -> None:
+        """A newly-introduced 'error:'-prefixed literal is covered by the existing registered prefix
+
+        without needing its own exact-value registration — proving the prefix
+        half of the registration set actually does its job.
+        """
+
+        def fake_compute_dynamic(repo_root):  # noqa: ANN001
+            try:
+                raise RuntimeError("boom")
+            except Exception as e:
+                return f"error:brand-new-site:{e}"
+
+        literals = extract_literal_string_returns(fake_compute_dynamic)
+        self.assertEqual(literals, ["error:brand-new-site:"])
+        self.assertTrue(all(is_sentinel_identity_value(lit) for lit in literals))
 
 
 class TestEvidenceBundle(unittest.TestCase):
@@ -1344,6 +1435,7 @@ class TestRunnersIntegration(unittest.TestCase):
 def main() -> int:
     suite = unittest.TestSuite()
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestUeTestReport))
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestIdentitySentinelRegistration))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestEvidenceBundle))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestRunnersIntegration))
     runner = unittest.TextTestRunner(verbosity=2)

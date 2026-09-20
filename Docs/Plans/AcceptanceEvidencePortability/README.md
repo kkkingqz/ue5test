@@ -1,7 +1,7 @@
 ---
 title: Acceptance Evidence Portability Implementation Plan
 status: active
-version: 0.3
+version: 0.4
 updated: 2026-09-20
 depends_on:
   - ../../Architecture/BuildAndTooling.md
@@ -163,7 +163,7 @@ argv приёмки перестаёт быть деталью раннера и
 
 ### AEP-03 — Закрыть sentinel-значения идентичности
 
-- [ ] AEP-03 — Закрыть sentinel-значения идентичности
+- [x] AEP-03 — Закрыть sentinel-значения идентичности
 
 **Зависимость:** нет; обязана предшествовать AEP-06. **Файлы:** `Tools/Testing/ue_test_report.py`, `Tools/Testing/test_ue_test_report.py`.
 
@@ -186,6 +186,16 @@ argv приёмки перестаёт быть деталью раннера и
 - Существующая приёмка проходит без изменений: на исправном дереве ни одна заглушка не возвращается.
 
 **Evidence:** множество заглушек, вывод гейта, две мутационные пробы.
+
+**Реализация.** Именованное множество — `SENTINEL_IDENTITY_VALUES` (5 точных литералов: `unknown_revision`, `unknown_diff`, `missing_binaries`, `unknown_uproject_missing`, `unknown_engine_association`) плюс `SENTINEL_IDENTITY_PREFIXES = ("error:",)` для трёх динамических вариантов, несущих текст пойманного исключения и потому не являющихся точным литералом. Предикат `is_sentinel_identity_value` заменил прежний `REJECTED_IDENTITY_PREFIXES` (широкие `"missing_"`/`"unknown_"`/`"no_"`/`"error:"`) — старые широкие префиксы были рукописной догадкой о форме будущих заглушек, а не отражением того, что код действительно возвращает; убраны в пользу точного множества, синхронизированного с реальными вычислителями гейтом.
+
+Гейт — `validate_identity_sentinel_registration()`: парсит AST четырёх функций из `IDENTITY_SENTINEL_COMPUTERS` (`compute_source_revision`, `compute_source_diff_hash`, `compute_build_fingerprint`, `compute_engine_version`) через `extract_literal_string_returns`, извлекая каждый строковый литерал (и статичный ведущий сегмент f-строки — `"error:"` без интерполированной части) из их `return`. Настоящий успешный возврат в этих функциях — всегда вычисленное значение (`res.stdout.strip()`, `association.strip()`, hex-дайджест), поэтому любой литерал, найденный в возврате, — заглушка по построению, с одним исключением: `compute_source_diff_hash`'s собственное `"clean"` (нет diff) — легитимное успешное значение, а не отказ; исключено явно через `KNOWN_NON_SENTINEL_LITERAL_RETURNS`, а не угадыванием по форме. Новая заглушка без регистрации — незарегистрированный литерал — проваливает гейт с названием функции и самого литерала; тест `test_gate_is_clean_on_real_identity_computers` прогоняет гейт на реальных вычислителях в составе обычного прогона тестов, так что расхождение поймается при первом же прогоне, а не только при ручном вызове.
+
+Обе мутационные пробы — на фейковых функциях той же формы (реальные вычислители мутировать на месте нельзя, не потеряв их собственный смысл): `test_mutation_unregistered_literal_return_is_detected` — фейковый вычислитель с двумя незарегистрированными литералами, оба найдены и помечены; `test_mutation_registering_prefix_covers_new_dynamic_literal` — новый `error:`-литерал с другим телом сообщения покрывается существующим префиксом без отдельной точной регистрации, доказывая, что префиксная половина множества действительно работает.
+
+`validate_run` использует тот же `is_sentinel_identity_value` в обеих точках (ожидаемая идентичность и `run_identity` внутри отчёта) — одно место истины вместо двух объявлений префиксов, которые могли разойтись. Существующий тест `test_negative_rejected_identity_prefixes` переписан на перечислитель `SENTINEL_IDENTITY_VALUES` вместо рукописного списка (убрано `"no_git"` — оно проверяло префикс `"no_"`, для которого ни один вычислитель никогда не возвращал значения; сохранение отказа для несуществующей формы противоречило бы точности, которую вводит эта задача).
+
+8 новых тестов (`TestIdentitySentinelRegistration`) плюс переписанный существующий. `test_ue_test_report.py`: 70/70 (было 62). Портативный ctest: `ue_test_report_contract`/`ue_acceptance_runner_contract`/`mcp_transport_contract` зелёные; полный `ctest` 134/134. `run_ue_acceptance.py` не менялся — гейт целиком внутри `ue_test_report.py`.
 
 ---
 
