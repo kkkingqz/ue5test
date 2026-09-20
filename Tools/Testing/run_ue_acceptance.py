@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Run Unreal Engine Acceptance Automation Tests from a fresh Editor process.
 
-Executes:
-    UnrealEditor-Cmd GV2.uproject \
-        -unattended -nop4 -nosound -nullrhi \
-        -abslog=<log_path> \
-        -ReportExportPath=<report_dir> \
-        -ExecCmds="Automation RunTests <filter>; Quit" \
-        -TestExit="Automation Test Queue Empty"
+The argv this executes is normative (AEP-05): built in exactly one place,
+ACCEPTANCE_ARGV_TEMPLATE below, and recorded verbatim in
+Docs/Architecture/BuildAndTooling.md under the "Нормативная форма запуска
+приёмки (AEP-05)" heading. validate_acceptance_argv_contract() fails if the
+two diverge. See build_acceptance_argv() for the substitutable placeholders.
 
 Extracts the discovered test set from the automation engine discovery output,
 normalizes the machine-readable index.json exported by Unreal Engine, and passes
@@ -16,6 +14,7 @@ both to ue_test_report.validate_run for fail-closed verification.
 Usage:
     python3 Tools/Testing/run_ue_acceptance.py
     python3 Tools/Testing/run_ue_acceptance.py --filter "GV2"
+    python3 Tools/Testing/run_ue_acceptance.py --print-argv
     python3 Tools/Testing/run_ue_acceptance.py --self-test
 """
 
@@ -38,7 +37,7 @@ from pathlib import Path
 # экспорт UE_ROOT; литерал намеренно не повторяется по файлу, чтобы перенос не
 # зависел от того, все ли его вхождения нашли.
 DEFAULT_UE_ROOT = "/opt/unreal-engine"
-from typing import Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple, Union
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -54,6 +53,118 @@ from Tools.Testing.ue_test_report import (
     validate_evidence_bundle,
     write_evidence_bundle,
 )
+
+
+# AEP-05: the acceptance run's argv exists as one checkable artifact, not a
+# string assembled by whatever code happens to launch the editor. Every token
+# here except the five {placeholders} is a literal, order-significant flag —
+# recorded verbatim (same order, same spelling) in
+# Docs/Architecture/BuildAndTooling.md under the "Нормативная форма запуска
+# приёмки (AEP-05)" heading, inside a ```text fenced block.
+# validate_acceptance_argv_contract() below fails if the two ever diverge.
+#
+# Significant elements this contract pins: `Automation RunTests` (not
+# `RunTest` — the singular form runs one exact-named test, not a filter);
+# explicit `-abslog`; machine report export (`-ReportExportPath`);
+# `-unattended -nop4 -nullrhi`; and fresh-process semantics (this spawns a new
+# UnrealEditor-Cmd process — it does not attach to an already-running editor).
+ACCEPTANCE_ARGV_TEMPLATE: Tuple[str, ...] = (
+    "{editor_cmd}",
+    "{project_path}",
+    "-unattended",
+    "-nopause",
+    "-nosplash",
+    "-nop4",
+    "-nosound",
+    "-nullrhi",
+    "-FORCELOGFLUSH",
+    "-abslog={log_path}",
+    "-ReportExportPath={report_dir}",
+    "-ExecCmds=Automation RunTests {filter_expr}; Quit",
+)
+
+ACCEPTANCE_ARGV_DOC_PATH = REPO_ROOT / "Docs" / "Architecture" / "BuildAndTooling.md"
+ACCEPTANCE_ARGV_DOC_HEADING = "### Нормативная форма запуска приёмки (AEP-05)"
+
+
+def build_acceptance_argv(
+    editor_cmd: Union[str, Path],
+    project_path: Union[str, Path],
+    filter_expr: str,
+    report_dir: Union[str, Path],
+    log_path: Union[str, Path],
+) -> List[str]:
+    """Builds the acceptance run's argv from ACCEPTANCE_ARGV_TEMPLATE — the one place this list exists.
+
+    Pure and side-effect free: callable (and, via --print-argv, invokable from
+    the command line) without launching the editor, so a gate — or a caller
+    who just wants to see the command — can inspect it without spawning
+    UnrealEditor-Cmd.
+    """
+    substitutions = {
+        "editor_cmd": str(editor_cmd),
+        "project_path": str(project_path),
+        "filter_expr": filter_expr,
+        "report_dir": str(report_dir),
+        "log_path": str(log_path),
+    }
+    return [token.format(**substitutions) for token in ACCEPTANCE_ARGV_TEMPLATE]
+
+
+def extract_documented_acceptance_argv(doc_text: str) -> List[str]:
+    """Extracts the normative argv template recorded in BuildAndTooling.md.
+
+    Finds ACCEPTANCE_ARGV_DOC_HEADING, then the first fenced ```text block
+    after it, and returns its lines verbatim (blank lines excluded, order
+    preserved) as the documented template. Raises ValueError if the heading or
+    the fenced block is missing — an absent contract record is a typed
+    failure here, not an empty list a caller might mistake for "documented as
+    nothing".
+    """
+    if ACCEPTANCE_ARGV_DOC_HEADING not in doc_text:
+        raise ValueError(f"BuildAndTooling.md is missing the heading {ACCEPTANCE_ARGV_DOC_HEADING!r}.")
+    after_heading = doc_text.split(ACCEPTANCE_ARGV_DOC_HEADING, 1)[1]
+
+    fence_marker = "```text"
+    if fence_marker not in after_heading:
+        raise ValueError(
+            f"No fenced ```text block found after {ACCEPTANCE_ARGV_DOC_HEADING!r} in BuildAndTooling.md."
+        )
+    after_fence_open = after_heading.split(fence_marker, 1)[1]
+
+    if "```" not in after_fence_open:
+        raise ValueError("Fenced argv block after the AEP-05 heading in BuildAndTooling.md is never closed.")
+    block_text = after_fence_open.split("```", 1)[0]
+
+    return [line for line in block_text.splitlines() if line.strip()]
+
+
+def validate_acceptance_argv_contract(doc_path: Optional[Path] = None) -> List[str]:
+    """AEP-05 gate: the contracts record must match ACCEPTANCE_ARGV_TEMPLATE exactly.
+
+    Returns a list of diagnostics (empty means the two sides agree). A
+    mismatch — an added, removed, reordered, or reworded token on either side
+    — is named explicitly, both sides shown, rather than silently drifting.
+    """
+    resolved_doc_path = doc_path or ACCEPTANCE_ARGV_DOC_PATH
+    try:
+        doc_text = resolved_doc_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return [f"Cannot read contracts doc at {resolved_doc_path}: file not found."]
+
+    try:
+        documented = extract_documented_acceptance_argv(doc_text)
+    except ValueError as e:
+        return [str(e)]
+
+    actual = list(ACCEPTANCE_ARGV_TEMPLATE)
+    if documented != actual:
+        return [
+            "Acceptance argv contract mismatch between BuildAndTooling.md and ACCEPTANCE_ARGV_TEMPLATE:",
+            f"  documented: {documented!r}",
+            f"  code:       {actual!r}",
+        ]
+    return []
 
 
 def parse_discovery_from_log(log_text: str) -> Set[str]:
@@ -149,20 +260,7 @@ def run_acceptance(
     run_id = f"fresh-{uuid.uuid4().hex[:8]}"
     run_identity = compute_run_identity(project_root=repo_root, run_id=run_id)
 
-    cmd = [
-        str(editor_cmd),
-        str(project_path),
-        "-unattended",
-        "-nopause",
-        "-nosplash",
-        "-nop4",
-        "-nosound",
-        "-nullrhi",
-        "-FORCELOGFLUSH",
-        f"-abslog={log_path}",
-        f"-ReportExportPath={report_dir}",
-        f"-ExecCmds=Automation RunTests {filter_expr}; Quit",
-    ]
+    cmd = build_acceptance_argv(editor_cmd, project_path, filter_expr, report_dir, log_path)
 
     print("=" * 70)
     print("UNREAL ENGINE ACCEPTANCE TEST RUNNER (FRESH PROCESS)")
@@ -396,6 +494,64 @@ LogAutomationCommandLine: Display: Automation test started
             assert "bundle_schema_version" in str(e), f"Unexpected error message: {e}"
             assert EVIDENCE_BUNDLE_SCHEMA_VERSION in str(e), f"Error must name the expected version: {e}"
 
+    # AEP-05: the argv contract sync — positive on the real doc/code pair,
+    # negative on a mutated copy of each side, proving the gate actually
+    # detects drift rather than always finding zero diagnostics by
+    # construction.
+    argv_diagnostics = validate_acceptance_argv_contract()
+    assert argv_diagnostics == [], (
+        f"BuildAndTooling.md's recorded acceptance argv has drifted from "
+        f"ACCEPTANCE_ARGV_TEMPLATE: {argv_diagnostics}"
+    )
+
+    built = build_acceptance_argv("/fake/UnrealEditor-Cmd", "/fake/GV2.uproject", "GV2", "/fake/reports", "/fake/log")
+    assert built[2:9] == [
+        "-unattended",
+        "-nopause",
+        "-nosplash",
+        "-nop4",
+        "-nosound",
+        "-nullrhi",
+        "-FORCELOGFLUSH",
+    ], f"Unexpected literal flags in built argv: {built}"
+    assert built[-1] == "-ExecCmds=Automation RunTests GV2; Quit", f"Unexpected ExecCmds token: {built[-1]}"
+
+    real_doc_text = ACCEPTANCE_ARGV_DOC_PATH.read_text(encoding="utf-8")
+
+    # Mutational probe 1: a doc whose recorded template dropped one line.
+    mutated_doc = real_doc_text.replace("-nullrhi\n", "", 1)
+    assert "-nullrhi\n" in real_doc_text, "Fixture assumption broken: '-nullrhi' line not found in the real doc."
+    with tempfile.TemporaryDirectory() as doc_dir:
+        mutated_path = Path(doc_dir) / "BuildAndTooling.md"
+        mutated_path.write_text(mutated_doc, encoding="utf-8")
+        mutated_diagnostics = validate_acceptance_argv_contract(doc_path=mutated_path)
+        assert mutated_diagnostics != [], "Expected a dropped argv line to be caught by the contract gate."
+        assert any("mismatch" in d for d in mutated_diagnostics), mutated_diagnostics
+
+        # Mutational probe 2: heading present, fenced block missing entirely.
+        # Only the fence immediately after the AEP-05 heading is retagged —
+        # BuildAndTooling.md has other, unrelated ```text blocks earlier in
+        # the file that must be left alone for this probe to test what it
+        # claims to.
+        heading_index = real_doc_text.index(ACCEPTANCE_ARGV_DOC_HEADING)
+        no_fence_doc = (
+            real_doc_text[:heading_index]
+            + real_doc_text[heading_index:].replace("```text", "```plain", 1)
+        )
+        no_fence_path = Path(doc_dir) / "NoFence.md"
+        no_fence_path.write_text(no_fence_doc, encoding="utf-8")
+        no_fence_diagnostics = validate_acceptance_argv_contract(doc_path=no_fence_path)
+        assert no_fence_diagnostics != [], "Expected a missing fenced block to be caught."
+        assert any("fenced" in d for d in no_fence_diagnostics), no_fence_diagnostics
+
+        # Mutational probe 3: heading missing entirely.
+        no_heading_doc = real_doc_text.replace(ACCEPTANCE_ARGV_DOC_HEADING, "### Something Else", 1)
+        no_heading_path = Path(doc_dir) / "NoHeading.md"
+        no_heading_path.write_text(no_heading_doc, encoding="utf-8")
+        no_heading_diagnostics = validate_acceptance_argv_contract(doc_path=no_heading_path)
+        assert no_heading_diagnostics != [], "Expected a missing heading to be caught."
+        assert any("heading" in d for d in no_heading_diagnostics), no_heading_diagnostics
+
     print("run_ue_acceptance self-test: PASSED")
     return 0
 
@@ -451,10 +607,27 @@ def main() -> int:
         action="store_true",
         help="Run self-tests and exit.",
     )
+    parser.add_argument(
+        "--print-argv",
+        action="store_true",
+        help="Print the normative acceptance argv (AEP-05) for the given options and exit, without launching the editor.",
+    )
     args = parser.parse_args()
 
     if args.self_test:
         return run_self_test()
+
+    if args.print_argv:
+        editor_cmd = Path(args.ue_root) / "Engine" / "Binaries" / "Linux" / "UnrealEditor-Cmd"
+        argv = build_acceptance_argv(
+            editor_cmd,
+            Path(args.project),
+            args.filter,
+            Path(args.report_dir),
+            Path(args.log_path),
+        )
+        print(" ".join(argv))
+        return 0
 
     return run_acceptance(
         filter_expr=args.filter,

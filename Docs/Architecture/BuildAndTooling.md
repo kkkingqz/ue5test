@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 4.5
+version: 4.6
 updated: 2026-09-20
 depends_on:
   - SystemContextAndComponents.md
@@ -422,6 +422,31 @@ Unreal runner обязан иметь UE 5.8 в `${UE_ROOT}` (default `/opt/unre
 - Любые синтетические значения по умолчанию (fallback-дефолты вроде `Unknown` для статуса, `0.0` для длительности, `0` для счётчиков) запрещены; отсутствие или неверный тип любого обязательного поля вызывает исключение.
 
 MCP в уже запущенном Editor допускается как дополнительный developer run (`Tools/MCP/run_ue_tests.py`), но только fresh-process `run_ue_acceptance.py` является freeze evidence. Во всём MCP polling/result flow сервер обязан вернуть exact `task_id`; отсутствующий или чужой ID отклоняется, generic «последний результат» запрещён. HTTP non-2xx, malformed JSON-RPC и response id, не совпадающий с request id, являются transport error. `timeout` задаёт абсолютный deadline всего HTTP/SSE exchange: keep-alive и byte trickle не продлевают его. Process-wide поиск Editor через `/proc` запрещён как основание решения, поскольку не доказывает связь найденного PID с выбранным MCP endpoint; актуальность binary fields проверяется runtime identity.
+
+### Нормативная форма запуска приёмки (AEP-05)
+
+Утверждение «серверный шаблон соответствует приёмке GV2» проверяемо только если форма запуска существует как проверяемый артефакт, а не строка, собираемая по месту. argv, которым `run_ue_acceptance.py` запускает `UnrealEditor-Cmd`, строится в одном месте — `build_acceptance_argv()` (`Tools/Testing/run_ue_acceptance.py`), выведенном из единственного шаблона `ACCEPTANCE_ARGV_TEMPLATE`, — и доступен без запуска редактора: `python3 Tools/Testing/run_ue_acceptance.py --print-argv`.
+
+Значимые элементы, чей порядок и написание фиксированы: `Automation RunTests` (не `RunTest` — единственное число запускает один тест по точному имени, а не по фильтру), явный `-abslog`, экспорт машинного отчёта (`-ReportExportPath`), `-unattended -nop4 -nullrhi` и семантика fresh-process (раннер порождает новый процесс `UnrealEditor-Cmd`, а не подключается к уже запущенному редактору — этому посвящён отдельный MCP-путь выше).
+
+Шаблон записан здесь нормативно, буквально совпадая с `ACCEPTANCE_ARGV_TEMPLATE` в коде; `{editor_cmd}`, `{project_path}`, `{log_path}`, `{report_dir}` и `{filter_expr}` — единственные подставляемые части, любой другой токен литерален:
+
+```text
+{editor_cmd}
+{project_path}
+-unattended
+-nopause
+-nosplash
+-nop4
+-nosound
+-nullrhi
+-FORCELOGFLUSH
+-abslog={log_path}
+-ReportExportPath={report_dir}
+-ExecCmds=Automation RunTests {filter_expr}; Quit
+```
+
+Гейт `validate_acceptance_argv_contract()` (та же функция, что и `--self-test` в CTest `ue_acceptance_runner_contract`) читает этот блок и сверяет его построчно с `ACCEPTANCE_ARGV_TEMPLATE`: расхождение — отказ с обеими сторонами в диагностике, а не молчаливый дрейф. Правку одной стороны без другой ловит именно этот гейт, а не ревью.
 
 ## Локальные эквиваленты
 
