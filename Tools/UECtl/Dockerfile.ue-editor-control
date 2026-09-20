@@ -1,0 +1,5 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+COPY --chmod=0755 ue-editor-control /usr/local/bin/ue-editor-control
+COPY supervisor/ue-editor-control.conf /etc/supervisor/conf.d/ue-editor-control.conf

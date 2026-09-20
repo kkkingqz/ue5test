@@ -1,0 +1,52 @@
+services:
+  agent-canvas:
+    environment:
+      UECTL_ENDPOINT: http://ue-build-service:8765
+      UECTL_EDITOR_ENDPOINT: http://ue-editor:8766
+      UECTL_PROJECT_ROOT: /projects
+      UECTL_WORKTREE_ROOT: /worktrees
+      UECTL_HTTP_TIMEOUT: "10"
+      UECTL_EDITOR_HTTP_TIMEOUT: "30"
+      UECTL_LOG_HTTP_TIMEOUT: "1"
+      UECTL_POLL_INTERVAL: "0.5"
+      UECTL_RETRY_ATTEMPTS: "5"
+      UECTL_RETRY_BACKOFF: "0.25"
+    volumes:
+      - /mnt/user/UEBuilds:/builds:ro
+    networks:
+      - default
+      - ue-control
+
+  ue-build-service:
+    volumes:
+      - /mnt/user/UEBuilds:/builds:rw
+    expose:
+      - "8765"
+    networks:
+      - ue-control
+
+  ue-editor:
+    # Use the derived image built from Dockerfile.ue-editor-control.
+    # Example: local/ue-editor-control:0.2.0
+    image: ${UE_EDITOR_IMAGE}
+    environment:
+      UE_EDITOR_CONTROL_HOST: 0.0.0.0
+      UE_EDITOR_CONTROL_PORT: "8766"
+      UE_EDITOR_PROJECT_ROOT: /projects
+      UE_EDITOR_ENGINE_ROOT: /opt/ue/5.8
+      UE_EDITOR_LOG: /home/ubuntu/.local/state/ue-editor/UnrealEditor.log
+      UE_EDITOR_STOP_TIMEOUT: "15"
+      UE_EDITOR_STARTUP_GRACE: "0.5"
+      UE_EDITOR_REQUEST_TIMEOUT: "5"
+      UE_EDITOR_LOG_MAX_MB: "64"
+      UE_EDITOR_LOG_BACKUPS: "3"
+      UE_EDITOR_LOG_ROTATE_INTERVAL: "30"
+    expose:
+      - "8766"
+    networks:
+      - default
+      - ue-control
+
+networks:
+  ue-control:
+    internal: true
