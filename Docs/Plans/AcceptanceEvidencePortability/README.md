@@ -1,7 +1,7 @@
 ---
 title: Acceptance Evidence Portability Implementation Plan
 status: active
-version: 0.2
+version: 0.3
 updated: 2026-09-20
 depends_on:
   - ../../Architecture/BuildAndTooling.md
@@ -78,7 +78,7 @@ argv приёмки перестаёт быть деталью раннера и
 
 `AEP-03` содержательно независима от bundle: sentinel — дефект нынешней проверки идентичности, существующий и без переноса. Она вынесена отдельно, чтобы не смешивать починку существующего с введением нового, и обязана быть закрыта до `AEP-06`, иначе сверка эквивалентности сравнивала бы в том числе заглушки.
 
-- [ ] M0 — AEP-01…02 приняты по Done/Evidence.
+- [x] M0 — AEP-01…02 приняты по Done/Evidence.
 - [ ] M1 — AEP-03…04 приняты по Done/Evidence.
 - [ ] M2 — AEP-05…06 приняты по Done/Evidence.
 - [ ] M3 — AEP-07 принят по Done/Evidence.
@@ -129,7 +129,7 @@ argv приёмки перестаёт быть деталью раннера и
 
 ### AEP-02 — Сделать неполный bundle отказом
 
-- [ ] AEP-02 — Сделать неполный bundle отказом
+- [x] AEP-02 — Сделать неполный bundle отказом
 
 **Зависимость:** AEP-01. **Файлы:** те же.
 
@@ -150,6 +150,12 @@ argv приёмки перестаёт быть деталью раннера и
 - Пустое множество discovered отвергается отдельно от отсутствующего.
 
 **Evidence:** перечень обязательных частей, мутационные прогоны по каждой.
+
+**Реализация.** Перечислитель — `REQUIRED_BUNDLE_PARTS = ("run_identity", "discovered", "report")` (`Tools/Testing/ue_test_report.py`), проверяемый в `validate_evidence_bundle` ДО обращения к содержимому любой части: отсутствующий ключ даёт `"Evidence bundle is missing required part '<part>'."` и останавливается на этом — подстановки умолчания нет. Часть, присутствующая, но пустая/неверного типа (пустой `discovered`, `report` не-dict, `run_identity` не-dict), проваливается отдельно — уже существующими проверками `validate_run` (и его же `REQUIRED_IDENTITY_KEYS` для полей внутри `run_identity`), которые сохранены без изменений и вызываются только после того, как top-level перечислитель подтвердил, что все три части на месте. Обе причины различимы текстом: «missing required part» против «Discovered test set is empty.» / «Report must be a dict...» / «Expected run_identity must be a dict...».
+
+Мутационная проба прогнана по всему перечню (`test_mutation_each_required_part_removal_gives_named_diagnostic`, `subTest` на каждый из трёх элементов `REQUIRED_BUNDLE_PARTS` — не единственный пример): удаление любой одной части даёт ровно один диагностический элемент, называющий её по имени. Отдельный тест проверяет удаление сразу двух частей — обе названы, не только первая. Отдельный тест проверяет, что удаление `run_identity` не заменяется молчаливым дефолтом (не всплывают более глубокие диагностики `validate_run`, которые появились бы, будь дефолт подставлен). Пустое `discovered` (часть присутствует) даёт «Discovered test set is empty.» и явно НЕ даёт «missing required part» — assертами в одном тесте, различающими оба случая по обеим сторонам.
+
+5 новых тестов в `test_ue_test_report.py`. `python3 Tools/Testing/test_ue_test_report.py`: 62/62 (было 57). Портативный ctest: `ue_test_report_contract`/`ue_acceptance_runner_contract`/`mcp_transport_contract` зелёные; полный `ctest` 134/134.
 
 ---
 

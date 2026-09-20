@@ -35,6 +35,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from Tools.Testing.ue_test_report import (
     EVIDENCE_BUNDLE_SCHEMA_VERSION,
+    REQUIRED_BUNDLE_PARTS,
     build_evidence_bundle,
     compute_build_fingerprint,
     compute_engine_version,
@@ -874,6 +875,66 @@ class TestEvidenceBundle(unittest.TestCase):
         diagnostics = validate_evidence_bundle(bundle)
         self.assertEqual(len(diagnostics), 1)
         self.assertIn("unsupported bundle_schema_version", diagnostics[0])
+
+    # AEP-02: an absent required part is a distinct, named failure from the
+    # same part being present but malformed or empty.
+
+    def test_required_bundle_parts_enumerator_is_exactly_three(self) -> None:
+        """Sanity check on the enumerator itself, so the mutational probe below is not vacuous."""
+        self.assertEqual(set(REQUIRED_BUNDLE_PARTS), {"run_identity", "discovered", "report"})
+
+    def test_mutation_each_required_part_removal_gives_named_diagnostic(self) -> None:
+        """Mutational probe over the whole enumerator: deleting any one required part
+
+        must fail with a diagnostic naming exactly that part, one part at a time.
+        """
+        for part in REQUIRED_BUNDLE_PARTS:
+            with self.subTest(part=part):
+                bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+                del bundle[part]
+                diagnostics = validate_evidence_bundle(bundle)
+                self.assertEqual(
+                    diagnostics,
+                    [f"Evidence bundle is missing required part '{part}'."],
+                    f"Removing '{part}' must give exactly one diagnostic naming it, got: {diagnostics}",
+                )
+
+    def test_negative_validate_evidence_bundle_missing_multiple_parts(self) -> None:
+        """Removing more than one required part must name each of them, not just the first."""
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        del bundle["discovered"]
+        del bundle["report"]
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertEqual(
+            sorted(diagnostics),
+            [
+                "Evidence bundle is missing required part 'discovered'.",
+                "Evidence bundle is missing required part 'report'.",
+            ],
+        )
+
+    def test_empty_discovered_part_is_distinct_from_missing_discovered_part(self) -> None:
+        """An empty discovered list (part present) must not be conflated with the part being absent."""
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        bundle["discovered"] = []
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertTrue(
+            any("Discovered test set is empty." in d for d in diagnostics),
+            f"Expected the empty-set diagnostic, got: {diagnostics}",
+        )
+        self.assertFalse(
+            any("missing required part" in d for d in diagnostics),
+            f"Empty discovered must not be reported as a missing part, got: {diagnostics}",
+        )
+
+    def test_missing_required_part_does_not_substitute_a_default(self) -> None:
+        """A missing part must stop at the named diagnostic, not fall through with a synthetic default."""
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        del bundle["run_identity"]
+        diagnostics = validate_evidence_bundle(bundle)
+        # If a default identity had been substituted, validate_run's own deeper
+        # identity-key diagnostics would appear alongside the part-missing one.
+        self.assertEqual(diagnostics, ["Evidence bundle is missing required part 'run_identity'."])
 
 
 class TestRunnersIntegration(unittest.TestCase):

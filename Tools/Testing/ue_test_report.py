@@ -777,13 +777,24 @@ def load_evidence_bundle(path: Union[str, Path]) -> Dict[str, Any]:
     return bundle
 
 
+# AEP-02: the enumerator for "a bundle is complete" — every part a consumer
+# needs to run validate_run without substituting a default. Absence of one of
+# these keys is a distinct failure from a part that is present but malformed
+# or empty; the latter is reported by validate_run's own deeper checks (and,
+# for run_identity, by its own REQUIRED_IDENTITY_KEYS enumerator).
+REQUIRED_BUNDLE_PARTS = ("run_identity", "discovered", "report")
+
+
 def validate_evidence_bundle(bundle: Dict[str, Any]) -> List[str]:
     """Validates an evidence bundle produced by build_evidence_bundle/write_evidence_bundle.
 
-    Unpacks the bundle's by-value parts and defers the actual check to
+    Unpacks the bundle's by-value parts and defers the actual content check to
     validate_run, which stays the single place that decides pass/fail — this
-    function only proves that a bundle round-tripped through JSON validates
-    identically to the in-memory values it was built from.
+    function additionally proves that a bundle round-tripped through JSON
+    validates identically to the in-memory values it was built from, and that
+    a bundle missing one of REQUIRED_BUNDLE_PARTS entirely fails closed with a
+    diagnostic naming the missing part, rather than silently falling through
+    as an empty/None value.
     """
     if not isinstance(bundle, dict):
         return [f"Evidence bundle must be a dict, got {type(bundle).__name__}."]
@@ -794,6 +805,13 @@ def validate_evidence_bundle(bundle: Dict[str, Any]) -> List[str]:
             f"Evidence bundle has unsupported bundle_schema_version {version!r}; "
             f"expected {EVIDENCE_BUNDLE_SCHEMA_VERSION!r}."
         ]
+
+    # No defaults are substituted for an absent part: a missing key stops here
+    # with its own named diagnostic, distinct from the same part being present
+    # but empty/wrong-typed (which the checks below report separately).
+    missing_parts = [part for part in REQUIRED_BUNDLE_PARTS if part not in bundle]
+    if missing_parts:
+        return [f"Evidence bundle is missing required part '{part}'." for part in missing_parts]
 
     discovered_raw = bundle.get("discovered")
     discovered: Any = set(discovered_raw) if isinstance(discovered_raw, list) else discovered_raw
