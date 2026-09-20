@@ -884,16 +884,65 @@ def load_evidence_bundle(path: Union[str, Path]) -> Dict[str, Any]:
 REQUIRED_BUNDLE_PARTS = ("run_identity", "discovered", "report")
 
 
-def validate_evidence_bundle(bundle: Dict[str, Any]) -> List[str]:
+# AEP-04: REQUIRED_IDENTITY_KEYS split by who is authoritative for a field —
+# recorded explicitly here, not inferred from a name prefix. A bundle's own
+# "expected" run_identity is producer-supplied; for a remote producer, trusting
+# it wholesale would let evidence collected on another revision (or a dirty
+# producer tree) validate as if it matched the consumer's own checkout,
+# invisibly, because internally self-consistent.
+#
+# source_revision/source_diff_hash describe the TREE being checked, not the
+# run — the consumer can and must derive them from its own checkout rather
+# than trust the bundle's claim.
+CONSUMER_DERIVED_IDENTITY_KEYS = ("source_revision", "source_diff_hash")
+# build_fingerprint/engine_version describe the EXECUTOR that produced the
+# report — which binary actually ran. The consumer has no way to derive these
+# independently; they stay producer-supplied and are checked only by AEP-03's
+# sentinel rule plus validate_run's own report-vs-expected comparison.
+EXECUTOR_PROVIDED_IDENTITY_KEYS = ("build_fingerprint", "engine_version")
+# run_id is a correlation id, not a property of the tree or the executor; it
+# belongs to neither group and is excluded from both on purpose.
+
+assert set(CONSUMER_DERIVED_IDENTITY_KEYS) | set(EXECUTOR_PROVIDED_IDENTITY_KEYS) | {"run_id"} == set(
+    REQUIRED_IDENTITY_KEYS
+), "Every REQUIRED_IDENTITY_KEYS field must be classified as consumer-derived, executor-provided, or run_id."
+assert not set(CONSUMER_DERIVED_IDENTITY_KEYS) & set(EXECUTOR_PROVIDED_IDENTITY_KEYS)
+
+
+def derive_consumer_identity_overrides(
+    repo_root: Optional[Union[str, Path]] = None,
+) -> Dict[str, str]:
+    """Computes the identity fields the consumer — not the bundle's producer — is authoritative for.
+
+    Only CONSUMER_DERIVED_IDENTITY_KEYS: derived fresh from the consumer's own
+    checkout every time this is called, regardless of what a bundle's own
+    "expected" run_identity claims for these two fields.
+    """
+    if repo_root is None:
+        resolved_root = Path(__file__).resolve().parent.parent.parent
+    else:
+        resolved_root = Path(repo_root).resolve()
+    return {
+        "source_revision": compute_source_revision(resolved_root),
+        "source_diff_hash": compute_source_diff_hash(resolved_root),
+    }
+
+
+def validate_evidence_bundle(
+    bundle: Dict[str, Any],
+    consumer_repo_root: Optional[Union[str, Path]] = None,
+) -> List[str]:
     """Validates an evidence bundle produced by build_evidence_bundle/write_evidence_bundle.
 
     Unpacks the bundle's by-value parts and defers the actual content check to
     validate_run, which stays the single place that decides pass/fail — this
     function additionally proves that a bundle round-tripped through JSON
-    validates identically to the in-memory values it was built from, and that
-    a bundle missing one of REQUIRED_BUNDLE_PARTS entirely fails closed with a
-    diagnostic naming the missing part, rather than silently falling through
-    as an empty/None value.
+    validates identically to the in-memory values it was built from, that a
+    bundle missing one of REQUIRED_BUNDLE_PARTS entirely fails closed with a
+    diagnostic naming the missing part, and (AEP-04) that CONSUMER_DERIVED_IDENTITY_KEYS
+    are always taken from THIS process's own checkout — never from the
+    bundle's own "expected" run_identity — before validate_run ever compares
+    them against the report's own claimed identity.
     """
     if not isinstance(bundle, dict):
         return [f"Evidence bundle must be a dict, got {type(bundle).__name__}."]
@@ -915,4 +964,16 @@ def validate_evidence_bundle(bundle: Dict[str, Any]) -> List[str]:
     discovered_raw = bundle.get("discovered")
     discovered: Any = set(discovered_raw) if isinstance(discovered_raw, list) else discovered_raw
 
-    return validate_run(discovered, bundle.get("report"), bundle.get("run_identity"))
+    # AEP-04: the bundle's own "expected" run_identity is producer-supplied.
+    # source_revision/source_diff_hash are overridden with values this process
+    # derives from its own checkout — a bundle collected on another revision,
+    # or a dirty producer tree, is caught here because what gets compared
+    # against the report's claimed identity is no longer self-attested.
+    bundle_identity = bundle.get("run_identity")
+    if isinstance(bundle_identity, dict):
+        expected_identity: Any = dict(bundle_identity)
+        expected_identity.update(derive_consumer_identity_overrides(consumer_repo_root))
+    else:
+        expected_identity = bundle_identity
+
+    return validate_run(discovered, bundle.get("report"), expected_identity)

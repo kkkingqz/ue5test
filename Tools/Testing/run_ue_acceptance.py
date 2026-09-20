@@ -47,6 +47,8 @@ if str(REPO_ROOT) not in sys.path:
 from Tools.Testing.ue_test_report import (
     EVIDENCE_BUNDLE_SCHEMA_VERSION,
     compute_run_identity,
+    compute_source_diff_hash,
+    compute_source_revision,
     load_evidence_bundle,
     normalize_ue_json_report,
     validate_evidence_bundle,
@@ -338,34 +340,50 @@ LogAutomationCommandLine: Display: Automation test started
     empty_discovered = parse_discovery_from_log("LogInit: Running engine\n")
     assert empty_discovered == set(), f"Expected empty set, got {empty_discovered}"
 
-    # AEP-01: verify the same write/load/validate bundle round trip run_acceptance
-    # uses actually proves out — a valid run must validate clean through it, and
-    # a bundle whose version was tampered with after writing must be rejected by
-    # load_evidence_bundle before validate_evidence_bundle ever runs.
-    identity = {
-        "run_id": "self-test-run",
-        "source_revision": "a" * 40,
-        "source_diff_hash": "clean",
-        "build_fingerprint": "self-test-fingerprint",
-        "engine_version": "5.8",
-    }
-    report = {
-        "schema_version": 1,
-        "run_identity": dict(identity),
-        "tests": [
-            {"name": "GV2.Test.A", "state": "Success", "duration": 0.01, "errors": [], "warnings": []},
-        ],
-        "total": 1,
-        "passed": 1,
-        "failed": 0,
-        "skipped": 0,
-        "duration": 0.01,
-    }
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        bundle_path = Path(tmp_dir) / "evidence_bundle.json"
+    # AEP-01/AEP-04: verify the same write/load/validate bundle round trip
+    # run_acceptance uses actually proves out — a valid run must validate clean
+    # through it, and a bundle whose version was tampered with after writing
+    # must be rejected by load_evidence_bundle before validate_evidence_bundle
+    # ever runs. Since AEP-04, validate_evidence_bundle derives
+    # source_revision/source_diff_hash from the consumer's own checkout rather
+    # than trusting the bundle — a real (throwaway) git repo is built here so
+    # those derived values have something real to match against, instead of a
+    # synthetic identity that would now read as "evidence from another tree".
+    with tempfile.TemporaryDirectory() as git_dir, tempfile.TemporaryDirectory() as bundle_dir:
+        # The git repo and the bundle file live in separate directories on
+        # purpose: writing evidence_bundle.json next to the repo would make it
+        # a new untracked file by the time validate_evidence_bundle re-derives
+        # source_diff_hash, changing the answer between the two computations.
+        git_path = Path(git_dir)
+        subprocess.run(["git", "init", "-q"], cwd=str(git_path), check=True)
+        subprocess.run(["git", "config", "user.email", "self-test@gv2.local"], cwd=str(git_path), check=True)
+        subprocess.run(["git", "config", "user.name", "GV2 Self Test"], cwd=str(git_path), check=True)
+        subprocess.run(["git", "commit", "--allow-empty", "-q", "-m", "self-test"], cwd=str(git_path), check=True)
+
+        identity = {
+            "run_id": "self-test-run",
+            "source_revision": compute_source_revision(git_path),
+            "source_diff_hash": compute_source_diff_hash(git_path),
+            "build_fingerprint": "self-test-fingerprint",
+            "engine_version": "5.8",
+        }
+        report = {
+            "schema_version": 1,
+            "run_identity": dict(identity),
+            "tests": [
+                {"name": "GV2.Test.A", "state": "Success", "duration": 0.01, "errors": [], "warnings": []},
+            ],
+            "total": 1,
+            "passed": 1,
+            "failed": 0,
+            "skipped": 0,
+            "duration": 0.01,
+        }
+
+        bundle_path = Path(bundle_dir) / "evidence_bundle.json"
         write_evidence_bundle(bundle_path, {"GV2.Test.A"}, report, identity)
         loaded = load_evidence_bundle(bundle_path)
-        diagnostics = validate_evidence_bundle(loaded)
+        diagnostics = validate_evidence_bundle(loaded, consumer_repo_root=git_path)
         assert diagnostics == [], f"Expected clean bundle to validate, got: {diagnostics}"
 
         tampered = json.loads(bundle_path.read_text(encoding="utf-8"))

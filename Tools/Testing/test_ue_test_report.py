@@ -33,7 +33,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+import Tools.Testing.ue_test_report as ue_test_report
 from Tools.Testing.ue_test_report import (
+    CONSUMER_DERIVED_IDENTITY_KEYS,
+    EXECUTOR_PROVIDED_IDENTITY_KEYS,
     EVIDENCE_BUNDLE_SCHEMA_VERSION,
     IDENTITY_SENTINEL_COMPUTERS,
     REQUIRED_BUNDLE_PARTS,
@@ -44,6 +47,7 @@ from Tools.Testing.ue_test_report import (
     compute_engine_version,
     compute_run_identity,
     compute_source_diff_hash,
+    derive_consumer_identity_overrides,
     extract_literal_string_returns,
     extract_runtime_identity_from_mcp_data,
     extract_runtime_identity_from_ue_data,
@@ -847,6 +851,31 @@ class TestEvidenceBundle(unittest.TestCase):
             "duration": 0.03,
         }
 
+        # AEP-04: validate_evidence_bundle now overrides CONSUMER_DERIVED_IDENTITY_KEYS
+        # with values freshly derived from this process's own checkout, so these
+        # AEP-01/AEP-02 mechanics tests (which are not about identity derivation)
+        # must make that derivation return the same synthetic values self.identity
+        # already uses — otherwise every bundle here would appear to be from
+        # "another revision" purely because it wasn't built from this repo's real
+        # git state. AEP-04's own test class exercises the override itself.
+        old_compute_source_revision = ue_test_report.compute_source_revision
+        old_compute_source_diff_hash = ue_test_report.compute_source_diff_hash
+
+        def fake_compute_source_revision(repo_root):  # noqa: ANN001
+            return self.identity["source_revision"]
+
+        def fake_compute_source_diff_hash(repo_root):  # noqa: ANN001
+            return self.identity["source_diff_hash"]
+
+        ue_test_report.compute_source_revision = fake_compute_source_revision
+        ue_test_report.compute_source_diff_hash = fake_compute_source_diff_hash
+
+        def restore():
+            ue_test_report.compute_source_revision = old_compute_source_revision
+            ue_test_report.compute_source_diff_hash = old_compute_source_diff_hash
+
+        self.addCleanup(restore)
+
     def test_build_evidence_bundle_is_json_serializable_by_value(self) -> None:
         """The bundle must carry discovered/report/run_identity by value, not by producer-local reference."""
         bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
@@ -1026,6 +1055,132 @@ class TestEvidenceBundle(unittest.TestCase):
         # If a default identity had been substituted, validate_run's own deeper
         # identity-key diagnostics would appear alongside the part-missing one.
         self.assertEqual(diagnostics, ["Evidence bundle is missing required part 'run_identity'."])
+
+
+class TestConsumerDerivedIdentity(unittest.TestCase):
+    """AEP-04: source_revision/source_diff_hash are derived by the consumer, not trusted from the bundle."""
+
+    def setUp(self) -> None:
+        self.consumer_identity = {
+            "source_revision": "c" * 40,
+            "source_diff_hash": "clean",
+        }
+        self.identity = {
+            "run_id": "run-test-12345",
+            "source_revision": self.consumer_identity["source_revision"],
+            "source_diff_hash": self.consumer_identity["source_diff_hash"],
+            "build_fingerprint": "fingerprint-linux-dev-v1",
+            "engine_version": "5.8",
+        }
+        self.discovered = {"GV2.Test.A"}
+        self.report = {
+            "schema_version": 1,
+            "run_identity": dict(self.identity),
+            "tests": [
+                {"name": "GV2.Test.A", "state": "Success", "duration": 0.01, "errors": [], "warnings": []},
+            ],
+            "total": 1,
+            "passed": 1,
+            "failed": 0,
+            "skipped": 0,
+            "duration": 0.01,
+        }
+
+        old_compute_source_revision = ue_test_report.compute_source_revision
+        old_compute_source_diff_hash = ue_test_report.compute_source_diff_hash
+
+        def fake_compute_source_revision(repo_root):  # noqa: ANN001
+            return self.consumer_identity["source_revision"]
+
+        def fake_compute_source_diff_hash(repo_root):  # noqa: ANN001
+            return self.consumer_identity["source_diff_hash"]
+
+        ue_test_report.compute_source_revision = fake_compute_source_revision
+        ue_test_report.compute_source_diff_hash = fake_compute_source_diff_hash
+
+        def restore():
+            ue_test_report.compute_source_revision = old_compute_source_revision
+            ue_test_report.compute_source_diff_hash = old_compute_source_diff_hash
+
+        self.addCleanup(restore)
+
+    def test_identity_key_groups_partition_required_keys_explicitly(self) -> None:
+        """Every REQUIRED_IDENTITY_KEYS field is classified: consumer-derived, executor-provided, or run_id."""
+        from Tools.Testing.ue_test_report import REQUIRED_IDENTITY_KEYS
+
+        self.assertEqual(
+            set(CONSUMER_DERIVED_IDENTITY_KEYS) | set(EXECUTOR_PROVIDED_IDENTITY_KEYS) | {"run_id"},
+            set(REQUIRED_IDENTITY_KEYS),
+        )
+        self.assertEqual(set(CONSUMER_DERIVED_IDENTITY_KEYS) & set(EXECUTOR_PROVIDED_IDENTITY_KEYS), set())
+
+    def test_derive_consumer_identity_overrides_covers_exactly_the_consumer_derived_keys(self) -> None:
+        overrides = derive_consumer_identity_overrides()
+        self.assertEqual(set(overrides.keys()), set(CONSUMER_DERIVED_IDENTITY_KEYS))
+        self.assertEqual(overrides["source_revision"], self.consumer_identity["source_revision"])
+        self.assertEqual(overrides["source_diff_hash"], self.consumer_identity["source_diff_hash"])
+
+    def test_bundle_matching_consumer_tree_validates_clean(self) -> None:
+        """A bundle whose report identity matches what the consumer itself derives must validate."""
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertEqual(diagnostics, [], f"Expected a matching bundle to validate, got: {diagnostics}")
+
+    def test_bundle_expected_side_source_fields_are_ignored_not_trusted(self) -> None:
+        """A bundle whose own 'expected' run_identity lies about the tree must not matter.
+
+        Only the report's own claimed identity is compared against what THIS
+        process derives — the bundle's own expected-side source_revision/
+        source_diff_hash are producer-supplied and are overridden, not read.
+        """
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        bundle["run_identity"]["source_revision"] = "f" * 40  # a lie about the tree
+        bundle["run_identity"]["source_diff_hash"] = "also-a-lie"
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertEqual(diagnostics, [], f"Expected bundle's own expected-side lie to be ignored, got: {diagnostics}")
+
+    def test_bundle_from_another_revision_is_rejected(self) -> None:
+        """A bundle whose report claims a different source_revision than the consumer's own must be rejected."""
+        other_revision_report = dict(self.report)
+        other_revision_report["run_identity"] = dict(self.identity)
+        other_revision_report["run_identity"]["source_revision"] = "d" * 40
+        bundle = build_evidence_bundle(self.discovered, other_revision_report, self.identity)
+
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertTrue(
+            any("source_revision" in d and "mismatch" in d for d in diagnostics),
+            f"Expected a source_revision mismatch diagnostic, got: {diagnostics}",
+        )
+
+    def test_bundle_from_dirty_tree_is_rejected_with_separate_reason_from_revision(self) -> None:
+        """A source_diff_hash mismatch (dirty producer tree) must be a distinct diagnostic from a revision mismatch."""
+        dirty_tree_report = dict(self.report)
+        dirty_tree_report["run_identity"] = dict(self.identity)
+        dirty_tree_report["run_identity"]["source_diff_hash"] = "some-other-diff-hash"
+        bundle = build_evidence_bundle(self.discovered, dirty_tree_report, self.identity)
+
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertTrue(
+            any("source_diff_hash" in d and "mismatch" in d for d in diagnostics),
+            f"Expected a source_diff_hash mismatch diagnostic, got: {diagnostics}",
+        )
+        self.assertFalse(
+            any("source_revision" in d and "mismatch" in d for d in diagnostics),
+            f"source_revision must not also be reported as mismatched here, got: {diagnostics}",
+        )
+
+    def test_executor_provided_keys_still_come_from_bundle_not_consumer(self) -> None:
+        """build_fingerprint/engine_version must still be taken from the bundle — the consumer cannot derive them."""
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        bundle["run_identity"]["build_fingerprint"] = "a-different-fingerprint"
+        # The report's own run_identity still claims the ORIGINAL fingerprint,
+        # so the mismatch must be against the bundle's (producer-supplied)
+        # expected side, not something the consumer invented.
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertTrue(
+            any("build_fingerprint" in d and "mismatch" in d for d in diagnostics),
+            f"Expected a build_fingerprint mismatch diagnostic sourced from the bundle, got: {diagnostics}",
+        )
 
 
 class TestRunnersIntegration(unittest.TestCase):
@@ -1437,6 +1592,7 @@ def main() -> int:
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestUeTestReport))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestIdentitySentinelRegistration))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestEvidenceBundle))
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestConsumerDerivedIdentity))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestRunnersIntegration))
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

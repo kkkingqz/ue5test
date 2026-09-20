@@ -1,7 +1,7 @@
 ---
 title: Acceptance Evidence Portability Implementation Plan
 status: active
-version: 0.4
+version: 0.5
 updated: 2026-09-20
 depends_on:
   - ../../Architecture/BuildAndTooling.md
@@ -79,7 +79,7 @@ argv приёмки перестаёт быть деталью раннера и
 `AEP-03` содержательно независима от bundle: sentinel — дефект нынешней проверки идентичности, существующий и без переноса. Она вынесена отдельно, чтобы не смешивать починку существующего с введением нового, и обязана быть закрыта до `AEP-06`, иначе сверка эквивалентности сравнивала бы в том числе заглушки.
 
 - [x] M0 — AEP-01…02 приняты по Done/Evidence.
-- [ ] M1 — AEP-03…04 приняты по Done/Evidence.
+- [x] M1 — AEP-03…04 приняты по Done/Evidence.
 - [ ] M2 — AEP-05…06 приняты по Done/Evidence.
 - [ ] M3 — AEP-07 принят по Done/Evidence.
 
@@ -201,7 +201,7 @@ argv приёмки перестаёт быть деталью раннера и
 
 ### AEP-04 — Потребитель сам выводит ревизию и требует совпадения
 
-- [ ] AEP-04 — Потребитель сам выводит ревизию и требует совпадения
+- [x] AEP-04 — Потребитель сам выводит ревизию и требует совпадения
 
 **Зависимость:** AEP-02. **Файлы:** `Tools/Testing/ue_test_report.py`.
 
@@ -222,6 +222,16 @@ argv приёмки перестаёт быть деталью раннера и
 - Несовпадение `source_diff_hash` отвергается отдельной причиной от несовпадения ревизии.
 
 **Evidence:** запись разделения полей, два прогона с подменённым bundle.
+
+**Реализация.** Разделение записано явно, не выводится из имени поля: `CONSUMER_DERIVED_IDENTITY_KEYS = ("source_revision", "source_diff_hash")` (описывают проверяемое дерево — потребитель обязан вывести их сам), `EXECUTOR_PROVIDED_IDENTITY_KEYS = ("build_fingerprint", "engine_version")` (описывают исполнителя — потребитель вывести их не может, доверие остаётся правилу `AEP-03`); `run_id` намеренно не входит ни в одну группу (корреляционный id, а не свойство дерева/исполнителя). `assert`-проверка на месте объявления доказывает полноту разбиения: объединение обеих групп плюс `run_id` равно `REQUIRED_IDENTITY_KEYS` целиком, пересечение — пусто.
+
+`derive_consumer_identity_overrides(repo_root=None)` вызывает `compute_source_revision`/`compute_source_diff_hash` над ЧЕКАУТОМ ПОТРЕБИТЕЛЯ (по умолчанию — репозиторий, в котором выполняется сам `ue_test_report.py`, как и `compute_run_identity`) и возвращает ровно два поля. `validate_evidence_bundle` больше не передаёт `bundle["run_identity"]` в `validate_run` как есть: копирует его и ЗАМЕЩАЕТ оба consumer-derived поля свежевычисленными — bundle-е собственное «ожидаемое» значение для `source_revision`/`source_diff_hash` перестаёт читаться вообще, не только перепроверяться. Значения executor-provided полей (`build_fingerprint`, `engine_version`) и `run_id` берутся из bundle без изменений, как раньше, — потребитель не может их вывести, и на них по-прежнему распространяется только правило `AEP-03`.
+
+Оба прогона с подменённым bundle — юнит-тесты (`TestConsumerDerivedIdentity`), не рассуждение: `test_bundle_from_another_revision_is_rejected` подменяет `report.run_identity.source_revision` на чужой хэш при СОВПАДАЮЩЕМ `source_diff_hash` — отклонено с диагностикой, называющей `source_revision`; `test_bundle_from_dirty_tree_is_rejected_with_separate_reason_from_revision` подменяет только `source_diff_hash` — отклонено отдельной диагностикой, называющей `source_diff_hash`, и явно НЕ называющей `source_revision` (assert на отсутствие). Дополнительный тест (`test_bundle_expected_side_source_fields_are_ignored_not_trusted`) кладёт заведомую ложь в само bundle-е «ожидаемое» `run_identity` для обоих consumer-derived полей — валидация проходит чисто, потому что эти два поля из bundle вообще не читаются; `test_executor_provided_keys_still_come_from_bundle_not_consumer` подтверждает, что `build_fingerprint`/`engine_version` по-прежнему сверяются против bundle, а не изобретаются потребителем.
+
+Существующие тесты AEP-01/AEP-02 (`TestEvidenceBundle`) monkeypatch'ат `compute_source_revision`/`compute_source_diff_hash` в `setUp`, чтобы их синтетическая идентичность не читалась как «evidence с чужой ревизии» из-за настоящего git-состояния этого репозитория — они проверяют механику bundle, не вывод идентичности, и не должны были зависеть от реального дерева. Самотест `run_ue_acceptance.py --self-test` обновлён аналогично: строит настоящий одноразовый git-репозиторий во ВРЕМЕННОЙ директории, ОТДЕЛЬНОЙ от директории с bundle-файлом (bundle рядом с репозиторием сделал бы сам себя новым untracked-файлом ко второму вычислению diff-хэша — найдено и исправлено при первом прогоне самотеста после этой правки), и передаёт её как `consumer_repo_root`.
+
+7 новых тестов (`TestConsumerDerivedIdentity`), `test_ue_test_report.py`: 77/77 (было 70). Портативный ctest 134/134. Прогнан и реальный локальный `run_ue_acceptance.py` (без C++-пересборки, только Python-правка): `source_revision` совпал точно (подтверждает механизм); `source_diff_hash` разошёлся — это стало ожидаемым следствием того, что бинарник не пересобирался с последнего `RunUBT.sh` (его собственный diff-хэш «запечён» на момент прошлой сборки, а потребитель теперь честно выводит текущий), а не регрессией правки: расхождение дано ИМЕННО отдельной причиной от `source_revision`, как и требует `Done`.
 
 ---
 
