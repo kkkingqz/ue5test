@@ -8,6 +8,9 @@
 - Назначение в GV2: клиент `ue-build-service` и `ue-editor-control` для контейнерного
   контура — см. [ContainerizedExecutionEnvironmentProposal](../../Docs/Proposals/ContainerizedExecutionEnvironmentProposal.md).
 
+Требования GV2 к инфраструктуре живут рядом, в [`GV2-REQUIREMENTS.md`](GV2-REQUIREMENTS.md):
+это документ GV2, а не апстрима, поэтому он правится свободно.
+
 ## Чем это не является
 
 Пакет **не участвует** в сборке и проверках GV2: он не зарегистрирован в `CMakeLists.txt`,
@@ -29,6 +32,7 @@
 | Вопрос | Где решается |
 |---|---|
 | Контракт `BUILD-SERVICE-API-v1.md`, поведение CLI, daemon | Апстрим пакета |
-| Что GV2 требует от контура исполнения | [Build and Tooling § Где какая проверка исполняется](../../Docs/Architecture/BuildAndTooling.md) |
+| Что GV2 требует от контура исполнения | [`GV2-REQUIREMENTS.md`](GV2-REQUIREMENTS.md) — нумерованные требования, включая требования к `ue-build-service` |
+| Какая проверка в каком контуре исполняется | [Build and Tooling § Где какая проверка исполняется](../../Docs/Architecture/BuildAndTooling.md) |
 | Решения по стыкам (полный лог, шаблон приёмки, Editor API, отказ от worktree) | [ContainerizedExecutionEnvironmentProposal](../../Docs/Proposals/ContainerizedExecutionEnvironmentProposal.md) |
 | Переносимость приёмочного evidence | План [AcceptanceEvidencePortability](../../Docs/Plans/AcceptanceEvidencePortability/README.md) |
