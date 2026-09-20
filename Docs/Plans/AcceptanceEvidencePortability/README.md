@@ -1,7 +1,7 @@
 ---
 title: Acceptance Evidence Portability Implementation Plan
 status: active
-version: 0.1
+version: 0.2
 updated: 2026-09-20
 depends_on:
   - ../../Architecture/BuildAndTooling.md
@@ -89,7 +89,7 @@ argv приёмки перестаёт быть деталью раннера и
 
 ### AEP-01 — Выделить evidence bundle с явной схемой
 
-- [ ] AEP-01 — Выделить evidence bundle с явной схемой
+- [x] AEP-01 — Выделить evidence bundle с явной схемой
 
 **Зависимость:** нет. **Файлы:** `Tools/Testing/ue_test_report.py` (схема и чтение), `Tools/Testing/run_ue_acceptance.py` (запись), `Tools/Testing/test_ue_test_report.py`.
 
@@ -112,6 +112,18 @@ argv приёмки перестаёт быть деталью раннера и
 - Локальная приёмка даёт тот же исход, что до change set.
 
 **Evidence:** схема, прогон локальной приёмки с созданным bundle, негативный прогон на неверной версии схемы.
+
+**Реализация.** Схема — `EVIDENCE_BUNDLE_SCHEMA_VERSION = "gv2-acceptance-evidence-bundle-v1"` (`Tools/Testing/ue_test_report.py`), версионирована отдельно от `SUPPORTED_REPORT_SCHEMA_VERSIONS` отчёта: bundle оборачивает отчёт, а не является им, и несовпадение версии bundle обязано отказывать раньше, чем вообще будет осмотрена версия вложенного отчёта. Три входа собираются `build_evidence_bundle(discovered, report, run_identity)` по значению — `discovered` сериализуется как отсортированный список (в JSON нет типа set), `report`/`run_identity` кладутся как есть, ссылок на путь производителя нет ни у одного поля.
+
+`write_evidence_bundle`/`load_evidence_bundle` — запись и чтение с диска; `load_evidence_bundle` даёт `FileNotFoundError` на отсутствующий файл и типизированный `ValueError` на невалидный JSON, не-объект и несовпадение `bundle_schema_version` (сообщение называет обе версии — найденную и ожидаемую). `validate_evidence_bundle(bundle)` разворачивает by-value части и передаёт их тому же `validate_run`, который остаётся единственным местом, решающим pass/fail (шаг 3 плана: «прежний вызов по трём аргументам — внутренняя деталь»).
+
+`run_ue_acceptance.py` заменил прямой вызов `validate_run(discovered, normalized_report, run_identity)` на `write_evidence_bundle` → `load_evidence_bundle` → `validate_evidence_bundle`: production-путь больше не валидирует по значениям из памяти, а перечитывает файл, который сам только что записал — тем самым бандл доказанно самодостаточен, а не просто одноимённая копия тех же переменных. Путь до bundle печатается в вывод раннера.
+
+Перечислитель вызывающих `validate_run` (grep по `*.py`, вне тестов) — их два: `run_ue_acceptance.py` (переведён на bundle этой задачей) и `Tools/MCP/run_ue_tests.py`. Второй — не переведён и оставлен как есть: это интерактивный dev-loop раннер поверх уже запущенного редактора через MCP (producer и consumer всегда на одной машине по конструкции самого MCP-соединения), а не «приёмка» в смысле `ContainerizedExecutionEnvironmentProposal`, и не входит в объём фиксации плана (`Tools/Testing/run_ue_acceptance.py`, `Tools/Testing/ue_test_report.py`). Утверждение Done сужено до этой границы явно, а не расширено на файл вне списка задачи.
+
+Подтверждено реальным прогоном: `RunUBT.sh` (чистая сборка), затем `python3 Tools/Testing/run_ue_acceptance.py --filter "GV2.UI.PreparedUiValue"` — свежий процесс `UnrealEditor-Cmd`, `evidence_bundle.json` реально создан в `Saved/Automation/Reports/`, содержит все три части по значению (проверено чтением файла). Валидация в этом прогоне корректно отказала на `source_diff_hash mismatch` — расхождение между ожидаемым (посчитан раннером перед запуском) и заявленным (встроен в бинарник на момент сборки) значениями; это не регрессия bundle-механизма (тот же диагностический путь, что и до change set, воспроизведён 12 юнит-тестами на управляемых данных с нулевым diagnostics на чистом входе), а именно то нестабильное поведение идентичности, которое `AEP-03`/`AEP-04` closes отдельно — здесь зафиксировано как наблюдение, не как находка этой задачи.
+
+12 новых тестов в `test_ue_test_report.py` (`TestEvidenceBundle`): позитивный round-trip, переносимость bundle в каталог без файлов производителя, 6 негативных (отсутствующий файл, невалидный JSON, не-объект, несовпадение версии в `load_evidence_bundle` и в `validate_evidence_bundle`, отсутствие поля версии), сохранение диагностик вложенного `validate_run` через bundle, мутационная проба на незарегистрированную версию. `python3 Tools/Testing/test_ue_test_report.py`: 57/57 (было 45). Портативный ctest: `ue_test_report_contract`, `ue_acceptance_runner_contract`, `mcp_transport_contract` — 3/3 зелёные (`run_ue_acceptance.py --self-test` расширен тем же bundle round-trip и мутационной пробой на версию).
 
 ---
 

@@ -22,11 +22,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -43,9 +45,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from Tools.Testing.ue_test_report import (
+    EVIDENCE_BUNDLE_SCHEMA_VERSION,
     compute_run_identity,
+    load_evidence_bundle,
     normalize_ue_json_report,
-    validate_run,
+    validate_evidence_bundle,
+    write_evidence_bundle,
 )
 
 
@@ -257,7 +262,20 @@ def run_acceptance(
         print(f"ERROR: Failed to normalize UE index.json report: {e}", file=sys.stderr)
         return 1
 
-    diagnostics = validate_run(discovered, normalized_report, run_identity)
+    # AEP-01: the three inputs are packaged into one portable evidence bundle,
+    # written to disk and read back, before validation ever sees them — proving
+    # the bundle carries everything validate_run needs without relying on the
+    # in-memory values a same-process producer/consumer happened to share.
+    bundle_path = report_dir / "evidence_bundle.json"
+    write_evidence_bundle(bundle_path, discovered, normalized_report, run_identity)
+    print(f"Evidence Bundle:   {bundle_path}")
+    try:
+        bundle = load_evidence_bundle(bundle_path)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"ERROR: Failed to load evidence bundle: {e}", file=sys.stderr)
+        return 1
+
+    diagnostics = validate_evidence_bundle(bundle)
 
 
     tests = normalized_report.get("tests", [])
@@ -319,6 +337,46 @@ LogAutomationCommandLine: Display: Automation test started
     # Verify missing discovery returns empty set
     empty_discovered = parse_discovery_from_log("LogInit: Running engine\n")
     assert empty_discovered == set(), f"Expected empty set, got {empty_discovered}"
+
+    # AEP-01: verify the same write/load/validate bundle round trip run_acceptance
+    # uses actually proves out — a valid run must validate clean through it, and
+    # a bundle whose version was tampered with after writing must be rejected by
+    # load_evidence_bundle before validate_evidence_bundle ever runs.
+    identity = {
+        "run_id": "self-test-run",
+        "source_revision": "a" * 40,
+        "source_diff_hash": "clean",
+        "build_fingerprint": "self-test-fingerprint",
+        "engine_version": "5.8",
+    }
+    report = {
+        "schema_version": 1,
+        "run_identity": dict(identity),
+        "tests": [
+            {"name": "GV2.Test.A", "state": "Success", "duration": 0.01, "errors": [], "warnings": []},
+        ],
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "duration": 0.01,
+    }
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        bundle_path = Path(tmp_dir) / "evidence_bundle.json"
+        write_evidence_bundle(bundle_path, {"GV2.Test.A"}, report, identity)
+        loaded = load_evidence_bundle(bundle_path)
+        diagnostics = validate_evidence_bundle(loaded)
+        assert diagnostics == [], f"Expected clean bundle to validate, got: {diagnostics}"
+
+        tampered = json.loads(bundle_path.read_text(encoding="utf-8"))
+        tampered["bundle_schema_version"] = "some-other-version"
+        bundle_path.write_text(json.dumps(tampered), encoding="utf-8")
+        try:
+            load_evidence_bundle(bundle_path)
+            raise AssertionError("Expected load_evidence_bundle to reject a mismatched schema version")
+        except ValueError as e:
+            assert "bundle_schema_version" in str(e), f"Unexpected error message: {e}"
+            assert EVIDENCE_BUNDLE_SCHEMA_VERSION in str(e), f"Error must name the expected version: {e}"
 
     print("run_ue_acceptance self-test: PASSED")
     return 0

@@ -702,3 +702,100 @@ def validate_run(
             diagnostics.append(f"Report counter in_process is non-zero: {in_process}.")
 
     return diagnostics
+
+
+# AEP-01: evidence bundle — the single artifact carrying validate_run's three
+# inputs (expected identity, discovered set, normalized report) by value, so a
+# producer and the consumer that checks its work can be different processes on
+# different machines. Versioned separately from the report's own
+# SUPPORTED_REPORT_SCHEMA_VERSIONS: the bundle wraps a report rather than being
+# one, and a version mismatch here must fail before the wrapped report's own
+# version is even inspected.
+EVIDENCE_BUNDLE_SCHEMA_VERSION = "gv2-acceptance-evidence-bundle-v1"
+
+
+def build_evidence_bundle(
+    discovered: Set[str],
+    report: Dict[str, Any],
+    run_identity: Dict[str, str],
+) -> Dict[str, Any]:
+    """Packages validate_run's three inputs into one bundle, by value.
+
+    `discovered` is stored as a sorted list (JSON has no set type); every other
+    part is stored as-is. No part is stored by reference to a producer-local
+    path — a bundle is self-contained once serialized.
+    """
+    return {
+        "bundle_schema_version": EVIDENCE_BUNDLE_SCHEMA_VERSION,
+        "run_identity": dict(run_identity) if isinstance(run_identity, dict) else run_identity,
+        "discovered": sorted(discovered) if isinstance(discovered, (set, frozenset)) else discovered,
+        "report": report,
+    }
+
+
+def write_evidence_bundle(
+    path: Union[str, Path],
+    discovered: Set[str],
+    report: Dict[str, Any],
+    run_identity: Dict[str, str],
+) -> None:
+    """Writes build_evidence_bundle's result to `path` as JSON."""
+    bundle = build_evidence_bundle(discovered, report, run_identity)
+    Path(path).write_text(json.dumps(bundle, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def load_evidence_bundle(path: Union[str, Path]) -> Dict[str, Any]:
+    """Reads and schema-checks an evidence bundle from `path`.
+
+    Raises FileNotFoundError if the file does not exist, and ValueError if it
+    is not valid JSON, not an object, or carries an unsupported
+    bundle_schema_version — a version mismatch is a typed failure here, not an
+    attempt to parse a shape the reader was not built for.
+    """
+    bundle_path = Path(path)
+    if not bundle_path.is_file():
+        raise FileNotFoundError(f"Evidence bundle not found: {bundle_path}")
+
+    try:
+        with open(bundle_path, "r", encoding="utf-8") as f:
+            bundle = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Evidence bundle at {bundle_path} is not valid JSON: {e}") from e
+
+    if not isinstance(bundle, dict):
+        raise ValueError(
+            f"Evidence bundle at {bundle_path} must be a JSON object, got {type(bundle).__name__}."
+        )
+
+    version = bundle.get("bundle_schema_version")
+    if version != EVIDENCE_BUNDLE_SCHEMA_VERSION:
+        raise ValueError(
+            f"Evidence bundle at {bundle_path} has unsupported bundle_schema_version {version!r}; "
+            f"expected {EVIDENCE_BUNDLE_SCHEMA_VERSION!r}."
+        )
+
+    return bundle
+
+
+def validate_evidence_bundle(bundle: Dict[str, Any]) -> List[str]:
+    """Validates an evidence bundle produced by build_evidence_bundle/write_evidence_bundle.
+
+    Unpacks the bundle's by-value parts and defers the actual check to
+    validate_run, which stays the single place that decides pass/fail — this
+    function only proves that a bundle round-tripped through JSON validates
+    identically to the in-memory values it was built from.
+    """
+    if not isinstance(bundle, dict):
+        return [f"Evidence bundle must be a dict, got {type(bundle).__name__}."]
+
+    version = bundle.get("bundle_schema_version")
+    if version != EVIDENCE_BUNDLE_SCHEMA_VERSION:
+        return [
+            f"Evidence bundle has unsupported bundle_schema_version {version!r}; "
+            f"expected {EVIDENCE_BUNDLE_SCHEMA_VERSION!r}."
+        ]
+
+    discovered_raw = bundle.get("discovered")
+    discovered: Any = set(discovered_raw) if isinstance(discovered_raw, list) else discovered_raw
+
+    return validate_run(discovered, bundle.get("report"), bundle.get("run_identity"))

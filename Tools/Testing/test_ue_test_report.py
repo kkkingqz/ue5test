@@ -34,15 +34,20 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from Tools.Testing.ue_test_report import (
+    EVIDENCE_BUNDLE_SCHEMA_VERSION,
+    build_evidence_bundle,
     compute_build_fingerprint,
     compute_engine_version,
     compute_run_identity,
     compute_source_diff_hash,
     extract_runtime_identity_from_mcp_data,
     extract_runtime_identity_from_ue_data,
+    load_evidence_bundle,
     normalize_mcp_report,
     normalize_ue_json_report,
+    validate_evidence_bundle,
     validate_run,
+    write_evidence_bundle,
 )
 
 
@@ -724,6 +729,153 @@ class TestUeTestReport(unittest.TestCase):
         self.assertTrue(any("missing required 'schema_version'" in d for d in diags))
 
 
+class TestEvidenceBundle(unittest.TestCase):
+    """AEP-01: evidence bundle round trip — build/write/load/validate as one artifact."""
+
+    def setUp(self) -> None:
+        self.identity = {
+            "run_id": "run-test-12345",
+            "source_revision": "abcdef1234567890abcdef1234567890abcdef12",
+            "source_diff_hash": "clean",
+            "build_fingerprint": "fingerprint-linux-dev-v1",
+            "engine_version": "5.8",
+        }
+        self.discovered = {"GV2.Test.A", "GV2.Test.B"}
+        self.report = {
+            "schema_version": 1,
+            "run_identity": dict(self.identity),
+            "tests": [
+                {"name": "GV2.Test.A", "state": "Success", "duration": 0.01, "errors": [], "warnings": []},
+                {"name": "GV2.Test.B", "state": "Success", "duration": 0.02, "errors": [], "warnings": []},
+            ],
+            "total": 2,
+            "passed": 2,
+            "failed": 0,
+            "skipped": 0,
+            "duration": 0.03,
+        }
+
+    def test_build_evidence_bundle_is_json_serializable_by_value(self) -> None:
+        """The bundle must carry discovered/report/run_identity by value, not by producer-local reference."""
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        self.assertEqual(bundle["bundle_schema_version"], EVIDENCE_BUNDLE_SCHEMA_VERSION)
+        self.assertEqual(sorted(bundle["discovered"]), sorted(self.discovered))
+        self.assertEqual(bundle["report"], self.report)
+        self.assertEqual(bundle["run_identity"], self.identity)
+        # Round trip through json.dumps/loads must not raise or lose information.
+        reloaded = json.loads(json.dumps(bundle))
+        self.assertEqual(reloaded, bundle)
+
+    def test_write_and_load_evidence_bundle_round_trip(self) -> None:
+        """A bundle written to one path and loaded from that path validates cleanly."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            bundle_path = Path(tmp_dir) / "evidence_bundle.json"
+            write_evidence_bundle(bundle_path, self.discovered, self.report, self.identity)
+            self.assertTrue(bundle_path.is_file())
+
+            bundle = load_evidence_bundle(bundle_path)
+            diagnostics = validate_evidence_bundle(bundle)
+            self.assertEqual(diagnostics, [], f"Expected clean bundle to validate, got: {diagnostics}")
+
+    def test_bundle_portable_to_another_directory_without_producer_files(self) -> None:
+        """A bundle copied to a directory with none of the producer's other files must still validate.
+
+        This is the property the plan calls portability: the bundle alone must be
+        sufficient, not the bundle plus files that happened to sit next to it.
+        """
+        with tempfile.TemporaryDirectory() as producer_dir, tempfile.TemporaryDirectory() as consumer_dir:
+            producer_bundle_path = Path(producer_dir) / "evidence_bundle.json"
+            write_evidence_bundle(producer_bundle_path, self.discovered, self.report, self.identity)
+
+            # Only the bundle file itself crosses to the "other machine" — no
+            # sibling report/log files from the producer's directory.
+            consumer_bundle_path = Path(consumer_dir) / "evidence_bundle.json"
+            consumer_bundle_path.write_bytes(producer_bundle_path.read_bytes())
+
+            bundle = load_evidence_bundle(consumer_bundle_path)
+            diagnostics = validate_evidence_bundle(bundle)
+            self.assertEqual(diagnostics, [], f"Expected portable bundle to validate, got: {diagnostics}")
+
+    def test_negative_load_evidence_bundle_missing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            missing_path = Path(tmp_dir) / "does_not_exist.json"
+            with self.assertRaises(FileNotFoundError):
+                load_evidence_bundle(missing_path)
+
+    def test_negative_load_evidence_bundle_malformed_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            bad_path = Path(tmp_dir) / "evidence_bundle.json"
+            bad_path.write_text("{not valid json", encoding="utf-8")
+            with self.assertRaises(ValueError) as ctx:
+                load_evidence_bundle(bad_path)
+            self.assertIn("not valid JSON", str(ctx.exception))
+
+    def test_negative_load_evidence_bundle_not_an_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            bad_path = Path(tmp_dir) / "evidence_bundle.json"
+            bad_path.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+            with self.assertRaises(ValueError) as ctx:
+                load_evidence_bundle(bad_path)
+            self.assertIn("must be a JSON object", str(ctx.exception))
+
+    def test_negative_load_evidence_bundle_schema_version_mismatch(self) -> None:
+        """A version mismatch must be a typed failure naming both the found and expected version."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            bundle_path = Path(tmp_dir) / "evidence_bundle.json"
+            write_evidence_bundle(bundle_path, self.discovered, self.report, self.identity)
+
+            tampered = json.loads(bundle_path.read_text(encoding="utf-8"))
+            tampered["bundle_schema_version"] = "gv2-acceptance-evidence-bundle-v0"
+            bundle_path.write_text(json.dumps(tampered), encoding="utf-8")
+
+            with self.assertRaises(ValueError) as ctx:
+                load_evidence_bundle(bundle_path)
+            message = str(ctx.exception)
+            self.assertIn("gv2-acceptance-evidence-bundle-v0", message)
+            self.assertIn(EVIDENCE_BUNDLE_SCHEMA_VERSION, message)
+
+    def test_negative_load_evidence_bundle_missing_schema_version_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            bundle_path = Path(tmp_dir) / "evidence_bundle.json"
+            bundle_path.write_text(json.dumps({"report": {}, "discovered": [], "run_identity": {}}), encoding="utf-8")
+            with self.assertRaises(ValueError) as ctx:
+                load_evidence_bundle(bundle_path)
+            self.assertIn("unsupported bundle_schema_version", str(ctx.exception))
+
+    def test_negative_validate_evidence_bundle_schema_version_mismatch(self) -> None:
+        """validate_evidence_bundle (called on an already-parsed dict) must also reject a bad version."""
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        bundle["bundle_schema_version"] = "some-other-version"
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertEqual(len(diagnostics), 1)
+        self.assertIn("some-other-version", diagnostics[0])
+        self.assertIn(EVIDENCE_BUNDLE_SCHEMA_VERSION, diagnostics[0])
+
+    def test_negative_validate_evidence_bundle_not_a_dict(self) -> None:
+        diagnostics = validate_evidence_bundle(["not", "a", "dict"])
+        self.assertEqual(len(diagnostics), 1)
+        self.assertIn("must be a dict", diagnostics[0])
+
+    def test_evidence_bundle_surfaces_underlying_validate_run_diagnostics(self) -> None:
+        """A structurally valid bundle whose wrapped report fails must surface validate_run's own diagnostics."""
+        broken_report = dict(self.report)
+        broken_report["tests"] = [
+            {"name": "GV2.Test.A", "state": "Fail", "duration": 0.01, "errors": ["boom"], "warnings": []},
+        ]
+        bundle = build_evidence_bundle({"GV2.Test.A"}, broken_report, self.identity)
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertTrue(any("non-success state" in d for d in diagnostics))
+        self.assertTrue(any("reported errors" in d for d in diagnostics))
+
+    def test_mutation_new_bundle_version_without_registration_is_rejected(self) -> None:
+        """Mutational probe: a bundle claiming a version this reader never declared must fail closed."""
+        bundle = build_evidence_bundle(self.discovered, self.report, self.identity)
+        bundle["bundle_schema_version"] = "gv2-acceptance-evidence-bundle-v2-unregistered"
+        diagnostics = validate_evidence_bundle(bundle)
+        self.assertEqual(len(diagnostics), 1)
+        self.assertIn("unsupported bundle_schema_version", diagnostics[0])
+
+
 class TestRunnersIntegration(unittest.TestCase):
     """Tests that local and CI runners fail closed and return correct exit codes."""
 
@@ -1131,6 +1283,7 @@ class TestRunnersIntegration(unittest.TestCase):
 def main() -> int:
     suite = unittest.TestSuite()
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestUeTestReport))
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestEvidenceBundle))
     suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(TestRunnersIntegration))
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
