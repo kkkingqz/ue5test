@@ -30,6 +30,12 @@ import sys
 import time
 import uuid
 from pathlib import Path
+
+# Единственное место, где записан путь к движку по умолчанию. Переезд установки
+# (например, в контейнерную раскладку /opt/ue/<version>) — правка этой строки или
+# экспорт UE_ROOT; литерал намеренно не повторяется по файлу, чтобы перенос не
+# зависел от того, все ли его вхождения нашли.
+DEFAULT_UE_ROOT = "/opt/unreal-engine"
 from typing import Optional, Set, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -96,7 +102,7 @@ def run_acceptance(
 ) -> int:
     repo_root = REPO_ROOT
     if ue_root is None:
-        ue_root_env = os.environ.get("UE_ROOT", "/opt/unreal-engine")
+        ue_root_env = os.environ.get("UE_ROOT", DEFAULT_UE_ROOT)
         ue_root = Path(ue_root_env)
 
     editor_cmd = ue_root / "Engine" / "Binaries" / "Linux" / "UnrealEditor-Cmd"
@@ -334,7 +340,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--ue-root",
-        default=os.environ.get("UE_ROOT", "/opt/unreal-engine"),
+        default=os.environ.get("UE_ROOT", DEFAULT_UE_ROOT),
         help="Path to Unreal Engine installation root.",
     )
     parser.add_argument(

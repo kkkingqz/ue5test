@@ -29,6 +29,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Единственное место, где записан путь к движку по умолчанию. Переезд установки
+# (например, в контейнерную раскладку /opt/ue/<version>) — правка этой строки или
+# экспорт UE_ROOT; литерал намеренно не повторяется по файлу, чтобы перенос не
+# зависел от того, все ли его вхождения нашли.
+DEFAULT_UE_ROOT = "/opt/unreal-engine"
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SOURCE_ROOT = REPO_ROOT / "Source"
@@ -1192,7 +1198,7 @@ def run_self_test(reply_dir: Path | None = None, ue_root: Path | None = None) ->
 
     # 18. Compiler-negative UBT probe (if UBT/UE is present)
     if ue_root is None:
-        ue_root = Path(os.environ.get("UE_ROOT", "/opt/unreal-engine"))
+        ue_root = Path(os.environ.get("UE_ROOT", DEFAULT_UE_ROOT))
     build_sh = ue_root / "Engine" / "Build" / "BatchFiles" / "Linux" / "Build.sh"
     if build_sh.is_file() and os.access(build_sh, os.X_OK):
         if not run_compiler_negative_ubt_probe(ue_root):
@@ -1208,7 +1214,7 @@ def run_compiler_negative_ubt_probe(ue_root: Path | None = None, repo_root: Path
     """Proves via actual UBT compilation failure that GV2PresentationApply cannot reach authority headers."""
     print("[*] Running compiler-negative UBT probe for GV2PresentationApply...")
     if ue_root is None:
-        ue_root = Path(os.environ.get("UE_ROOT", "/opt/unreal-engine"))
+        ue_root = Path(os.environ.get("UE_ROOT", DEFAULT_UE_ROOT))
     build_sh = ue_root / "Engine" / "Build" / "BatchFiles" / "Linux" / "Build.sh"
     if not build_sh.is_file() or not os.access(build_sh, os.X_OK):
         print(f"FAILED: Unreal Engine Build.sh not found or not executable at: {build_sh}", file=sys.stderr)

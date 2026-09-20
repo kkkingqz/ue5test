@@ -1,8 +1,8 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 4.4
-updated: 2026-09-15
+version: 4.5
+updated: 2026-09-20
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -440,6 +440,20 @@ python3 Tools/Testing/run_ue_acceptance.py --filter GV2 --fresh-process
 # Дополнительный developer run в открытом Editor (при соответствии бинарников):
 python3 Tools/MCP/run_ue_tests.py --filter StartsWith:GV2
 ```
+
+### Где какая проверка исполняется
+
+Команды выше делятся на три группы по тому, что им нужно от окружения. Разделение нормативно: оно определяет, какой контур обязан иметь какой инструментарий, и остаётся верным при разнесении сборки, редактора и рабочей среды по разным хостам или контейнерам.
+
+| Группа | Нужно | Команды |
+|---|---|---|
+| Портативная | CMake, C++-компилятор, `python3` (только stdlib) | `cmake`, `ctest`, `gv2-headless`, `gv2-content`, `validate_docs.py` и все Python-гейты, зарегистрированные в CTest |
+| UE-сборка и приёмка | установленный Engine по `UE_ROOT` | `run_ue_acceptance.py`, `validate_presentation_apply_module_graph.py --ubt-probe` |
+| Editor API | запущенный Editor с `ModelContextProtocol`, доступный по `UNREAL_MCP_URL` | `Tools/MCP/*` |
+
+**Портативная группа Unreal не требует вовсе** — `CMakeLists.txt` не упоминает ни `UE_ROOT`, ни бинарников движка. При этом она включает Python-гейты, сканирующие `Source/GV2/**`, то есть покрывает движковый код, не собирая его. Следствие: среда, где правится код, обязана уметь исполнять эту группу; вынос её в отдельный контур сборки ничего не даёт, а обратная связь удлиняется. Прецедент: за весь план `PresentationEffectPipeline` портативный CTest не запускался ни разу — задачи считали его неприменимым, потому что не трогали `GV2RuntimeCore`, — и шесть архитектурных расхождений в гейтах дожили до `PEP-10`.
+
+`UE_ROOT` и `UNREAL_MCP_URL` — единственные точки привязки к размещению Engine и Editor. Путь по умолчанию записан один раз на файл (`DEFAULT_UE_ROOT`), значение по умолчанию `UNREAL_MCP_URL` — `http://127.0.0.1:8000/mcp`. Обе переменные переопределяются окружением; ни одна проверка не выводит расположение движка или редактора иначе.
 
 ## Supported foundation baseline
 

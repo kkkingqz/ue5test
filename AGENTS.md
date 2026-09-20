@@ -298,6 +298,7 @@ date: YYYY-MM-DD
 
 - Editor-authored assets (`.uasset`), включая Widget Blueprint, Data Asset и CommonUI style assets, AI обязан создавать и изменять через настроенный Unreal Editor API (`unreal-mcp`), а не прямой записью бинарных файлов.
 - Каталог инструментов, клиентской библиотеки и инструкций по работе с MCP находится в `Tools/MCP/` (см. [`Tools/MCP/README.md`](Tools/MCP/README.md)).
+- Endpoint Editor API задаёт `UNREAL_MCP_URL` (по умолчанию `http://127.0.0.1:8000/mcp`). Правило не предполагает, что Editor работает на той же машине: при разнесении Editor в отдельный контейнер или на отдельный хост меняется только эта переменная, а требование править `.uasset` исключительно через Editor API остаётся тем же. Недоступность endpoint не создаёт исключения — см. следующий пункт.
 - AI категорически запрещено принудительно завершать (`kill`, `killall`, `terminate`) запущенный пользователем процесс Unreal Editor или другие приложения без прямого явного указания пользователя.
 - Если API недоступен, AI обязан проверить, запущен ли Unreal Editor и активен ли `ModelContextProtocol`; отсутствие запущенного Editor не является основанием подменять API генерацией `.uasset` сторонними средствами или самовольно перезапускать редактор.
 - После изменения asset через Editor API AI обязан выполнить compile затронутых Blueprint, сохранить assets (используя `Tools/MCP/compile_and_save_assets.py --path <path>` или вызовы MCP) и проверить их загрузку/контракт automation-тестом (`Tools/MCP/run_ue_tests.py`).
