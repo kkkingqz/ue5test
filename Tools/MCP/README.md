@@ -42,10 +42,10 @@ Unreal Editor предоставляет HTTP/SSE эндпоинт MCP чере�
 
 | Файл | Назначение |
 |---|---|
-| [`mcp_client.py`](file:///home/king/ue5/GV2/Tools/MCP/mcp_client.py) | Автономная клиентская библиотека `UnrealMcpClient` для подключения к MCP серверу редактора. |
-| [`run_ue_tests.py`](file:///home/king/ue5/GV2/Tools/MCP/run_ue_tests.py) | CLI-утилита для запуска автоматизационных тестов в запущенном Unreal Editor с фильтрацией и отчетом. |
-| [`compile_and_save_assets.py`](file:///home/king/ue5/GV2/Tools/MCP/compile_and_save_assets.py) | CLI-утилита для пакетной компиляции и сохранения ассетов и виджетов. |
-| [`README.md`](file:///home/king/ue5/GV2/Tools/MCP/README.md) | Данное руководство. |
+| [`mcp_client.py`](mcp_client.py) | Автономная клиентская библиотека `UnrealMcpClient` для подключения к MCP серверу редактора. |
+| [`run_ue_tests.py`](run_ue_tests.py) | CLI-утилита для запуска автоматизационных тестов в запущенном Unreal Editor с фильтрацией и отчетом. |
+| [`compile_and_save_assets.py`](compile_and_save_assets.py) | CLI-утилита для пакетной компиляции и сохранения ассетов и виджетов. |
+| [`README.md`](README.md) | Данное руководство. |
 
 ---
 

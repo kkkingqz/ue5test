@@ -7,6 +7,7 @@ GV2 — модульная игровая система на базе Unreal En
 - **Документация и архитектурные контракты:** [`Docs/README.md`](Docs/README.md)
 - **Инструкции и правила для AI-агентов:** [`AGENTS.md`](AGENTS.md) и [`GEMINI.md`](GEMINI.md)
 - **Интеграция с Unreal Editor через MCP (Model Context Protocol):** [`Tools/MCP/README.md`](Tools/MCP/README.md)
+- **Поднять проект на новой машине:** [`WORKSTATION-SETUP.md`](WORKSTATION-SETUP.md)
 
 ## Быстрый старт с инструментами MCP
 
