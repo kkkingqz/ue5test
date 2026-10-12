@@ -1,15 +1,14 @@
 ---
 title: Commands and Events
 status: normative
-version: 2.0
-updated: 2026-08-20
+version: 2.1
+updated: 2026-10-12
 depends_on:
   - LuaRuntimeContract.md
   - RuntimeFacadeAndRegistries.md
   - StableIDSpecification.md
 decisions:
   - ../ADR/0003-command-and-event-model.md
-  - ../ADR/0004-lua-state-mutation.md
   - ../ADR/0027-designer-lua-authoring-layer.md
   - ../ADR/0033-command-validator-authoring.md
   - ../ADR/0034-gameplay-service-authoring.md
