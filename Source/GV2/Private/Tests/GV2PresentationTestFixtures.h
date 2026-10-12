@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Application/GV2FilesystemContentSourceProvider.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2SessionContentSnapshot.h"
@@ -181,6 +182,68 @@ public:
 private:
     T* Object = nullptr;
 };
+
+// STATUS-028 (ADR-0046): the UE content roots an asset sweep scans are read from the
+// pinned package closure -- each package's own declared `ue_content_roots` -- instead of a
+// hand-written path list naming game packages. A package added, renamed or re-rooted is
+// covered without touching the test, and the sweep stops asserting anything about where a
+// specific game package keeps its widgets. An empty result means discovery failed, so
+// callers fail the test instead of silently sweeping nothing.
+inline TArray<FName> GetDeclaredUeContentRootPaths()
+{
+    TArray<FName> Roots;
+    for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
+    {
+        for (const FString& Root : Entry.UeContentRoots)
+        {
+            Roots.AddUnique(FName(*Root));
+        }
+    }
+    return Roots;
+}
+
+// STATUS-028: independent oracle for the derived root list above. Every WBP_ asset the
+// project actually has under /Game must be reachable from the declared roots. The sweeps'
+// own "at least one asset was walked" assertions would stay green if derivation silently
+// lost a package's root, so the expected side is taken from a source the derivation does
+// not touch -- a full recursive /Game scan of the asset registry. The same check also
+// fails when a widget is authored outside every declared ue_content_root, which is the
+// other way a sweep stops covering what it claims to cover.
+inline bool DeclaredRootsCoverEveryProjectWidgetAsset(
+    const TArray<FAssetData>& AssetsFromDeclaredRoots,
+    TArray<FString>& OutUnreachableAssets)
+{
+    OutUnreachableAssets.Reset();
+
+    TSet<FName> ReachablePackages;
+    for (const FAssetData& Asset : AssetsFromDeclaredRoots)
+    {
+        ReachablePackages.Add(Asset.PackageName);
+    }
+
+    FAssetRegistryModule& AssetRegistryModule =
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    FARFilter EveryGameAssetFilter;
+    EveryGameAssetFilter.PackagePaths.Add(FName(TEXT("/Game")));
+    EveryGameAssetFilter.bRecursivePaths = true;
+    TArray<FAssetData> EveryGameAsset;
+    AssetRegistryModule.Get().GetAssets(EveryGameAssetFilter, EveryGameAsset);
+
+    for (const FAssetData& Asset : EveryGameAsset)
+    {
+        if (!Asset.AssetName.ToString().StartsWith(TEXT("WBP_")))
+        {
+            continue;
+        }
+        if (!ReachablePackages.Contains(Asset.PackageName))
+        {
+            OutUnreachableAssets.Add(Asset.PackageName.ToString());
+        }
+    }
+
+    OutUnreachableAssets.Sort();
+    return OutUnreachableAssets.Num() == 0;
+}
 
 // PSC-11: tests carry an FString of their own; the single Apply facade returns a result
 // struct. This adapts one to the other for test call sites only -- production has exactly
@@ -563,6 +626,7 @@ namespace GV2SyntheticMechanicalFixture
     inline const TCHAR* const CommandsSchemaId = TEXT("core:schema.ui_field.synthetic_commands.v1");
     inline const TCHAR* const TopBarSchemaId = TEXT("core:schema.ui_field.synthetic_top_bar.v1");
     inline const TCHAR* const PlayerStatusSchemaId = TEXT("core:schema.ui_field.synthetic_player_status.v1");
+    inline const TCHAR* const DeclaredCompositeSchemaId = TEXT("core:schema.ui_field.synthetic_declared_composite.v1");
 
     // Semantic tokens / keys
     inline const FName CharacterKey = FName(TEXT("guide"));

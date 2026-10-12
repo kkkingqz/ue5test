@@ -223,14 +223,15 @@ bool FGV2DeclaredCompositeFlatSchemaTest::RunTest(const FString& Parameters)
 {
     using namespace GV2ContentCore;
 
-    // Source 1 is the authored content schema. It intentionally names the composite
-    // properties themselves, never the internal capabilities of either child.
+    // Source 1 is the authored schema file of the synthetic fixture, compiled through the
+    // production schema path. It intentionally names the composite properties themselves,
+    // never the internal capabilities of either child.
     TSharedPtr<FGV2UiSchemaCache> SchemaCache = FGV2UiSchemaCacheTestAccess::Create({
-        FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
+        FGV2SchemaPackageRoot{TEXT("core"), GV2SyntheticMechanicalFixture::GetSyntheticSchemaDir()}
     });
     FString SchemaError;
     const FCompiledUiFieldSpecPtr Schema = SchemaCache->GetCompiledSchema(
-        "textsystem:schema.ui_field.declared_composite_fixture.v1",
+        TCHAR_TO_UTF8(GV2SyntheticMechanicalFixture::DeclaredCompositeSchemaId),
         SchemaError);
     TestNotNull(TEXT("DUC-06: fixture's authored flat schema loads from content"), Schema.get());
     if (Schema == nullptr)
@@ -303,7 +304,7 @@ bool FGV2DeclaredCompositeFlatSchemaTest::RunTest(const FString& Parameters)
     const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
         *Schema,
         Capabilities,
-        TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1"),
+        GV2SyntheticMechanicalFixture::DeclaredCompositeSchemaId,
         TEXT(""),
         Diagnostics);
     TestTrue(TEXT("DUC-06: authored flat schema is compatible with declared properties"), bCompatible);

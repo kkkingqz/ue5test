@@ -316,20 +316,23 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
         }
 
         // 9c. Separate test confirming both sides originate from DIFFERENT sources:
-        // Schema loaded from repository content, Capabilities queried from live widget
+        // Schema parsed from authored content on disk, Capabilities queried from live widget
         {
             UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
             TestNotNull(TEXT("TestWorld created"), TestWorld);
 
-            // Source 1: Schema loaded directly from repository package
+            // Source 1: Schema compiled from the synthetic fixture's authored schema files.
+            // It is authored content read through the production schema path, so the expected
+            // side still does not come from the code under test -- only the game package does
+            // not take part (ADR-0046).
             TSharedPtr<FGV2UiSchemaCache> RepoSchemaCache = FGV2UiSchemaCacheTestAccess::Create({
-                FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
+                FGV2SchemaPackageRoot{TEXT("core"), GV2SyntheticMechanicalFixture::GetSyntheticSchemaDir()}
             });
             FString SchemaErr;
             GV2ContentCore::FCompiledUiFieldSpecPtr RepoSchema = RepoSchemaCache->GetCompiledSchema(
-                "textsystem:schema.ui_field.location_commands.v1",
+                TCHAR_TO_UTF8(GV2SyntheticMechanicalFixture::CommandsSchemaId),
                 SchemaErr);
-            TestNotNull(TEXT("PCC-02 Source 1: Schema loaded from repository"), RepoSchema.get());
+            TestNotNull(TEXT("PCC-02 Source 1: Schema loaded from authored fixture content"), RepoSchema.get());
 
             // Source 2: Capability tree queried directly from widget
             UGV2ButtonListWidgetBase* ButtonListWidget = CreateWidget<UGV2ButtonListWidgetBase>(
@@ -354,7 +357,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             {
                 TArray<FGV2UiSchemaCompatibilityDiagnostic> MatchDiags;
                 const bool bMatch = CheckUiSchemaCapabilityCompatibility(
-                    *RepoSchema, WidgetCaps, TEXT("textsystem:schema.ui_field.location_commands.v1"), TEXT(""), MatchDiags);
+                    *RepoSchema, WidgetCaps, GV2SyntheticMechanicalFixture::CommandsSchemaId, TEXT(""), MatchDiags);
                 for (const auto& D : MatchDiags)
                 {
                     UE_LOG(LogTemp, Error, TEXT("PCC-02 MatchDiag: code=%s path=%s msg=%s"), *D.Code, *D.PropertyPath, *D.Message);
@@ -383,7 +386,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
 
                 TArray<FGV2UiSchemaCompatibilityDiagnostic> MismatchDiags;
                 const bool bMismatch = CheckUiSchemaCapabilityCompatibility(
-                    ModifiedRepoSchema, WidgetCaps, TEXT("textsystem:schema.ui_field.location_commands.v1"), TEXT(""), MismatchDiags);
+                    ModifiedRepoSchema, WidgetCaps, GV2SyntheticMechanicalFixture::CommandsSchemaId, TEXT(""), MismatchDiags);
                 TestFalse(TEXT("PCC-02: Repo schema with extra item property rejected"), bMismatch);
                 TestTrue(TEXT("PCC-02: Rejection diagnostic has unknown_schema_property"),
                     MismatchDiags.Num() > 0 && MismatchDiags[0].Code == TEXT("core:diagnostic.ui_capability.unknown_schema_property"));
@@ -502,23 +505,23 @@ bool FGV2SchemaRootsFromClosureTest::RunTest(const FString& Parameters)
         bClosureIncludesSample);
 
     // A schema whose declared `id` namespace doesn't match the package root it was
-    // discovered under is rejected -- proven with real content (textsystem's own
-    // location_commands schema) deliberately tagged as belonging to "core".
+    // discovered under is rejected -- proven with authored content on disk (the synthetic
+    // fixture's own core: schemas) deliberately tagged as belonging to "textsystem".
     TSharedPtr<FGV2UiSchemaCache> MismatchedCache = FGV2UiSchemaCacheTestAccess::Create({
-        FGV2SchemaPackageRoot{TEXT("core"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
+        FGV2SchemaPackageRoot{TEXT("textsystem"), GV2SyntheticMechanicalFixture::GetSyntheticSchemaDir()}
     });
     FString MismatchError;
     TestNull(
         TEXT("A schema whose id namespace doesn't match its tagged package root is not registered"),
-        MismatchedCache->GetCompiledSchema("textsystem:schema.ui_field.location_commands.v1", MismatchError).get());
+        MismatchedCache->GetCompiledSchema(TCHAR_TO_UTF8(GV2SyntheticMechanicalFixture::CommandsSchemaId), MismatchError).get());
 
     TSharedPtr<FGV2UiSchemaCache> MatchedCache = FGV2UiSchemaCacheTestAccess::Create({
-        FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
+        FGV2SchemaPackageRoot{TEXT("core"), GV2SyntheticMechanicalFixture::GetSyntheticSchemaDir()}
     });
     FString MatchedError;
     TestNotNull(
         TEXT("The same schema resolves normally when its package root is correctly tagged"),
-        MatchedCache->GetCompiledSchema("textsystem:schema.ui_field.location_commands.v1", MatchedError).get());
+        MatchedCache->GetCompiledSchema(TCHAR_TO_UTF8(GV2SyntheticMechanicalFixture::CommandsSchemaId), MatchedError).get());
 
     return true;
 }

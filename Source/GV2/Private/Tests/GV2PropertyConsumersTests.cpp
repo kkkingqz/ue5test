@@ -2036,7 +2036,7 @@ bool FGV2PropertyConsumersTopBarAndPlayerStatusCompositeTest::RunTest(const FStr
                 TopBarValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("top_bar_inst")));
 
                 FString ApplyErr;
-                TestTrue(TEXT("TopBar ApplyHostProps succeeds"), ApplyHostProps(TopBar, TopBarValues, TopBarSchema, TEXT("textsystem:schema.ui_field.location_top_bar.v1"), ApplyErr));
+                TestTrue(TEXT("TopBar ApplyHostProps succeeds"), ApplyHostProps(TopBar, TopBarValues, TopBarSchema, GV2SyntheticMechanicalFixture::TopBarSchemaId, ApplyErr));
 
                 TestEqual(TEXT("TopBar Day text committed"), DayBlock->GetTextContent().ToString(), TEXT("Day 42"));
                 TestEqual(TEXT("TopBar Location text committed"), LocBlock->GetTextContent().ToString(), TEXT("Tavern"));
@@ -2044,7 +2044,7 @@ bool FGV2PropertyConsumersTopBarAndPlayerStatusCompositeTest::RunTest(const FStr
                 TestEqual(TEXT("TopBar Key committed"), TopBar->GetKey(), FName(TEXT("top_bar_inst")));
 
                 // Reset
-                ResetHostProps(TopBar, TopBarSchema, TEXT("textsystem:schema.ui_field.location_top_bar.v1"));
+                ResetHostProps(TopBar, TopBarSchema, GV2SyntheticMechanicalFixture::TopBarSchemaId);
                 TestTrue(TEXT("TopBar Day text cleared on reset"), DayBlock->GetTextContent().IsEmpty());
                 TestTrue(TEXT("TopBar Location text cleared on reset"), LocBlock->GetTextContent().IsEmpty());
                 TestTrue(TEXT("TopBar PrimaryResource text cleared on reset"), ResBlock->GetTextContent().IsEmpty());
@@ -2053,7 +2053,7 @@ bool FGV2PropertyConsumersTopBarAndPlayerStatusCompositeTest::RunTest(const FStr
                 // Negative: wrong kind for text
                 TArray<TPair<FString, FGV2PreparedUiValue>> BadTopBarValues;
                 BadTopBarValues.Emplace(TEXT("day"), FGV2PreparedUiValue::MakeNumber(123.0));
-                TestFalse(TEXT("TopBar Prepare rejects number for text"), ApplyHostProps(TopBar, BadTopBarValues, TopBarSchema, TEXT("textsystem:schema.ui_field.location_top_bar.v1"), ApplyErr));
+                TestFalse(TEXT("TopBar Prepare rejects number for text"), ApplyHostProps(TopBar, BadTopBarValues, TopBarSchema, GV2SyntheticMechanicalFixture::TopBarSchemaId, ApplyErr));
             }
 
             // 13b. PlayerStatus (DCA-06: generic declared composite) Property Host Reconciliation
@@ -2225,7 +2225,7 @@ bool FGV2PropertyConsumersTopBarAndPlayerStatusCompositeTest::RunTest(const FStr
                 StatusValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("player_status_inst")));
 
                 FString StatusErr;
-                TestTrue(TEXT("PlayerStatus ApplyHostProps succeeds"), ApplyHostProps(PlayerStatus, StatusValues, PlayerStatusSchema, TEXT("textsystem:schema.ui_field.location_player_status.v1"), StatusErr));
+                TestTrue(TEXT("PlayerStatus ApplyHostProps succeeds"), ApplyHostProps(PlayerStatus, StatusValues, PlayerStatusSchema, GV2SyntheticMechanicalFixture::PlayerStatusSchemaId, StatusErr));
 
                 TestEqual(TEXT("PlayerStatus Name committed"), NameBlock->GetTextContent().ToString(), TEXT("Hero"));
                 TestEqual(TEXT("PlayerStatus Key committed"), PlayerStatus->GetKey(), FName(TEXT("player_status_inst")));
@@ -2320,7 +2320,7 @@ bool FGV2PropertyConsumersTopBarAndPlayerStatusCompositeTest::RunTest(const FStr
                 ReorderValues.Emplace(TEXT("name"), FGV2PreparedUiValue::MakeText(NameVM));
                 ReorderValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(ReorderedItems))));
 
-                TestTrue(TEXT("PlayerStatus Reorder Apply succeeds"), ApplyHostProps(PlayerStatus, ReorderValues, PlayerStatusSchema, TEXT("textsystem:schema.ui_field.location_player_status.v1"), StatusErr));
+                TestTrue(TEXT("PlayerStatus Reorder Apply succeeds"), ApplyHostProps(PlayerStatus, ReorderValues, PlayerStatusSchema, GV2SyntheticMechanicalFixture::PlayerStatusSchemaId, StatusErr));
                 TestEqual(TEXT("ItemRepeater count is 3 after reorder"), ItemRep->GetEntryCount(), 3);
                 TestEqual(TEXT("Item 1 widget reused across reorder"), ItemRep->GetEntryWidget(FName(TEXT("item@1"))), Item1Widget);
                 TestEqual(TEXT("Item 2 widget reused across reorder"), ItemRep->GetEntryWidget(FName(TEXT("item@2"))), Item2Widget);
@@ -2336,12 +2336,12 @@ bool FGV2PropertyConsumersTopBarAndPlayerStatusCompositeTest::RunTest(const FStr
                 TArray<TPair<FString, FGV2PreparedUiValue>> FailingValues;
                 FailingValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(FailingItems))));
 
-                TestFalse(TEXT("PlayerStatus Prepare fails on invalid item resource_id kind"), ApplyHostProps(PlayerStatus, FailingValues, PlayerStatusSchema, TEXT("textsystem:schema.ui_field.location_player_status.v1"), StatusErr));
+                TestFalse(TEXT("PlayerStatus Prepare fails on invalid item resource_id kind"), ApplyHostProps(PlayerStatus, FailingValues, PlayerStatusSchema, GV2SyntheticMechanicalFixture::PlayerStatusSchemaId, StatusErr));
                 TestEqual(TEXT("ItemRepeater count remains 3 after failed prepare (rollback)"), ItemRep->GetEntryCount(), 3);
                 TestEqual(TEXT("Item 1 widget preserved without mutation"), ItemRep->GetEntryWidget(FName(TEXT("item@1"))), Item1Widget);
 
                 // Reset
-                ResetHostProps(PlayerStatus, PlayerStatusSchema, TEXT("textsystem:schema.ui_field.location_player_status.v1"));
+                ResetHostProps(PlayerStatus, PlayerStatusSchema, GV2SyntheticMechanicalFixture::PlayerStatusSchemaId);
                 TestTrue(TEXT("PlayerStatus Name cleared on reset"), NameBlock->GetTextContent().IsEmpty());
                 TestEqual(TEXT("PlayerStatus MeterRepeater cleared on reset"), MeterRep->GetEntryCount(), 0);
                 TestEqual(TEXT("PlayerStatus ItemRepeater cleared on reset"), ItemRep->GetEntryCount(), 0);
@@ -2487,7 +2487,7 @@ bool FGV2PropertyConsumersSceneAndCommandPanelCompositeTest::RunTest(const FStri
                 SceneValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("scene_inst")));
 
                 FString SceneErr;
-                TestTrue(TEXT("Scene ApplyHostProps succeeds"), ApplyHostProps(SceneWidget, SceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"), SceneErr));
+                TestTrue(TEXT("Scene ApplyHostProps succeeds"), ApplyHostProps(SceneWidget, SceneValues, SceneSchema, GV2SyntheticMechanicalFixture::SceneSchemaId, SceneErr));
                 TestEqual(TEXT("Scene Context text committed"), ContextText->GetTextContent().ToString(), TEXT("Market Square"));
                 TestEqual(TEXT("Scene Key committed"), SceneWidget->GetKey(), FName(TEXT("scene_inst")));
                 TestEqual(TEXT("Scene Character count is 2"), CharRep->GetEntryCount(), 2);
@@ -2503,7 +2503,7 @@ bool FGV2PropertyConsumersSceneAndCommandPanelCompositeTest::RunTest(const FStri
                     GV2ContentCore::FValue MatVal;
                     std::vector<GV2ContentCore::FDiagnostic> Diags;
                     GV2ContentCore::FValidationDiagnosticContext ValCtx;
-                    ValCtx.SchemaId = "textsystem:schema.ui_field.location_scene.v2";
+                    ValCtx.SchemaId = TCHAR_TO_UTF8(GV2SyntheticMechanicalFixture::SceneSchemaId);
                     const bool bEmptyValid = GV2ContentCore::ValidateUiFieldValue(
                         EmptyObjVal, SceneSchema, MatVal, nullptr, "", ValCtx, Diags);
                     TestFalse(TEXT("CFC-11: ValidateUiFieldValue rejects empty scene object {} missing required characters"), bEmptyValid);
@@ -2541,7 +2541,7 @@ bool FGV2PropertyConsumersSceneAndCommandPanelCompositeTest::RunTest(const FStri
                 ReorderSceneValues.Emplace(TEXT("context_text"), FGV2PreparedUiValue::MakeText(ContextVM));
                 ReorderSceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(ReorderedChars))));
 
-                TestTrue(TEXT("Scene Reorder Apply succeeds"), ApplyHostProps(SceneWidget, ReorderSceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"), SceneErr));
+                TestTrue(TEXT("Scene Reorder Apply succeeds"), ApplyHostProps(SceneWidget, ReorderSceneValues, SceneSchema, GV2SyntheticMechanicalFixture::SceneSchemaId, SceneErr));
                 TestEqual(TEXT("Scene Character count is 3 after reorder"), CharRep->GetEntryCount(), 3);
                 TestEqual(TEXT("C1 widget preserved across reorder"), CharRep->GetEntryWidget(FName(TEXT("c1"))), C1Widget);
                 TestEqual(TEXT("C2 widget preserved across reorder"), CharRep->GetEntryWidget(FName(TEXT("c2"))), C2Widget);
@@ -2557,18 +2557,18 @@ bool FGV2PropertyConsumersSceneAndCommandPanelCompositeTest::RunTest(const FStri
                 TArray<TPair<FString, FGV2PreparedUiValue>> FailingSceneValues;
                 FailingSceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(FailingChars))));
 
-                TestFalse(TEXT("Scene Prepare fails on invalid char resource_id"), ApplyHostProps(SceneWidget, FailingSceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"), SceneErr));
+                TestFalse(TEXT("Scene Prepare fails on invalid char resource_id"), ApplyHostProps(SceneWidget, FailingSceneValues, SceneSchema, GV2SyntheticMechanicalFixture::SceneSchemaId, SceneErr));
                 TestEqual(TEXT("Scene Character count remains 3 after failed prepare"), CharRep->GetEntryCount(), 3);
 
                 // CFC-11: Valid empty scene (characters = []) applied to widget
                 TArray<TPair<FString, FGV2PreparedUiValue>> EmptySceneValues;
                 EmptySceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create({})));
                 TestTrue(TEXT("CFC-11: Scene ApplyHostProps succeeds with valid empty characters array"),
-                    ApplyHostProps(SceneWidget, EmptySceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"), SceneErr));
+                    ApplyHostProps(SceneWidget, EmptySceneValues, SceneSchema, GV2SyntheticMechanicalFixture::SceneSchemaId, SceneErr));
                 TestEqual(TEXT("CFC-11: Scene Character count is 0 for empty array"), CharRep->GetEntryCount(), 0);
 
                 // Reset
-                ResetHostProps(SceneWidget, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v2"));
+                ResetHostProps(SceneWidget, SceneSchema, GV2SyntheticMechanicalFixture::SceneSchemaId);
                 TestTrue(TEXT("Scene Context text cleared on reset"), ContextText->GetTextContent().IsEmpty());
                 TestEqual(TEXT("Scene Characters cleared on reset"), CharRep->GetEntryCount(), 0);
                 TestEqual(TEXT("Scene Key cleared on reset"), SceneWidget->GetKey(), NAME_None);
@@ -2653,7 +2653,7 @@ bool FGV2PropertyConsumersSceneAndCommandPanelCompositeTest::RunTest(const FStri
                 CmdValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("cmd_panel_inst")));
 
                 FString CmdErr;
-                TestTrue(TEXT("CmdPanel ApplyHostProps succeeds"), ApplyHostProps(CmdPanel, CmdValues, CmdSchema, TEXT("textsystem:schema.ui_field.location_commands.v1"), CmdErr));
+                TestTrue(TEXT("CmdPanel ApplyHostProps succeeds"), ApplyHostProps(CmdPanel, CmdValues, CmdSchema, GV2SyntheticMechanicalFixture::CommandsSchemaId, CmdErr));
                 TestEqual(TEXT("CmdPanel Key committed"), CmdPanel->GetKey(), FName(TEXT("cmd_panel_inst")));
                 TestEqual(TEXT("CmdPanel Button count is 2"), BtnRep->GetEntryCount(), 2);
 
@@ -2694,7 +2694,7 @@ bool FGV2PropertyConsumersSceneAndCommandPanelCompositeTest::RunTest(const FStri
                 TArray<TPair<FString, FGV2PreparedUiValue>> ReorderCmdValues;
                 ReorderCmdValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(ReorderedBtns))));
 
-                TestTrue(TEXT("CmdPanel Reorder Apply succeeds"), ApplyHostProps(CmdPanel, ReorderCmdValues, CmdSchema, TEXT("textsystem:schema.ui_field.location_commands.v1"), CmdErr));
+                TestTrue(TEXT("CmdPanel Reorder Apply succeeds"), ApplyHostProps(CmdPanel, ReorderCmdValues, CmdSchema, GV2SyntheticMechanicalFixture::CommandsSchemaId, CmdErr));
                 TestEqual(TEXT("CmdPanel Button count is 3 after reorder"), BtnRep->GetEntryCount(), 3);
                 TestTrue(TEXT("B1 widget preserved across reorder"), BtnRep->GetEntryWidget(FName(TEXT("b1"))) == B1Widget);
                 TestTrue(TEXT("B2 widget preserved across reorder"), BtnRep->GetEntryWidget(FName(TEXT("b2"))) == B2Widget);
@@ -2710,11 +2710,11 @@ bool FGV2PropertyConsumersSceneAndCommandPanelCompositeTest::RunTest(const FStri
                 TArray<TPair<FString, FGV2PreparedUiValue>> FailingCmdValues;
                 FailingCmdValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(FailingBtns))));
 
-                TestFalse(TEXT("CmdPanel Prepare fails on invalid text kind"), ApplyHostProps(CmdPanel, FailingCmdValues, CmdSchema, TEXT("textsystem:schema.ui_field.location_commands.v1"), CmdErr));
+                TestFalse(TEXT("CmdPanel Prepare fails on invalid text kind"), ApplyHostProps(CmdPanel, FailingCmdValues, CmdSchema, GV2SyntheticMechanicalFixture::CommandsSchemaId, CmdErr));
                 TestEqual(TEXT("CmdPanel Button count remains 3 after failed prepare"), BtnRep->GetEntryCount(), 3);
 
                 // Reset
-                ResetHostProps(CmdPanel, CmdSchema, TEXT("textsystem:schema.ui_field.location_commands.v1"));
+                ResetHostProps(CmdPanel, CmdSchema, GV2SyntheticMechanicalFixture::CommandsSchemaId);
                 TestEqual(TEXT("CmdPanel Buttons cleared on reset"), BtnRep->GetEntryCount(), 0);
                 TestEqual(TEXT("CmdPanel Key cleared on reset"), CmdPanel->GetKey(), NAME_None);
             }

@@ -526,12 +526,26 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
     FAssetRegistryModule& AssetRegistryModule =
         FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
     FARFilter UiAssetFilter;
-    UiAssetFilter.PackagePaths.Add(TEXT("/Game/UI"));
-    UiAssetFilter.PackagePaths.Add(TEXT("/Game/TextSystem/UI"));
-    UiAssetFilter.PackagePaths.Add(TEXT("/Game/RH/UI"));
+    // STATUS-028: roots come from the pinned closure's declared ue_content_roots, not from
+    // literals naming game packages (GetDeclaredUeContentRootPaths).
+    const TArray<FName> UiRootPaths = GV2PresentationTestFixtures::GetDeclaredUeContentRootPaths();
+    TestTrue(TEXT("Declared UE content roots discovered from the package closure"), UiRootPaths.Num() > 0);
+    UiAssetFilter.PackagePaths = UiRootPaths;
     UiAssetFilter.bRecursivePaths = true;
     TArray<FAssetData> UiAssets;
     AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
+
+    // STATUS-028: the derived roots must still reach every WBP_ asset the project has.
+    TArray<FString> UnreachableWidgetAssets;
+    TestTrue(
+        TEXT("Declared ue_content_roots reach every WBP_ asset under /Game"),
+        GV2PresentationTestFixtures::DeclaredRootsCoverEveryProjectWidgetAsset(UiAssets, UnreachableWidgetAssets));
+    for (const FString& Unreachable : UnreachableWidgetAssets)
+    {
+        AddError(FString::Printf(
+            TEXT("STATUS-028: %s is outside every declared ue_content_root, so the sweep never walks it"),
+            *Unreachable));
+    }
 
     int32 DiscoveredCount = 0;
     TArray<UClass*> SweptWidgetClasses;
