@@ -45,6 +45,7 @@ cmake-build-*/
 # Local Codex/agent configuration
 .agents/
 .codex/
+.claude/
 
 # Python bytecode
 __pycache__/
