@@ -19,6 +19,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      # The runner image ships CMake from the distribution, whose File API codemodel does
+      # not carry a target's linkLibraries/interfaceLinkLibraries. The
+      # presentation_apply_module_graph gate reads exactly those fields, so on that CMake it
+      # can only ever return an empty result -- it passed vacuously here while its own
+      # negative case went red (run 35633270099). The gate now refuses to run instead of
+      # passing blind, which makes a codemodel that can express link items a build
+      # requirement rather than a nicety.
+      - name: Install CMake whose codemodel expresses link items
+        run: |
+          pipx install 'cmake>=4.1'
+          cmake --version
       - name: Configure
         run: |
           mkdir -p cmake-build-ci/.cmake/api/v1/query

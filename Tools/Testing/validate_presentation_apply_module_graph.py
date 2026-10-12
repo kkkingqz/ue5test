@@ -622,13 +622,98 @@ def find_cmake_reply_dirs() -> list[Path]:
     return dirs
 
 
+def codemodel_link_visibility_probe() -> tuple[str | None, int | None]:
+    """Returns (error, proven_minor): an error string when this environment's CMake
+    codemodel cannot express a plain (non-target) link item, otherwise the codemodel minor
+    version that was just proven able to express one.
+
+    A forbidden item such as `UMG` reaches the inspection below only through the target
+    object's `linkLibraries`/`interfaceLinkLibraries`, and older codemodel revisions do not
+    carry those fields at all. The inspection then finds nothing and reports "no
+    violations" for a reason that has nothing to do with the graph being clean -- from the
+    caller's side it is indistinguishable from an actually clean graph, which is how this
+    gate passed vacuously on the hosted CI image while its own negative self-test went red.
+
+    The check is a probe rather than a version comparison on purpose: it asks this CMake
+    whether a known-forbidden link item actually shows up, instead of trusting a table of
+    which release introduced which field. The proven version is then the minimum every
+    inspected reply must meet, so a reply left behind by an older CMake is rejected too --
+    checking only the CMake on PATH would miss exactly that case. A probe that cannot run
+    at all is also an error, because "unable to verify the gate can see link items" must
+    not pass as success.
+    """
+    if not shutil.which("cmake"):
+        return (
+            "CMake is not on PATH, so the codemodel gate cannot verify that it is able to see "
+            "link items at all; refusing to report a clean graph from an unverifiable gate"
+        ), None
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        probe_proj = tmp_path / "probe_proj"
+        probe_proj.mkdir()
+        (probe_proj / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION 3.25)\n"
+            "project(LinkVisibilityProbe LANGUAGES CXX)\n"
+            "add_library(probe_tgt STATIC probe.cpp)\n"
+            "target_link_libraries(probe_tgt PRIVATE UMG)\n",
+            encoding="utf-8",
+        )
+        (probe_proj / "probe.cpp").write_text("int probe() { return 0; }\n", encoding="utf-8")
+        probe_build = tmp_path / "probe_build"
+        ensure_cmake_query(probe_build)
+        res = subprocess.run(
+            ["cmake", "-S", str(probe_proj), "-B", str(probe_build)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if res.returncode != 0:
+            return f"codemodel link-visibility probe failed to configure: {res.stderr.strip()[:400]}", None
+        probe_reply = probe_build / ".cmake" / "api" / "v1" / "reply"
+        probe_errors = find_cmake_codemodel_violations(
+            [probe_reply],
+            required_targets=None,
+            probe_link_visibility=False,
+        )
+        if not any("UMG" in err and "probe_tgt" in err for err in probe_errors):
+            return (
+                "this CMake's codemodel does not express plain link items (a probe target "
+                "linking 'UMG' produced no violation), so the gate can only ever report an "
+                "empty result here; install a CMake whose codemodel carries "
+                "linkLibraries/interfaceLinkLibraries (verified present in codemodel 2.9, "
+                "CMake 4.2.3) instead of letting the gate pass vacuously"
+            ), None
+        proven_minor = None
+        probe_codemodels = sorted(probe_reply.glob("codemodel-v2-*.json"))
+        if probe_codemodels:
+            try:
+                proven = json.loads(probe_codemodels[0].read_text(encoding="utf-8"))
+                candidate = proven.get("version", {}).get("minor")
+                if isinstance(candidate, int):
+                    proven_minor = candidate
+            except Exception:
+                proven_minor = None
+        if proven_minor is None:
+            return (
+                "codemodel link-visibility probe flagged the item but its own codemodel version "
+                "could not be read, so no minimum can be derived for the replies being inspected"
+            ), None
+    return None, proven_minor
+
+
 def find_cmake_codemodel_violations(
     reply_dirs: list[Path] | None = None,
     required_targets: set[str] | None = REQUIRED_PORTABLE_TARGETS,
+    probe_link_visibility: bool = True,
 ) -> list[str]:
     """Inspect evaluated CMake File API codemodel to ensure no target links or compiles UE items,
     and fail closed if codemodel is missing or incomplete."""
     errors: list[str] = []
+    proven_codemodel_minor: int | None = None
+    if probe_link_visibility:
+        visibility_error, proven_codemodel_minor = codemodel_link_visibility_probe()
+        if visibility_error is not None:
+            return [visibility_error]
     if reply_dirs is None:
         reply_dirs = find_cmake_reply_dirs()
         if not reply_dirs and shutil.which("cmake"):
@@ -667,6 +752,23 @@ def find_cmake_codemodel_violations(
         if cm.get("kind") != "codemodel" or cm.get("version", {}).get("major") != 2:
             errors.append(f"{reply_dir}: unexpected codemodel schema (expected kind='codemodel', version.major=2)")
             continue
+
+        # The probe above proved which codemodel revision can express a plain link item in
+        # THIS environment. A reply older than that -- e.g. a build directory left behind by
+        # an earlier CMake -- cannot carry the fields the inspection reads, so inspecting it
+        # would again produce an empty result that reads as a clean graph.
+        reply_minor = cm.get("version", {}).get("minor")
+        if proven_codemodel_minor is not None and (
+            not isinstance(reply_minor, int) or reply_minor < proven_codemodel_minor
+        ):
+            errors.append(
+                f"{reply_dir}: codemodel 2.{reply_minor} predates the 2.{proven_codemodel_minor} this "
+                f"environment proved able to express plain link items; the reply cannot carry "
+                f"linkLibraries/interfaceLinkLibraries, so re-configure this build directory instead "
+                f"of inspecting a reply the gate is blind in"
+            )
+            continue
+
 
         configs = cm.get("configurations", [])
         if not configs:
@@ -1145,7 +1247,11 @@ def run_self_test(reply_dir: Path | None = None, ue_root: Path | None = None) ->
 
         cm_data = {
             "kind": "codemodel",
-            "version": {"major": 2, "minor": 0},
+            # The hand-written targets below carry linkLibraries, i.e. the shape of a modern
+            # codemodel, so the reply declares the revision whose shape it actually emulates.
+            # A reply that claimed an older revision would be rejected by the link-visibility
+            # minimum -- which is itself covered by test 17b below.
+            "version": {"major": 2, "minor": 9},
             "configurations": [{
                 "name": "Debug",
                 "targets": [
@@ -1194,6 +1300,50 @@ def run_self_test(reply_dir: Path | None = None, ue_root: Path | None = None) ->
         missing_target_errors = find_cmake_codemodel_violations([reply_dir], required_targets={"gv2_content_core"})
         if not any("gv2_content_core" in err and "missing" in err for err in missing_target_errors):
             print(f"FAILED: CMake codemodel gate did not flag missing required portable target: {missing_target_errors}")
+            return False
+
+    # 17b. The gate must refuse a reply whose codemodel predates the revision this
+    # environment proved able to express plain link items, instead of inspecting it and
+    # reporting an empty result. This is the case that let the gate pass vacuously on the
+    # hosted CI image: its own negative case went red while the positive one stayed green,
+    # because "found nothing" and "cannot see anything" were the same answer.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        stale_reply = Path(tmpdir) / "reply"
+        stale_reply.mkdir(parents=True)
+        stale_target = stale_reply / "target-stale-link.json"
+        stale_codemodel = stale_reply / "codemodel-v2-stale.json"
+        stale_codemodel.write_text(
+            json.dumps({
+                "kind": "codemodel",
+                "version": {"major": 2, "minor": 0},
+                "configurations": [{
+                    "name": "Debug",
+                    "targets": [{"jsonFile": stale_target.name, "name": "stale_tgt"}],
+                }],
+            }),
+            encoding="utf-8",
+        )
+        # Deliberately a FORBIDDEN link item: were the gate to inspect this reply anyway it
+        # would have something to report, so a green result here can only mean the reply was
+        # refused, never that it was inspected and found clean.
+        stale_target.write_text(
+            json.dumps({
+                "name": "stale_tgt",
+                "type": "STATIC_LIBRARY",
+                "sources": [],
+                "linkLibraries": [{"fragment": "UMG"}],
+            }),
+            encoding="utf-8",
+        )
+        stale_errors = find_cmake_codemodel_violations([stale_reply], required_targets=None)
+        if not any("predates" in err for err in stale_errors):
+            print(f"FAILED: CMake codemodel gate inspected a reply it cannot see link items in: {stale_errors}")
+            return False
+        if any("UMG" in err for err in stale_errors):
+            print(
+                "FAILED: CMake codemodel gate reported findings from a reply it should have refused "
+                f"outright: {stale_errors}"
+            )
             return False
 
     # 18. Compiler-negative UBT probe (if UBT/UE is present)
