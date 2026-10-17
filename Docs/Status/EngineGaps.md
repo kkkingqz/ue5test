@@ -1,7 +1,7 @@
 ---
 title: Engine Gaps for Gameplay Authoring
 status: informative
-version: 1.2
+version: 1.3
 updated: 2026-10-17
 depends_on:
   - ../Architecture/AuthoringSurfaceContract.md
@@ -194,7 +194,7 @@ depends_on:
 
 ### GAP-014. Поля и методы prototype на Definitions
 
-- **Потребность:** стадия и флаги квеста — runtime-state поля Definition квеста ([RH Gameplay Architecture § 5.10](../RH/GameplayArchitecture.md#510-квесты)); состояние локации — runtime-state поля Definition локации; методы на Definitions собственных kinds `rh` (`function Shop:assortment()`, методы фазы конца хода `rh:turn_phase.*`).
+- **Потребность:** стадия и флаги квеста — runtime-state поля Definition квеста ([RH Gameplay Architecture § 5.11](../RH/GameplayArchitecture.md#511-квесты)); состояние локации — runtime-state поля Definition локации; методы на Definitions собственных kinds `rh` (`function Shop:assortment()`, методы фазы конца хода `rh:turn_phase.*`).
 - **Сейчас:** prototype `Quest`, `Location` или пользовательский PascalCase регистрирует field descriptors под своим именем (`"Quest"`, `Scripts/authoring/context.lua`, `create_entity_prototype_proxy`). Wrapper Definition ищет schema по discriminator или по kind в нижнем регистре (`"quest"`, `Scripts/authoring/properties.lua`, `wrap_definition`), поэтому объявленное поле не находится. Проверено пробным spec: после `Quest.stage = field.non_negative_integer()` чтение `stage` у Definition `rh:quest.main` возвращает `nil`, запись даёт `Cannot modify definition field 'stage' (no runtime_state schema defined)`; так же ведёт себя пользовательский prototype для kind `turn_phase`. Wrapper экземпляра персонажа ищет schema через `get_effective_schema(..., "Actor")`, поэтому у `Actor` поля работают. Методы Definition ищутся под именем kind с заглавной первой буквой (`Turn_phase` для `turn_phase`), а prototype `TurnPhase` регистрируется под `"TurnPhase"`: соответствие имени prototype и многословного kind не определено (по коду, без пробного запуска).
 - **Требуется:**
   - field descriptors и методы prototype применяются к Definitions соответствующего kind через `def.<kind>(name)` и `location(name)`;
@@ -231,4 +231,16 @@ depends_on:
   - Editor profile `core + textsystem + rh` (`Config/DefaultGame.ini`, `EditorPackageRoots`), где `rh` обязан создать начальное состояние и показать `textsystem:screen.location` ([Build and Tooling](../Architecture/BuildAndTooling.md)).
 - **Требуется:** до удаления заглушки перевести эти проверки на синтетические фикстуры или fixture package движка ([ADR-0046](../ADR/0046-test-content-coupling-boundary.md), `STATUS-028` в [Implementation Status](ImplementationStatus.md)) либо явно перечислить, что из содержимого `rh` остаётся контрактом для тестов движка.
 - **Приоритет:** блокирует удаление заглушки; новый `rh` нельзя положить на место старого, пока на старый опираются тесты.
+- **Статус:** open.
+
+### GAP-018. Имя экземпляра и удаление персонажа из authoring
+
+- **Потребность:** типовые NPC генерируются из шаблона — на старте по сценарию и во время игры (например, встречный бандит), — а код обращается к конкретному экземпляру: квест или контентный скрипт ссылается на сгенерированную собаку «Рекс» ([RH Gameplay Architecture § 5.9](../RH/GameplayArchitecture.md#59-персонажи-уникальные-и-типовые)). Роль связывает экземпляр с правилом динамически, но контенту нужна и постоянная ссылка, известная заранее. Ненужный сгенерированный NPC (убитый бандит) удаляется.
+- **Сейчас:** instance ID (`actor@7`) выдаёт allocator при создании ([Stable ID Specification](../Architecture/StableIDSpecification.md#persistent-instance-ids)), поэтому заранее он неизвестен. `actor(name)` ищет по Definition и требует ровно один экземпляр (`ActorInstanceAmbiguous`), так что среди экземпляров одного шаблона конкретный не выбрать. Authoring `instances` даёт только `register_kind` и `create` (`Scripts/authoring/context.lua`); удаление персонажа с отказом при ссылках на него есть только в runtime registry (`Scripts/runtime/actor_registry.lua`, `remove`, `ActorHasDependentReferences`).
+- **Требуется:**
+  - постоянное имя экземпляра, задаваемое при создании (данными сценария или кодом): уникально в сессии, сохраняется в save, дубликат отклоняется при создании, имя освобождается при удалении; namespace — пакет, создавший экземпляр;
+  - поиск экземпляра по имени из authoring с typed отказом при отсутствии;
+  - удаление персонажа из authoring с той же политикой ссылок, что в GAP-008.
+- **Затрагивает:** [Stable ID Specification](../Architecture/StableIDSpecification.md#persistent-instance-ids), [Authoring Surface](../Architecture/AuthoringSurfaceContract.md#entities-fields-and-references), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md).
+- **Приоритет:** блокирует обращение к сгенерированным NPC из контента; генерация и роли работают без него.
 - **Статус:** open.
