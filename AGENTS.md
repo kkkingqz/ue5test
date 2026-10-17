@@ -5,6 +5,7 @@
 ## Documentation authority
 
 - Нормативная документация находится только в `Docs/Architecture/`, `Docs/UI/` и accepted ADR.
+- `Docs/RH/` содержит правила игры пакета `rh`: они обязательны для `GameData/rh/`, но не для движка и при расхождении уступают contracts движка.
 - Concepts, Guides, Authoring, Status, Project Brief и ненормативные routers имеют `informative`; активные Plans — `active`; архивы — `archived`. Они не вводят правил и при расхождении уступают contract.
 - Начальная точка для любой задачи: `Docs/README.md`.
 - Архивные, экспортированные или внешние копии документации не являются источником истины. Это относится и к реализованным предложениям в `Docs/Proposals/Archive/`, и к отклонённым в `Docs/Proposals/Rejected/`.
@@ -132,6 +133,7 @@ Pure refactor без изменения behavior не требует переп�
 - `Docs/Guides/` — инструкция по типовой задаче через уже существующие точки расширения; contract не меняет и его формулировки не копирует.
 - `Docs/Authoring/` — понятный человеку справочник designer-facing Lua: назначение, сигнатуры, примеры и типичные ошибки; новых правил не вводит.
 - `Docs/Status/` — состояние реализации относительно contracts.
+- `Docs/RH/` — правила игры `rh`: архитектура геймплея, механики, их данные; header `Владеет`, status `draft | normative | deprecated`.
 - `Docs/ADR/` — принятые или предложенные архитектурные решения.
 - `Docs/Proposals/` — открытые предложения. Реализованное переносится в `Docs/Proposals/Archive/`, отклонённое — в `Docs/Proposals/Rejected/`; каталог является состоянием предложения.
 - `Docs/README.md` — repository-wide router; не превращать его в полный contract.
