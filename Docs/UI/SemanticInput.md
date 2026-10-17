@@ -1,8 +1,8 @@
 ---
 title: Semantic Input Contract
-status: draft
-version: 1.5
-updated: 2026-08-20
+status: normative
+version: 1.6
+updated: 2026-10-17
 depends_on:
   - UIDocumentAndReconciliation.md
   - ../Architecture/CommandsAndEvents.md
@@ -19,8 +19,8 @@ decisions:
 > **Владеет:** semantic action binding, конвертом пользовательского ввода, binding handle и отклонением устаревшего ввода.
 > **Не владеет:** обработкой команды после её приёма ([Commands and Events](../Architecture/CommandsAndEvents.md)).
 > **Инварианты:** [INV-007](../Architecture/Invariants.md)
-> **Реализация:** `Source/GV2/Private/Bridge/GV2UiBindingRegistry.cpp`, `GV2RuntimeIngressQueue.cpp`, `Source/GV2/Private/UI/GV2UiInteractionEmitter.cpp`.
-> **Проверки:** `GV2.Runtime.Ingress.*`, `GV2.Runtime.UI.BindingRegistry`.
+> **Реализация:** `Source/GV2/Private/Bridge/GV2UiBindingRegistry.cpp`, `GV2RuntimeIngressQueue.cpp`, `Source/GV2PresentationApply/Private/UI/GV2UiInteractionEmitter.cpp`.
+> **Проверки:** `GV2.Runtime.Ingress.*`, `GV2.Runtime.Bindings.AtomicPublicationAndLifetime`, `GV2.Runtime.UIKit.InputFieldWidgetContract`, `GV2.Runtime.UIKit.DropdownSelectWidgetContract`, `GV2.UI.Consumers.ListsDropdownsAndSpans`.
 
 Semantic input — value-only сообщение UE → Lua. Оно описывает смысл взаимодействия, а не Widget name, Blueprint callback или Lua function.
 
