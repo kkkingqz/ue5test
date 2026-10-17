@@ -22,6 +22,7 @@ language: ru
 | Изучить открытые идеи | [Proposals](Proposals/README.md) |
 | Сверить contract и реализацию | [Implementation Status](Status/ImplementationStatus.md) |
 | Узнать, чего не хватает authoring Lua для геймплея | [Engine Gaps](Status/EngineGaps.md) |
+| Узнать, каких экранов и UI-полей не хватает геймплею | [Screen Requests](Status/ScreenRequests.md) |
 | Узнать результат проверок выполненных планов | [Archived Audit Rounds](Status/Archive/README.md) |
 
 ## Authority и lifecycle
