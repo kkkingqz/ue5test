@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: informative
-version: 4.10
-updated: 2026-09-20
+version: 4.11
+updated: 2026-10-17
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -41,6 +41,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [ContentDiagnosticsAndToolingProposal](ContentDiagnosticsAndToolingProposal.md) | accepted for planning | Content, CI, Tooling | Source spans, deterministic diagnostics, CLI validation, fuzzing и будущий LSP |
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
+| [TemporaryGameModesProposal](TemporaryGameModesProposal.md) | accepted for planning | Authoring, Runtime, Presentation | Временные игровые режимы: несохраняемое транзакционное состояние запуска, `modes` в authoring surface, routing экрана активного режима через единственный source |
 | [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
 | [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: идентичность повторяемых элементов, слои, оверлеи, модалки, вкладки, принадлежность темы слою |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
@@ -62,6 +63,8 @@ Proposal не изменяет нормативную архитектуру с�
 8. `ScreenAuthoringWorkflowProposal`.
 
 `MutationWindowTransactionalityProposal` выделено из авторского слоя: контракты полей срабатывают в середине обработчика, а откат состояния при этом отсутствует.
+
+`TemporaryGameModesProposal` выделено из геймплея на authoring Lua и закрывает пробелы GAP-001–GAP-003 из [Engine Gaps](../Status/EngineGaps.md); откат canonical state при ошибке в команде режима остаётся за `MutationWindowTransactionalityProposal`.
 
 `ImageResourcePackagedDeploymentProposal` может выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 

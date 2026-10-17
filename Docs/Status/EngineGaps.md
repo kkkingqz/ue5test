@@ -29,7 +29,7 @@ depends_on:
 - Команда режима соблюдает «сначала все проверки, потом изменения» и для временного состояния: `AuthoringFailAfterMutation` отслеживает только canonical `write_revision`, поэтому `fail()` после изменения временной таблицы её не откатит.
 - Сохранение во время режима не запрещается правилом: canonical state согласован, в save просто не попадает незавершённый режим. UI режима не показывает кнопку сохранения.
 
-Сами режимы реализуются на authoring surface. Для их показа и тестирования не хватает трёх возможностей ниже.
+Сами режимы реализуются на authoring surface. Для их показа и тестирования не хватает трёх возможностей ниже. Решение предложено в [Temporary Game Modes](../Proposals/TemporaryGameModesProposal.md).
 
 ### GAP-001. Presentation router с регистрацией view provider из пакета
 
@@ -40,7 +40,7 @@ depends_on:
   - authoring-объявление view provider режима, например `modes.trade = { view = function() ... end }` или аналог, без прямой зависимости `textsystem` → `rh`; цепочка `core → textsystem → rh` сохраняется;
   - location presenter становится переиспользуемым builder без собственной регистрации; ветки тестовых фикстур `dca09`/`dca10`/`dca11`/`duc10` сохраняют совместимый путь.
 - **Затрагивает:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Runtime Facade](../Architecture/RuntimeFacadeAndRegistries.md), [UI Document](../UI/UIDocumentAndReconciliation.md), `GameData/textsystem/scripts/presentation/location_presenter.lua`.
-- **Статус:** open.
+- **Статус:** open; решение — [Temporary Game Modes](../Proposals/TemporaryGameModesProposal.md).
 
 ### GAP-002. Публикация полного UI document одним действием
 
@@ -48,7 +48,7 @@ depends_on:
 - **Сейчас:** `show_screen`/`show_route` заменяют только `route` (`Scripts/authoring/presentation.lua`, `active_document_state.route = inst`), а `overlays` и `modals` остаются. Очистить все слои можно только поштучными `close_overlay`/`close_modal`, причём автор должен знать ключи, открытые другим режимом. Каждый вызов публикует отдельную revision, то есть возникают промежуточные интерактивные документы.
 - **Требуется:** authoring helper полной публикации документа (условно `replace_document({ route = ..., overlays = ..., modals = ... })`) или scoped cleanup слоёв, принадлежащих режиму, в одной revision.
 - **Затрагивает:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [UI Document](../UI/UIDocumentAndReconciliation.md), [Presentation Authoring Reference](../Authoring/PresentationAuthoringReference.md).
-- **Статус:** open.
+- **Статус:** open; решение — [Temporary Game Modes](../Proposals/TemporaryGameModesProposal.md).
 
 ### GAP-003. Сброс временного состояния authoring modules между Lua specs
 
@@ -56,4 +56,4 @@ depends_on:
 - **Сейчас:** `core:module.runtime.test_isolation` и `snapshot_test_state`/`restore_test_state` изолируют registries (services, handlers, validators, actors) и canonical state. Локальные таблицы модулей они не видят, поэтому активный режим из одного case попадает в следующий, а state hash его не учитывает.
 - **Требуется:** штатный способ объявить временное состояние authoring module так, чтобы spec runner сбрасывал его между case-ами, а также, при необходимости, отладочное чтение этого состояния из spec. Например, объявленная authoring-секция transient state с явной функцией reset вместо голых upvalue.
 - **Затрагивает:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Add Lua Spec](../Guides/AddLuaSpec.md), [Headless Simulation](../Architecture/HeadlessSimulationContract.md).
-- **Статус:** open.
+- **Статус:** open; решение — [Temporary Game Modes](../Proposals/TemporaryGameModesProposal.md).
