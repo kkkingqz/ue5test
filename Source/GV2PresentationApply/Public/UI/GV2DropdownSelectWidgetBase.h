@@ -49,6 +49,10 @@ public:
     // PSC-11: value sinks for the prepared keyed-collection operation.
     virtual UPanelWidget* GetPreparedCollectionPanel() const override;
     virtual void ResetPreparedCollection() override;
+    // The host's item policy is the theme's option item padding, carried across the rebuild
+    // that destroys the slots ApplyDropdownStyleValues writes to.
+    virtual void ConfigureCollectionItemSlot(UPanelSlot& Slot) const override;
+
     virtual void OnPreparedCollectionSettled(
         const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries) override;
 
@@ -163,6 +167,7 @@ private:
     FGV2UiPropertyHostState PropertyHostState;
 
     GV2PresentationApply::FPreparedViewportScalePolicy PreparedPopupScale;
+    FMargin PreparedOptionItemPadding = FMargin(0.0f);
     float PreparedMaxPopupHeight = 0.0f;
     bool bHasPreparedPopupScale = false;
 

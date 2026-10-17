@@ -80,6 +80,13 @@ void UGV2ListViewWidgetBase::OnPreparedCollectionSettled(
     SetActiveWidgetsMap(ActiveWidgetsByKeyValue);
 }
 
+void UGV2ListViewWidgetBase::ConfigureCollectionItemSlot(UPanelSlot& Slot) const
+{
+    // Intentionally empty: see the header. A value written here would be this class
+    // inventing layout it was never given.
+    (void)Slot;
+}
+
 void UGV2ListViewWidgetBase::ResetPreparedCollection()
 {
     ClearEntries();

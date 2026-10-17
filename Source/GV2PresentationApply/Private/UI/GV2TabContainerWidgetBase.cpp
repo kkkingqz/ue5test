@@ -1,5 +1,7 @@
 #include "UI/GV2TabContainerWidgetBase.h"
 
+#include "Components/VerticalBoxSlot.h"
+
 #include "Blueprint/UserWidget.h"
 #include "Components/PanelWidget.h"
 #include "GV2PresentationApply/GV2PresentationInteractionSink.h"
@@ -40,7 +42,10 @@ void UGV2TabContainerWidgetBase::ApplyTabEntries(
         {
             if (TObjectPtr<UUserWidget> Child = TabScreenWidgets.FindRef(Entry.Key))
             {
-                TabContentPanel->AddChild(Child);
+                if (UPanelSlot* NewSlot = TabContentPanel->AddChild(Child))
+                {
+                    ConfigureTabContentSlot(*NewSlot);
+                }
             }
         }
     }
@@ -83,6 +88,15 @@ void UGV2TabContainerWidgetBase::ApplyTabEntries(
     // tabs. Preserve the pre-migration behavior by publishing the effective initial/fallback
     // selection through the same narrow sink as a user selection.
     NotifyActiveTabSelection();
+}
+
+void UGV2TabContainerWidgetBase::ConfigureTabContentSlot(UPanelSlot& Slot) const
+{
+    if (UVerticalBoxSlot* BoxSlot = Cast<UVerticalBoxSlot>(&Slot))
+    {
+        BoxSlot->SetHorizontalAlignment(HAlign_Fill);
+        BoxSlot->SetVerticalAlignment(VAlign_Fill);
+    }
 }
 
 void UGV2TabContainerWidgetBase::ResetTabContainerModel()

@@ -31,6 +31,14 @@ public:
     virtual void OnPreparedCollectionSettled(
         const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries) override;
 
+    // This class is a generic repeater with no style role of its own: it is parameterized by
+    // its call site and owns no padding, alignment or fill value to carry. Its item policy is
+    // therefore the slot class defaults, stated here rather than left to be inferred from an
+    // absent override -- GV2.Runtime.UIKit.CollectionSlotPolicyIsIndependentOfLineMembership
+    // measures that those defaults give every item the same geometry regardless of how many
+    // items share its line.
+    virtual void ConfigureCollectionItemSlot(UPanelSlot& Slot) const override;
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI|ListView")
     EOrientation GetOrientation() const { return Orientation; }
 
@@ -110,7 +118,15 @@ public:
             PrepareItem,
             CommitItem,
             OutWidgets,
-            CanApplyItem);
+            CanApplyItem,
+            // No previous-order capture is needed here: this wrapper is one whole commit, not
+            // one of several sibling calls inside a wider transaction.
+            nullptr,
+            // The host's item policy, for the same reason the apply facade's own rebuild
+            // passes it: ClearChildren inside destroys the previous slots. This is what gives
+            // FGV2KeyedCollection's ConfigureSlot parameter a caller -- it was added for
+            // exactly this hazard and had none, so the hazard was documented and unhandled.
+            [this](UPanelSlot& Slot) { ConfigureCollectionItemSlot(Slot); });
 
         if (bSuccess)
         {
@@ -163,7 +179,8 @@ public:
                 return ApplyItem(Item, Model);
             },
             OutWidgets,
-            CanApplyItem);
+            CanApplyItem,
+            [this](UPanelSlot& Slot) { ConfigureCollectionItemSlot(Slot); });
 
         if (bSuccess)
         {

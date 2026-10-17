@@ -96,6 +96,14 @@ public:
 
     UPanelWidget* GetTabContentPanel() const { return TabContentPanel; }
 
+    // The slot policy for ONE tab's content, re-applied by the rebuild to every slot it
+    // creates. Tab content is a nested screen, so it fills the area it is given -- the same
+    // policy UGV2GameShellWidgetBase::ApplyScreenSlotLayout states for a screen root in a
+    // layer host. These happen to be the UVerticalBoxSlot defaults today, so stating them
+    // changes nothing: the point is that the rebuild no longer depends on a default it never
+    // asked for, and a future change of panel type cannot silently alter the policy.
+    void ConfigureTabContentSlot(UPanelSlot& Slot) const;
+
 protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
     FName DefaultTabKey;

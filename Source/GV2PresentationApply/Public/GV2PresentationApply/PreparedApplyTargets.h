@@ -140,6 +140,19 @@ public:
     virtual void ResetPreparedCollection() = 0;
     // Called after the rebuild, for a target that keeps its own key -> widget bookkeeping.
     virtual void OnPreparedCollectionSettled(const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries) = 0;
+
+    // The host's own layout policy for ONE item slot, applied by the rebuild to every slot it
+    // creates. UPanelWidget::ClearChildren destroys the UPanelSlot objects and AddChild makes
+    // new ones carrying nothing but their UCLASS defaults, so a policy applied to the slots
+    // that existed before a rebuild is gone after it -- measured: the Theme's
+    // ButtonListItemPadding went from (0,0,0,8) to (0,0,0,0) across one commit
+    // (GV2.Runtime.UIKit.CollectionItemSlotPolicySurvivesRebuild).
+    //
+    // Pure, not defaulted: a host that declares a keyed collection has an item slot policy
+    // even when that policy is "the defaults are correct here", and saying so is a decision
+    // this interface makes visible. It mirrors UGV2GameShellWidgetBase::ApplyScreenSlotLayout,
+    // which the Game Shell has always had to re-apply for exactly the same reason.
+    virtual void ConfigureCollectionItemSlot(UPanelSlot& Slot) const = 0;
 };
 
 UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))

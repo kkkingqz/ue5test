@@ -466,7 +466,16 @@ bool FGV2PresentationApply::Apply(
                     {
                         if (UWidget* Child = Entry.Widget.Get())
                         {
-                            Panel->AddChild(Child);
+                            UPanelSlot* NewSlot = Panel->AddChild(Child);
+                            // ClearChildren above destroyed the previous slots, so the host's
+                            // item policy is re-applied to the slot that replaces them, in the
+                            // same physical commit. Without this the policy survives only until
+                            // the first rebuild -- which is every revision that republishes the
+                            // collection, i.e. every click that changes it.
+                            if (NewSlot != nullptr && Role != nullptr)
+                            {
+                                Role->ConfigureCollectionItemSlot(*NewSlot);
+                            }
                         }
                     }
                 }

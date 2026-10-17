@@ -31,6 +31,10 @@ public:
     // PSC-11: value sinks for the prepared keyed-collection operation.
     virtual UPanelWidget* GetPreparedCollectionPanel() const override;
     virtual void ResetPreparedCollection() override;
+    // The host's item policy IS the theme's item padding, so a rebuilt slot gets the value
+    // this host was last given rather than the UVerticalBoxSlot default of zero.
+    virtual void ConfigureCollectionItemSlot(UPanelSlot& Slot) const override;
+
     virtual void OnPreparedCollectionSettled(
         const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries) override;
 
@@ -55,6 +59,8 @@ public:
     // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
     void ApplyItemPaddingStyleValue(const FMargin& Padding);
 
+    FMargin GetPreparedItemPadding() const { return PreparedItemPadding; }
+
     // IGV2UiPropertyHost
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
@@ -72,4 +78,7 @@ protected:
 private:
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
+
+private:
+    FMargin PreparedItemPadding = FMargin(0.0f);
 };

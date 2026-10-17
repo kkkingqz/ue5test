@@ -514,6 +514,22 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_viewport_refresh_coverage.py"
             "--self-test"
     )
+    # ADR-0049 follow-on: ClearChildren destroys a panel's UPanelSlot objects, so a function
+    # that also calls AddChild has replaced every slot in that panel and must state the slot
+    # policy it re-applies. Derived from production function bodies, not a list of call sites.
+    add_test(
+        NAME collection_slot_policy_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_collection_slot_policy.py"
+    )
+    add_test(
+        NAME collection_slot_policy_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_collection_slot_policy.py"
+            "--self-test"
+    )
     # PSC-09B (ADR-0043 D2/D3): the set of IGV2PropertyConsumer kinds is derived from
     # GV2PropertyConsumers.h's own class declarations, not a task-authored list; every one
     # of them must route its own Commit through the transaction protocol.

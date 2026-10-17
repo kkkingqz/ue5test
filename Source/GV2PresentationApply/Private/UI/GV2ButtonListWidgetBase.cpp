@@ -62,8 +62,20 @@ UGV2ButtonWidgetBase* UGV2ButtonListWidgetBase::GetButton(const FName ButtonKey)
     return nullptr;
 }
 
+void UGV2ButtonListWidgetBase::ConfigureCollectionItemSlot(UPanelSlot& Slot) const
+{
+    if (UVerticalBoxSlot* BoxSlot = Cast<UVerticalBoxSlot>(&Slot))
+    {
+        BoxSlot->SetPadding(PreparedItemPadding);
+    }
+}
+
 void UGV2ButtonListWidgetBase::ApplyItemPaddingStyleValue(const FMargin& Padding)
 {
+    // Remembered, not only pushed: the slots this writes to are destroyed by the next
+    // rebuild, and ConfigureCollectionItemSlot is what carries the value across it.
+    PreparedItemPadding = Padding;
+
     if (ButtonContainer == nullptr)
     {
         return;

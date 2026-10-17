@@ -200,6 +200,9 @@ void UGV2DropdownSelectWidgetBase::ApplyDropdownStyleValues(
     PreparedPopupScale = InPopupScale;
     PreparedMaxPopupHeight = InMaxPopupHeight;
     bHasPreparedPopupScale = true;
+    // Remembered for the same reason as the button list's item padding: the option slots this
+    // function writes to below do not survive the next rebuild of the option collection.
+    PreparedOptionItemPadding = InOptionItemPadding;
     if (HeaderButton != nullptr && InHeaderStyle != nullptr)
     {
         HeaderButton->SetStyle(InHeaderStyle);
@@ -230,6 +233,14 @@ void UGV2DropdownSelectWidgetBase::ApplyDropdownStyleValues(
                 Slot->SetPadding(InOptionItemPadding);
             }
         }
+    }
+}
+
+void UGV2DropdownSelectWidgetBase::ConfigureCollectionItemSlot(UPanelSlot& Slot) const
+{
+    if (UScrollBoxSlot* ScrollSlot = Cast<UScrollBoxSlot>(&Slot))
+    {
+        ScrollSlot->SetPadding(PreparedOptionItemPadding);
     }
 }
 
