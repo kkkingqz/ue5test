@@ -1,7 +1,7 @@
 ---
 title: GV2 Documentation Index
 status: informative
-version: 4.9
+version: 4.10
 updated: 2026-09-16
 language: ru
 ---
@@ -24,6 +24,7 @@ language: ru
 | Сверить contract и реализацию | [Implementation Status](Status/ImplementationStatus.md) |
 | Узнать, чего не хватает authoring Lua для геймплея | [Engine Gaps](Status/EngineGaps.md) |
 | Узнать, каких экранов и UI-полей не хватает геймплею | [Screen Requests](Status/ScreenRequests.md) |
+| Узнать, какие картинки и тексты нужны геймплею | [Resource Requests](Status/ResourceRequests.md) |
 | Узнать результат проверок выполненных планов | [Archived Audit Rounds](Status/Archive/README.md) |
 
 ## Authority и lifecycle

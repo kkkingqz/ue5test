@@ -16,7 +16,7 @@ depends_on:
 
 - [ ] RSP-01 — Каркас пакета и старт новой игры
 
-**Файлы:** удалить заглушку: `GameData/rh/scripts/authoring/gameplay.lua`, `scripts/gameplay/actors.lua`, `scripts/runtime/session_start.lua`, её Definitions, schemas и строки `localization/ru.po`. Создать раскладку `scripts/authoring/{model,rules,modes,content}/`, `scripts/runtime/start_bridge.lua`, новый `scripts/manifest.lua` и `package.json5`; schemas kinds `scenario` и `config`; Definitions `rh:scenario.default`, `rh:config.rules`, стартовой локации, её экрана и игрока; `rules/start.lua` с `rh:command.game.start`. Документы: новый `Docs/RH/ContentData.md` (форматы данных собственных kinds), новый `Docs/Status/ResourceRequests.md`, индексы `Docs/RH/README.md` и `Docs/README.md`.
+**Файлы:** удалить заглушку: `GameData/rh/scripts/authoring/gameplay.lua`, `scripts/gameplay/actors.lua`, `scripts/runtime/session_start.lua`, её Definitions, schemas и строки `localization/ru.po`. Создать раскладку `scripts/authoring/{model,rules,modes,content}/`, `scripts/runtime/start_bridge.lua`, новый `scripts/manifest.lua` и `package.json5`; schemas kinds `scenario` и `config`; Definitions `rh:scenario.default`, `rh:config.rules`, стартовой локации, её экрана и игрока; `rules/start.lua` с `rh:command.game.start`. Документы: новый `Docs/RH/ContentData.md` (форматы данных собственных kinds), `Docs/Status/ResourceRequests.md`, индексы `Docs/RH/README.md` и `Docs/README.md`.
 
 **Зависит от:** GAP-017, GAP-016.
 
@@ -39,7 +39,8 @@ depends_on:
 - Новая игра создаёт игрока в стартовой локации из `rh:scenario.default`.
 - После load мост команду старта не вызывает.
 - Профиль `core + textsystem + rh` открывает `textsystem:screen.location` стартовой локации.
-- `Docs/RH/ContentData.md` описывает форматы `scenario` и `config`; `Docs/Status/ResourceRequests.md` содержит заявки на ресурсы стартовой локации; оба документа добавлены в индексы.
+- `Docs/RH/ContentData.md` описывает форматы `scenario` и `config` и добавлен в индексы.
+- В `Docs/Status/ResourceRequests.md` заявки на ресурсы стартовой локации и игрока уточнены конкретными ID.
 
 **Evidence:** specs пакета: новая игра, load без повторного старта; `gv2-headless --check-scripts`; `validate_docs.py`; `ctest`.
 
