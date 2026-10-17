@@ -86,6 +86,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Controls")
     TSubclassOf<UCommonTextStyle> ButtonLabelStyle;
 
+    // ADR-0049: every button on a surface is this size, in virtual layout units
+    // (FGV2LayoutConstants::VirtualLayout*), scaled to physical units by the same viewport
+    // curve the typography uses. It is not a minimum: a label that does not fit is a content
+    // error, reported as such, not a button that grows.
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Controls")
+    FVector2D ButtonSize = FVector2D(160.0f, 48.0f);
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Controls")
     FCheckBoxStyle CheckboxStyle;
 
@@ -211,6 +218,7 @@ public:
     // Controls
     TStrongObjectPtr<UClass> ButtonStyle;
     TStrongObjectPtr<UClass> ButtonLabelStyle;
+    FVector2D ButtonSize = FVector2D(160.0f, 48.0f);
     FCheckBoxStyle CheckboxStyle;
     TStrongObjectPtr<UClass> CheckboxLabelStyle;
     FEditableTextBoxStyle InputFieldStyle;

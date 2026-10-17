@@ -60,6 +60,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0046](0046-test-content-coupling-boundary.md) | accepted | Граница привязки тестов к контенту: две категории тестов (contract vs smoke), отмена исключения Tests, baseline ratchet и потолок размера файлов |
 | [0047](0047-one-shot-effect-pipeline-and-origins.md) | accepted | Единый pipeline одноразовых эффектов: источник не входит в identity эффекта, один `sequence` и apply path для Lua-published и host-local, проверяемый критерий допустимости host-local |
 | [0048](0048-widget-exit-lifecycle-and-input-gating.md) | accepted | Два вида ухода виджета: stale-удаление гасит ввод в момент логического удаления, self-dismissal остаётся интерактивным до конца; интерактивный stale невыразим |
+| [0049](0049-control-size-owned-by-surface.md) | accepted | Размер кнопки задаёт поверхность одним значением в виртуальных единицах, масштабируемым кривой viewport; подпись в размер не входит, непомещающаяся подпись — типизированная ошибка |
 
 ## Template
 

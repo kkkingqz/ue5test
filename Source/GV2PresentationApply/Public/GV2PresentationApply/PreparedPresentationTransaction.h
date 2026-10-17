@@ -421,6 +421,14 @@ struct GV2PRESENTATIONAPPLY_API FPreparedButtonStyle
     TSubclassOf<UCommonButtonStyle> ButtonStyle;
     TSubclassOf<UCommonTextStyle> DefaultLabelStyle;
     FPreparedTextScalePolicy DefaultLabelScale;
+
+    // ADR-0049: the control's own size, in virtual layout units, and the surface scale it is
+    // measured against. A button is the same size as every other button on its surface; its
+    // label is content placed INTO that size and never an input to it. Both fields travel
+    // together because a size without the policy that scales it is only correct at the
+    // reference height.
+    FVector2D VirtualSize = FVector2D::ZeroVector;
+    FPreparedViewportScalePolicy SizeScale;
 };
 
 // PSC-10B: one style token resolved to finished values. BaseStyle is the token's style

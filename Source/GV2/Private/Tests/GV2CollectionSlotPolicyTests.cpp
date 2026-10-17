@@ -13,16 +13,14 @@
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiTheme.h"
 
-// A keyed-collection commit rebuilds its panel's children with ClearChildren()/AddChild()
-// (FGV2PresentationApply's FPreparedKeyedCollectionOperation, and every collection host's own
-// Reset). ClearChildren destroys the UPanelSlot objects, so AddChild creates new ones carrying
-// nothing but their UCLASS defaults. FGV2KeyedCollection takes a ConfigureSlot callback for
-// exactly this reason ("rebuild must reapply caller-owned layout policy to that new slot in the
-// same physical commit"), and that callback currently has no caller anywhere in the repository.
+// ADR-0049: a button is the size its surface says, identical for every button on that
+// surface, scaled only by the surface's own viewport curve. Its label is content placed into
+// that size and is never an input to it; a label that does not fit is a reported error.
 //
-// This test measures what the defaults actually produce: whether one item's size depends on the
-// other items sharing its wrapped line. If it does, an item's geometry is a function of the
-// collection's membership, which changes on every revision -- i.e. on clicks.
+// Before this contract the size came from UCommonButtonStyle's MinWidth/MinHeight, which are
+// a MINIMUM: width was max(160, label + padding), so one long caption made one button wider
+// than its neighbours, and which captions were on screen changed with every revision. The
+// measurement that found it is kept below as the first assertion.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2CollectionSlotPolicyTests,
@@ -57,6 +55,29 @@ bool FGV2CollectionSlotPolicyTests::RunTest(const FString& Parameters)
 
     const GV2PresentationApply::FPreparedTextScalePolicy ThemeScale =
         UGV2TextPipeline::ResolveScalePolicyForTheme(Theme, NAME_None);
+    GV2PresentationApply::FPreparedViewportScalePolicy SizeScale;
+    SizeScale.ScaleCurve = Theme->TextScaleCurve;
+    SizeScale.ReferenceViewportHeight = Theme->ReferenceViewportHeight;
+
+    TestFalse(
+        TEXT("Theme declares a non-zero authored button size"),
+        Theme->ButtonSize.IsNearlyZero());
+
+    const auto MakeButton = [&](const FString& Label) -> UGV2ButtonWidgetBase*
+    {
+        UGV2ButtonWidgetBase* Button = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, ButtonClass);
+        if (Button == nullptr)
+        {
+            return nullptr;
+        }
+        Button->ApplyButtonStyleValues(
+            Theme->ButtonStyle, Theme->ButtonLabelStyle, ThemeScale, Theme->ButtonSize, SizeScale);
+        FGV2TextViewModel Text;
+        FString TextError;
+        UGV2TextPipeline::ResolveLiteralForAutomationTest(Theme, Label, NAME_None, Text, TextError);
+        Button->ApplyText(Text);
+        return Button;
+    };
 
     // The authored container: WBP_ListView_WrapButtons' ContainerPanel is a UWrapBox in
     // dynamic mode (bExplicitWrapSize=false, HAlign_Left, InnerSlotPadding=0), read off the
@@ -68,25 +89,16 @@ bool FGV2CollectionSlotPolicyTests::RunTest(const FString& Parameters)
         WrapBox->SetInnerSlotPadding(FVector2D::ZeroVector);
         for (const FString& Label : Labels)
         {
-            UGV2ButtonWidgetBase* Button = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, ButtonClass);
-            if (Button == nullptr)
+            if (UGV2ButtonWidgetBase* Button = MakeButton(Label))
             {
-                continue;
+                // Production adds collection children exactly like this -- a bare AddChild
+                // with no slot configuration of any kind.
+                WrapBox->AddChild(Button);
             }
-            Button->ApplyButtonStyleValues(Theme->ButtonStyle, Theme->ButtonLabelStyle, ThemeScale);
-            FGV2TextViewModel Text;
-            FString TextError;
-            UGV2TextPipeline::ResolveLiteralForAutomationTest(Theme, Label, NAME_None, Text, TextError);
-            Button->ApplyText(Text);
-            // Production adds collection children exactly like this -- a bare AddChild with
-            // no slot configuration of any kind.
-            WrapBox->AddChild(Button);
         }
         return WrapBox;
     };
 
-    // Measures the arranged (not merely desired) local size of each child, which is where a
-    // Fill alignment turns a line's tallest item into every sibling's height.
     const auto ArrangeAndReport = [&](UWrapBox* WrapBox, float AvailableWidth, TArray<FVector2D>& OutSizes)
     {
         OutSizes.Reset();
@@ -108,53 +120,100 @@ bool FGV2CollectionSlotPolicyTests::RunTest(const FString& Parameters)
     };
 
     const FString ShortLabel = TEXT("Work");
-    // Long enough that its own label forces a taller button than the short ones at the
-    // widths exercised below -- which is what makes line membership observable at all.
     const FString LongLabel = TEXT("Buy leather armor for twenty five gold pieces right now");
 
-    // A: the short button alone on its line.
-    UWrapBox* AloneBox = BuildWrapBox({ShortLabel});
-    TArray<FVector2D> AloneSizes;
-    ArrangeAndReport(AloneBox, 1200.0f, AloneSizes);
+    // --- 1. Size is a property of the surface, not of the caption.
+    UWorld* const Unused = TestWorld;
+    (void)Unused;
 
-    // B: the same short button sharing a line with a tall sibling.
-    UWrapBox* SharedBox = BuildWrapBox({ShortLabel, LongLabel});
-    TArray<FVector2D> SharedSizes;
-    ArrangeAndReport(SharedBox, 1200.0f, SharedSizes);
+    UWrapBox* MixedBox = BuildWrapBox({ShortLabel, LongLabel, ShortLabel});
+    TArray<FVector2D> MixedSizes;
+    ArrangeAndReport(MixedBox, 1200.0f, MixedSizes);
 
-    if (AloneSizes.Num() >= 1 && SharedSizes.Num() >= 2)
+    if (MixedSizes.Num() == 3)
     {
         AddInfo(FString::Printf(
-            TEXT("Short button alone: %.2fx%.2f | sharing a line: %.2fx%.2f | tall sibling: %.2fx%.2f"),
-            AloneSizes[0].X, AloneSizes[0].Y,
-            SharedSizes[0].X, SharedSizes[0].Y,
-            SharedSizes[1].X, SharedSizes[1].Y));
+            TEXT("Arranged sizes: short=%.2fx%.2f long=%.2fx%.2f short=%.2fx%.2f"),
+            MixedSizes[0].X, MixedSizes[0].Y,
+            MixedSizes[1].X, MixedSizes[1].Y,
+            MixedSizes[2].X, MixedSizes[2].Y));
 
         TestEqual(
             *FString::Printf(
-                TEXT("A collection item's arranged size does not depend on its line's other items ")
-                TEXT("(alone %.2fx%.2f, shared %.2fx%.2f)"),
-                AloneSizes[0].X, AloneSizes[0].Y, SharedSizes[0].X, SharedSizes[0].Y),
-            SharedSizes[0],
-            AloneSizes[0]);
+                TEXT("A long caption does not widen its button (short %.2f, long %.2f)"),
+                MixedSizes[0].X, MixedSizes[1].X),
+            MixedSizes[1],
+            MixedSizes[0]);
+        TestEqual(
+            TEXT("Every button on the surface is the same size"),
+            MixedSizes[2],
+            MixedSizes[0]);
     }
     else
     {
-        AddError(FString::Printf(
-            TEXT("Arrangement produced too few children (alone=%d, shared=%d)"),
-            AloneSizes.Num(), SharedSizes.Num()));
+        AddError(FString::Printf(TEXT("Arrangement produced %d children, expected 3"), MixedSizes.Num()));
     }
 
-    // C: the same membership, narrower panel. Wrapping moves the tall item to its own line,
-    // so the short button's size must not change with it.
-    TArray<FVector2D> NarrowSizes;
-    UWrapBox* NarrowBox = BuildWrapBox({ShortLabel, LongLabel});
-    ArrangeAndReport(NarrowBox, 400.0f, NarrowSizes);
-    if (NarrowSizes.Num() >= 1 && AloneSizes.Num() >= 1)
+    // --- 2. Membership of a wrapped line still changes nothing.
+    UWrapBox* AloneBox = BuildWrapBox({ShortLabel});
+    TArray<FVector2D> AloneSizes;
+    ArrangeAndReport(AloneBox, 1200.0f, AloneSizes);
+    if (AloneSizes.Num() >= 1 && MixedSizes.Num() >= 1)
     {
+        TestEqual(
+            TEXT("A button's arranged size does not depend on its line's other items"),
+            MixedSizes[0],
+            AloneSizes[0]);
+    }
+
+    // --- 3. The size scales by the surface curve, and only by it.
+    UGV2ButtonWidgetBase* ScaledButton = MakeButton(ShortLabel);
+    TestNotNull(TEXT("Scaled button created"), ScaledButton);
+    if (ScaledButton != nullptr)
+    {
+        const auto ExpectedAt = [&](float Height) -> FIntPoint
+        {
+            const float Scale = GV2PresentationApply::EvaluatePreparedViewportScale(SizeScale, Height);
+            return FIntPoint(
+                FMath::RoundToInt(Theme->ButtonSize.X * Scale),
+                FMath::RoundToInt(Theme->ButtonSize.Y * Scale));
+        };
+
+        for (const float Height : {720.0f, 1080.0f, 1440.0f, 2160.0f})
+        {
+            ScaledButton->RefreshPreparedViewportPresentation(Height);
+            const FIntPoint Expected = ExpectedAt(Height);
+            const FIntPoint Actual = ScaledButton->GetLastEnforcedDimensions();
+            TestEqual(
+                *FString::Printf(TEXT("[%.0fp] enforced dimensions follow the surface curve"), Height),
+                Actual,
+                Expected);
+        }
         AddInfo(FString::Printf(
-            TEXT("Short button on a 400-unit panel (tall sibling wraps away): %.2fx%.2f"),
-            NarrowSizes[0].X, NarrowSizes[0].Y));
+            TEXT("Authored virtual size %.0fx%.0f; at 720p %dx%d, at 2160p %dx%d"),
+            Theme->ButtonSize.X, Theme->ButtonSize.Y,
+            ExpectedAt(720.0f).X, ExpectedAt(720.0f).Y,
+            ExpectedAt(2160.0f).X, ExpectedAt(2160.0f).Y));
+    }
+
+    // --- 4. A caption that does not fit is reported, not absorbed.
+    UGV2ButtonWidgetBase* OverflowButton = MakeButton(LongLabel);
+    UGV2ButtonWidgetBase* FittingButton = MakeButton(TEXT("Go"));
+    if (OverflowButton != nullptr && FittingButton != nullptr)
+    {
+        FString OverflowError;
+        const bool bOverflowAccepted = OverflowButton->MeasureLabelOverflow(OverflowError);
+        TestFalse(
+            *FString::Printf(TEXT("An over-long caption is refused (error: %s)"), *OverflowError),
+            bOverflowAccepted);
+        TestTrue(
+            TEXT("The refusal names the label_overflow diagnostic"),
+            OverflowError.Contains(TEXT("core:diagnostic.ui_button.label_overflow")));
+
+        FString FittingError;
+        TestTrue(
+            *FString::Printf(TEXT("A caption that fits is accepted (error: %s)"), *FittingError),
+            FittingButton->MeasureLabelOverflow(FittingError));
     }
 
     GEngine->DestroyWorldContext(TestWorld);

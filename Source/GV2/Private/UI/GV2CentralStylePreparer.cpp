@@ -163,6 +163,11 @@ bool EmitForWidget(
         // this preparer does not become a second implementation of that math.
         Style.DefaultLabelStyle = Theme.ButtonLabelStyle.Get();
         Style.DefaultLabelScale = UGV2TextPipeline::ResolveScalePolicyForTheme(Theme, NAME_None);
+        // ADR-0049: the size travels with the same curve the label does, so "does the text
+        // fit" is one answer for every resolution instead of one answer per resolution.
+        Style.VirtualSize = Theme.ButtonSize;
+        Style.SizeScale.ScaleCurve = Theme.TextScaleCurve;
+        Style.SizeScale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
 
         FPreparedCentralStyleOperation Operation;
         Operation.TargetWidget = Button;

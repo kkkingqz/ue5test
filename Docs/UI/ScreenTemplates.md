@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.30
-updated: 2026-09-12
+version: 1.31
+updated: 2026-10-17
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -13,6 +13,7 @@ decisions:
   - ../ADR/0035-ui-foundation-and-composition.md
   - ../ADR/0040-universal-ui-property-pipeline.md
   - ../ADR/0043-presentation-apply-boundary.md
+  - ../ADR/0049-control-size-owned-by-surface.md
 ---
 
 # Blueprint Screen Template Contract
@@ -97,6 +98,7 @@ Game Shell владеет внешним slot layout для Screen roots: каж
 - На 4K (2160p) масштаб составляет ~1.60 (вместо линейного 2.0).
 - Итоговый физический размер шрифта ограничен снизу подготовленным порогом `MinReadableFontSize` (10 pt); Apply не вызывает Theme API.
 - При наличии Widget context текущая высота берётся из game viewport его `World`; process-global viewport допустим только как fallback для ещё не привязанного к миру Widget. Это исключает перенос масштаба между несколькими PIE viewport.
+- **Размер контрола принадлежит поверхности ([ADR-0049](../ADR/0049-control-size-owned-by-surface.md)).** Размер кнопки задаётся одним авторским значением темы (`UGV2UiTheme::ButtonSize`) в виртуальных единицах раскладки и масштабируется той же кривой viewport, что и типографика, поэтому отношение подписи к контентной области не зависит от разрешения. Apply зажимает min **и** max одинаковыми значениями: `MinWidth` в одиночку является минимумом, и именно он позволял подписи растить одну кнопку относительно соседей. Подпись — содержимое, помещаемое в этот размер, и не является его входом. Подпись, не помещающаяся в контентную область (физический размер минус `ButtonPadding` и `CustomPadding` стиля), отвергается диагностикой `core:diagnostic.ui_button.label_overflow` тем же каналом, которым отвергается любое другое некорректное значение presentation; контрол не поглощает ошибку контента геометрией. Абсолютные размеры раскладки в CDO style-ассета поведение не определяют и подлежат тому же запрету, что авторские `SizeBox`-переопределения.
 - Central/control style не может стереть уже применённую semantic text presentation. После смены `normal`, `hovered`, `pressed`, `selected`, `disabled` или полной замены CommonUI style контрол обязан восстановить сохранённые prepared style class и font metrics; новый размер появляется только из новой desired presentation либо `ViewportRefresh`.
 
 ### Resize lifecycle
@@ -105,7 +107,7 @@ Game Shell владеет внешним slot layout для Screen roots: каж
 
 Refresh получает только текущую высоту viewport и использует значения, сохранённые исходным Prepare. Ему запрещено повторно разрешать Theme, читать snapshot, публиковать/реконсилировать UI document, заменять Widget instances или сбрасывать UI-local state. Активный hover-popover обновляется через владеющий `RichText`; Headless этого UE-only lifecycle не имеет.
 
-Source-derived gate обязан перечислять все Widget bases, выполняющие viewport-dependent presentation, и требовать `IGV2PreparedViewportRefreshTarget`. Для stateful CommonUI-контрола тот же gate обязан проверять единый native state-style hook; production-path тест выполняет настоящую command reconciliation и сравнивает все фактически материализованные command entries до и после commit.
+Source-derived gate обязан перечислять все Widget bases, выполняющие viewport-dependent presentation, и требовать `IGV2PreparedViewportRefreshTarget`. Для stateful CommonUI-контрола тот же gate обязан проверять единый native state-style hook. Гейт при этом доказывает только форму вызова: что хук объявлен и вызывает восстановление. Что восстановление воспроизводит метрики, применённые на commit, доказывает отдельный тест на метриках (`GV2.Runtime.UIKit.ButtonStateStylePreservesLabelMetrics`), а независимость размера контрола от его подписи и от состава строки переноса — `GV2.Runtime.UIKit.CollectionSlotPolicyIsIndependentOfLineMembership`, измеряющий arranged-геометрию в реальном `WrapBox`.
 
 ### Матрица целевых разрешений
 

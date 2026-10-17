@@ -43,7 +43,12 @@ public:
     // values into the physical write that already existed; no decision happens here.
     virtual void ApplyPreparedButtonStyle(const GV2PresentationApply::FPreparedButtonStyle& Style) override
     {
-        ApplyButtonStyleValues(Style.ButtonStyle, Style.DefaultLabelStyle, Style.DefaultLabelScale);
+        ApplyButtonStyleValues(
+            Style.ButtonStyle,
+            Style.DefaultLabelStyle,
+            Style.DefaultLabelScale,
+            Style.VirtualSize,
+            Style.SizeScale);
     }
 
     // PSC-11: value sink for the prepared text operation.
@@ -78,7 +83,24 @@ public:
     void ApplyButtonStyleValues(
         TSubclassOf<UCommonButtonStyle> InButtonStyle,
         TSubclassOf<UCommonTextStyle> InDefaultLabelStyle,
-        const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale);
+        const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale,
+        const FVector2D& InVirtualSize = FVector2D::ZeroVector,
+        const GV2PresentationApply::FPreparedViewportScalePolicy& InSizeScale = {});
+
+    // ADR-0049: the label never participates in the button's size. Returns false and names
+    // the overflow when the committed label cannot fit the control's content box, so an
+    // untranslatable or over-long string is a reported contract violation rather than a
+    // button that silently differs from its neighbours.
+    bool MeasureLabelOverflow(FString& OutError) const;
+
+    // The physical size this button currently enforces, in slate units. Zero until a
+    // prepared button style with a non-zero virtual size has been applied.
+    FVector2D GetEnforcedPhysicalSize() const;
+
+    // What was last written to the control's min/max dimensions. CommonUI keeps those values
+    // private to its internal button, so this is the only way to observe that the clamp was
+    // actually applied rather than merely computed.
+    FIntPoint GetLastEnforcedDimensions() const { return LastEnforcedDimensions; }
 
     // IGV2UiPropertyHost
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
@@ -103,6 +125,8 @@ protected:
 
 private:
     void RestorePreparedLabelPresentation();
+    void ApplyPreparedDimensions();
+    void EnforceDimensionsForHeight(float ViewportHeight);
 
     UPROPERTY(Transient)
     FGV2UiBindingHandle BindingHandle;
@@ -117,6 +141,9 @@ private:
     FGV2UiPropertyHostState PropertyHostState;
 
     GV2PresentationApply::FPreparedTextScalePolicy PreparedDefaultLabelScale;
+    FVector2D PreparedVirtualSize = FVector2D::ZeroVector;
+    GV2PresentationApply::FPreparedViewportScalePolicy PreparedSizeScale;
+    FIntPoint LastEnforcedDimensions = FIntPoint::ZeroValue;
 
     UPROPERTY(Transient)
     TSubclassOf<UCommonTextStyle> PreparedDefaultLabelStyle;

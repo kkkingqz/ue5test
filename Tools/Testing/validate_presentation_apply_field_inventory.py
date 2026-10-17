@@ -95,6 +95,9 @@ ALLOWED_BASE_TYPES = {
     # FSlateBrush above -- a finished value with no notion of a lookup.
     "FLinearColor",
     "FMargin",
+    # ADR-0049: a control's authored size in virtual layout units. Same class as FMargin
+    # above: two finished numbers, carrying no resolver and no deferred lookup.
+    "FVector2D",
     "FProgressBarStyle",
     "FCheckBoxStyle",
     "FEditableTextBoxStyle",

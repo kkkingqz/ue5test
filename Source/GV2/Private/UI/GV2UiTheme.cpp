@@ -357,6 +357,7 @@ bool FGV2ResolvedUiTheme::Compile(
     // Controls
     OutResolved.ButtonStyle = TStrongObjectPtr<UClass>(InTheme->ButtonStyle != nullptr ? InTheme->ButtonStyle.Get() : nullptr);
     OutResolved.ButtonLabelStyle = TStrongObjectPtr<UClass>(InTheme->ButtonLabelStyle != nullptr ? InTheme->ButtonLabelStyle.Get() : nullptr);
+    OutResolved.ButtonSize = InTheme->ButtonSize;
     OutResolved.CheckboxStyle = InTheme->CheckboxStyle;
     OutResolved.CheckboxLabelStyle = TStrongObjectPtr<UClass>(InTheme->CheckboxLabelStyle != nullptr ? InTheme->CheckboxLabelStyle.Get() : nullptr);
     OutResolved.InputFieldStyle = InTheme->InputFieldStyle;
