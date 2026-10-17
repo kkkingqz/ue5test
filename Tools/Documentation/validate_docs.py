@@ -30,8 +30,14 @@ INFORMATIVE_FILES = {
     "ADR/README.md",
     "Plans/README.md",
     "Proposals/README.md",
+    "RH/README.md",
 }
 NORMATIVE_DIRECTORIES = ("Architecture", "UI")
+# Game rules of one package (RH/ — the rh game). They bind that package's
+# gameplay code the way contracts bind the engine, but never the engine itself:
+# at a conflict the engine contract wins. A separate tuple keeps the engine
+# authority list unchanged while letting a game document be normative.
+GAME_DIRECTORIES = ("RH",)
 INSTRUCTIONAL_DIRECTORIES = ("Concepts", "Guides", "Authoring")
 # One table owns retired documentation forms. Scope is deliberate: contracts,
 # ADR, plans and proposals may need to name a forbidden or historical form.
@@ -90,6 +96,7 @@ LEGACY_ALLOW_MARKER = re.compile(
 HEADER_FIELD_BY_DIRECTORY = {
     "Architecture": "Владеет",
     "UI": "Владеет",
+    "RH": "Владеет",
     "Concepts": "Объясняет",
     "Guides": "Задача",
     "Authoring": "Помогает",
@@ -170,7 +177,9 @@ class Validation:
             and relative_name != "Plans/README.md"
             and not is_historical_location
         )
-        is_normative_location = relative.parts[0] in NORMATIVE_DIRECTORIES
+        is_normative_location = (
+            relative.parts[0] in NORMATIVE_DIRECTORIES + GAME_DIRECTORIES
+        ) and relative_name not in INFORMATIVE_FILES
 
         required = {"title", "status"}
         required |= {"date"} if is_adr else {"version", "updated"}
@@ -208,7 +217,7 @@ class Validation:
         if status == "normative" and not is_normative_location:
             self.fail(
                 path,
-                "status 'normative' is allowed only under Architecture/ or UI/",
+                "status 'normative' is allowed only under Architecture/, UI/ or a game directory (RH/)",
             )
 
         # An archived document is a historical record: it is never normative and

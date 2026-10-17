@@ -17,10 +17,13 @@ language: ru
 | Понять причину решения | [ADR](ADR/README.md) |
 | Выполнить типовую задачу | [Guides](Guides/README.md) и owner contract |
 | Написать gameplay или экран на authoring Lua | [Authoring](Authoring/README.md) — ненормативный справочник |
+| Понять правила игры `rh` | [RH](RH/README.md) — архитектура и механики игры |
 | Разобрать Lua VM, `game` API или authoring DSL | [Lua Runtime](Architecture/LuaRuntimeContract.md), [Runtime Facade](Architecture/RuntimeFacadeAndRegistries.md), [Authoring Surface](Architecture/AuthoringSurfaceContract.md) |
 | Выполнить запланированную работу | [Plans](Plans/README.md) |
 | Изучить открытые идеи | [Proposals](Proposals/README.md) |
 | Сверить contract и реализацию | [Implementation Status](Status/ImplementationStatus.md) |
+| Узнать, чего не хватает authoring Lua для геймплея | [Engine Gaps](Status/EngineGaps.md) |
+| Узнать, каких экранов и UI-полей не хватает геймплею | [Screen Requests](Status/ScreenRequests.md) |
 | Узнать результат проверок выполненных планов | [Archived Audit Rounds](Status/Archive/README.md) |
 
 ## Authority и lifecycle
@@ -33,6 +36,7 @@ Accepted ADR фиксирует решение и причины, subsystem cont
 | `ADR/NNNN-*.md` | decision status | Решения |
 | Активные Plans | `active` | Выполняемая работа, не architecture authority |
 | Активные Proposals | `draft` + `proposal_state` | Открытый вопрос |
+| `RH/` | `draft`, `normative`, `deprecated` | Правила игры `rh`: обязательны для `GameData/rh/`, уступают contracts движка |
 | Concepts, Guides, Authoring, Status, Project Brief и routers | `informative` | Объяснение, инструкция, навигация |
 | `Archive/`, `Rejected/` | `archived` | История, не источник правил или задач |
 
