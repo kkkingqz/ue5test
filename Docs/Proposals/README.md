@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: informative
-version: 4.11
+version: 4.12
 updated: 2026-10-17
 ---
 
@@ -42,7 +42,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
 | [TemporaryGameModesProposal](TemporaryGameModesProposal.md) | accepted for planning | Authoring, Runtime, Presentation | Временные игровые режимы: несохраняемое транзакционное состояние запуска, `modes` в authoring surface, routing экрана активного режима через единственный source |
-| [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
+| [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей окна мутации и откат канонического состояния при ошибке и при отказе; решение принято [ADR-0050](../ADR/0050-transactional-mutation-window.md), реализация — задачи EGC-03 и EGC-06 |
 | [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: идентичность повторяемых элементов, слои, оверлеи, модалки, вкладки, принадлежность темы слою |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |

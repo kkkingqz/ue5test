@@ -1,8 +1,10 @@
 ---
 title: Engine Gap Closure Decisions
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-10-17
+decisions:
+  - ../../ADR/0050-transactional-mutation-window.md
 depends_on:
   - ../../Architecture/CanonicalStateAndSave.md
   - ../../Architecture/CommandsAndEvents.md
@@ -17,7 +19,7 @@ depends_on:
 
 ## EGC-01 — Зафиксировать транзакционное окно мутации с единым журналом
 
-- [ ] EGC-01 — Зафиксировать транзакционное окно мутации с единым журналом
+- [x] EGC-01 — Зафиксировать транзакционное окно мутации с единым журналом
 
 **Зависимость:** нет. **Файлы:** создать `Docs/ADR/0050-transactional-mutation-window.md`; обновить `Docs/ADR/README.md`, `Docs/ADR/0027-designer-lua-authoring-layer.md` (пометка о замене части §2.3). Docs: `CanonicalStateAndSave.md`, `CommandsAndEvents.md`, `AuthoringSurfaceContract.md`.
 
@@ -53,7 +55,7 @@ depends_on:
 - Нерешённая транзакция названа ошибкой, а не состоянием по умолчанию.
 - `AuthoringFailAfterMutation` упомянут как следствие с отдельным решением.
 
-**Evidence:** ADR-0050, запись в индексе ADR, пометка в ADR-0027, обновлённое состояние предложения, `validate_docs`.
+**Evidence:** [ADR-0050](../../ADR/0050-transactional-mutation-window.md) (`accepted`, 2026-10-17); строка `0050` в [индексе ADR](../../ADR/README.md) (версия 2.12); пометка «Сигнал заменён (ADR-0050)» в §2.3 [ADR-0027](../../ADR/0027-designer-lua-authoring-layer.md); [предложение](../../Proposals/MutationWindowTransactionalityProposal.md) версии 1.1 — принятое решение названо, неверная причина про инвалидацию презентации снята, критерии приёмки дополнены отказом и нерешённой транзакцией; `validate_docs` — 208 файлов, self-test — 39 кейсов.
 
 ## EGC-02 — Зафиксировать временные режимы и маршрутизацию презентации
 

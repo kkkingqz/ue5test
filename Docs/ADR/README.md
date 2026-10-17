@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.11
-updated: 2026-09-15
+version: 2.12
+updated: 2026-10-17
 ---
 
 # Architecture Decision Records
@@ -61,6 +61,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0047](0047-one-shot-effect-pipeline-and-origins.md) | accepted | Единый pipeline одноразовых эффектов: источник не входит в identity эффекта, один `sequence` и apply path для Lua-published и host-local, проверяемый критерий допустимости host-local |
 | [0048](0048-widget-exit-lifecycle-and-input-gating.md) | accepted | Два вида ухода виджета: stale-удаление гасит ввод в момент логического удаления, self-dismissal остаётся интерактивным до конца; интерактивный stale невыразим |
 | [0049](0049-control-size-owned-by-surface.md) | accepted | Размер кнопки задаёт поверхность одним значением в виртуальных единицах, масштабируемым кривой viewport; подпись в размер не входит, непомещающаяся подпись — типизированная ошибка |
+| [0050](0050-transactional-mutation-window.md) | accepted | Журнал окна мутации живёт командой и покрывает обе категории состояния одним списком с категорией в записи; триггеры отката перечислены (ошибка, отказ таблицей, `fail()`), признак мутации для `fail()` — журнал, а не `write_revision` |
 
 ## Template
 

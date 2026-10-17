@@ -1,7 +1,7 @@
 ---
 title: Engine Gap Closure Presentation And Ui
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-10-17
 depends_on:
   - ../../UI/UIDocumentAndReconciliation.md
@@ -170,7 +170,7 @@ decisions:
 
 - [ ] EGC-21 — Перенести правила в contracts и закрыть этап по движку
 
-**Зависимость:** EGC-20. **Файлы:** `Docs/Architecture/AuthoringSurfaceContract.md`, `CanonicalStateAndSave.md`, `CommandsAndEvents.md`, `DefinitionEnvelopeAndSchemaRules.md`, `StableIDSpecification.md`; `Docs/UI/UIDocumentAndReconciliation.md`, `ScreenTemplates.md`, `WidgetRegistry.md`; `Docs/Status/EngineGaps.md`, `Docs/Status/ScreenRequests.md`, `Docs/Status/ImplementationStatus.md`; `Docs/Authoring/LuaGameplayReference.md`, `PresentationAuthoringReference.md`; `Docs/RH/GameplayArchitecture.md`.
+**Зависимость:** EGC-20. **Файлы:** `Docs/Architecture/AuthoringSurfaceContract.md`, `CanonicalStateAndSave.md`, `CommandsAndEvents.md`, `DefinitionEnvelopeAndSchemaRules.md`, `StableIDSpecification.md`; `Docs/UI/UIDocumentAndReconciliation.md`, `ScreenTemplates.md`, `WidgetRegistry.md`; `Docs/Status/EngineGaps.md`, `Docs/Status/ScreenRequests.md`, `Docs/Status/ImplementationStatus.md`; `Docs/Authoring/LuaGameplayReference.md`, `PresentationAuthoringReference.md`; `Docs/RH/GameplayArchitecture.md`; `Docs/Proposals/MutationWindowTransactionalityProposal.md`, `TemporaryGameModesProposal.md`, `Docs/Proposals/README.md`, `Docs/Proposals/Archive/README.md`.
 
 **Инвариант:** правило ведения планов: полностью выполненный план перестаёт быть источником задач, а его нормативный результат к этому моменту обязан быть перенесён в contracts. Пока правило живёт только в плане, следующий этап опирается на документ, который не является источником правил.
 
@@ -181,7 +181,7 @@ decisions:
 
 Дополнительно проверяется правило 2 плана: у каждого механизма Д1 и Д2 есть фикстурный потребитель. Перечислитель — задачи этапа, а не память автора.
 
-**Не считается закрытием:** отметить гэпы закрытыми без переноса правил; перенести правила, оставив заявки в прежней редакции; закрыть этап при механизме без фикстурного потребителя; пометить `GameplayArchitecture.md` нормативным до реализации механик (это Э4).
+**Не считается закрытием:** оставить реализованные предложения в активном каталоге, где они продолжают выглядеть незакрытой работой; отметить гэпы закрытыми без переноса правил; перенести правила, оставив заявки в прежней редакции; закрыть этап при механизме без фикстурного потребителя; пометить `GameplayArchitecture.md` нормативным до реализации механик (это Э4).
 
 **Шаги:**
 1. Перенести правила `modes`, transient state, журнала (включая перечень триггеров отката и признак мутации для `fail()`), коллекций, перебора Definitions, полей расширения, текстовых аргументов, источников меню, панелей статуса и подсказки в owner contracts.
@@ -190,7 +190,8 @@ decisions:
 4. Внести две правки заявок с причиной в тексте заявки.
 5. Пройти по задачам Д1 и Д2 и назвать для каждой её фикстурного потребителя; механизм без потребителя возвращает задачу в работу.
 6. Назвать границу с Э3: объявленные `enabled`/`disabled_reason`, механизм подсказки, маршрут экрана режима, источники меню, значения панелей — и проверить, что они существуют в том виде, в каком Э3 на них рассчитывает.
-7. Полный прогон: приёмка UE, `ctest`, все гейты, `validate_docs`.
+7. Перевести оба предложения этапа — [о транзакционности окна мутации](../../Proposals/MutationWindowTransactionalityProposal.md) и [о временных режимах](../../Proposals/TemporaryGameModesProposal.md) — в `proposal_state: implemented` с переносом в `Proposals/Archive/` и обновлением обоих индексов; состояние предложения задаётся каталогом, и проверяется это `validate_docs` в обе стороны.
+8. Полный прогон: приёмка UE, `ctest`, все гейты, `validate_docs`.
 
 **Done:**
 - Каждое реализованное правило имеет место в owner contract; план на него больше не ссылается как на источник.
@@ -198,6 +199,7 @@ decisions:
 - Две правки заявок внесены с причиной.
 - У каждого механизма Д1 и Д2 назван фикстурный потребитель; перечень выведен из задач этапа.
 - Граница с Э3 проверена поимённо по пяти передаваемым сущностям.
+- Оба предложения этапа перенесены в архив со `proposal_state: implemented`; ни одно реализованное предложение не осталось в активном каталоге.
 - Полный прогон зелёный на обоих host-ах.
 
 **Evidence:** диффы contracts и справочников, таблица «гэп → задача → проверка», таблица «механизм → фикстурный потребитель», полный прогон приёмки и `ctest`, `validate_docs`.

@@ -1,7 +1,7 @@
 ---
 title: Engine Gap Closure Implementation Plan
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-10-17
 depends_on:
   - ../../Status/EngineGaps.md
@@ -15,6 +15,7 @@ depends_on:
   - ../../UI/SemanticInput.md
 decisions:
   - ../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../ADR/0050-transactional-mutation-window.md
   - ../../ADR/0027-designer-lua-authoring-layer.md
   - ../../ADR/0046-test-content-coupling-boundary.md
   - ../../ADR/0047-one-shot-effect-pipeline-and-origins.md
