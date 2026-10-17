@@ -1,7 +1,7 @@
 ---
 title: Engine Gaps for Gameplay Authoring
 status: informative
-version: 1.4
+version: 1.5
 updated: 2026-10-17
 depends_on:
   - ../Architecture/AuthoringSurfaceContract.md
@@ -216,8 +216,11 @@ depends_on:
 ### GAP-016. Место specs пакета игры
 
 - **Потребность:** specs механик, обходы контента и эталонные прогоны `rh` ([RH Gameplay Architecture § 9](../RH/GameplayArchitecture.md#9-проверка)) лежат рядом с пакетом и исполняются на реальном пакете `rh` и его зависимостях.
-- **Сейчас:** spec runner находит specs только в `Tests/Lua/<subtree>/`, а соответствие subtree уровню пакетов задано списком в C++ (`Source/GV2TestSupport/Private/LuaSpecRunner.cpp`, `GetAllSubtreeTierConfigs`); незарегистрированный subtree — ошибка. Subtrees уровня FullGame (`authoring`, `economy`, `presentation`) заняты specs движка. В каталоге пакета места для specs нет.
-- **Требуется:** каталог specs пакета (например, `GameData/<pkg>/tests/`), который runner находит сам и исполняет на сессии из пакета и его зависимостей; классификация таких specs по [ADR-0046](../ADR/0046-test-content-coupling-boundary.md) как тестов игры, а не contract-тестов движка.
+- **Сейчас:** spec runner находит specs только в `Tests/Lua/<subtree>/`, а соответствие subtree уровню пакетов задано списком в C++ (`Source/GV2TestSupport/Private/LuaSpecRunner.cpp`, `GetAllSubtreeTierConfigs`); незарегистрированный subtree — ошибка. Subtrees уровня FullGame (`authoring`, `economy`, `presentation`) заняты specs движка. В каталоге пакета места для specs нет. Эталонные прогоны регистрируются вручную в `Headless/CMakeLists.txt` и закреплены за замороженным corpus движка (`Tests/Fixtures/GoldenRuns/`, [Regenerate Golden](../Guides/RegenerateGolden.md)); прогона на реальных пакетах игры нет.
+- **Требуется:**
+  - каталог specs пакета (например, `GameData/<pkg>/tests/`), который runner находит сам и исполняет на сессии из пакета и его зависимостей;
+  - эталонные прогоны пакета (последовательность команд, seed, ожидаемый digest) рядом с пакетом, которые находятся и исполняются без правки CMake и сверяются в headless и UE;
+  - классификация таких specs и прогонов по [ADR-0046](../ADR/0046-test-content-coupling-boundary.md) как тестов игры, а не contract-тестов движка.
 - **Затрагивает:** [Add Lua Spec](../Guides/AddLuaSpec.md), [Build and Tooling](../Architecture/BuildAndTooling.md#test-content-decoupling), [Headless Simulation](../Architecture/HeadlessSimulationContract.md).
 - **Приоритет:** блокирует стратегию проверки `rh`.
 - **Статус:** open.
