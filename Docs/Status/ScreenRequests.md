@@ -1,7 +1,7 @@
 ---
 title: Screen and UI Field Requests
 status: informative
-version: 1.1
+version: 1.2
 updated: 2026-10-17
 depends_on:
   - ../UI/ScreenTemplates.md
@@ -15,6 +15,8 @@ depends_on:
 Геймплей по умолчанию использует существующий `textsystem:screen.location` и модальное окно `core:screen.modal_confirm`. Если игре нужен другой экран или новое поле, геймплей не ссылается на несуществующий template, а заявка записывается сюда: назначение, поля и их значения, stable keys, команды. Реализация — Widget Blueprint, schema и запись в Screen Registry — выполняется отдельно.
 
 Формат записи: назначение, затронутый template/schema, поля, поведение, источник данных, связанные пробелы, статус.
+
+Порядок реализации — этап Э3 плана [Engine Gap Closure](../Plans/EngineGapClosure/Screens.md), который начинается после полного закрытия этапа по движку.
 
 ## SR-001. Неактивный пункт меню с подсказкой о причине
 

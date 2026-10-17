@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 4.6
-updated: 2026-09-20
+version: 4.7
+updated: 2026-10-17
 depends_on:
   - ../README.md
 ---
@@ -31,6 +31,7 @@ depends_on:
 
 ## Активные планы
 
+- [Engine Gap Closure](EngineGapClosure/README.md) — закрытие пробелов движка и заявок на экраны в водопадном порядке M0 → Д1 → Д2 → экраны → контент `rh`.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 

@@ -1,7 +1,7 @@
 ---
 title: Engine Gaps for Gameplay Authoring
 status: informative
-version: 1.1
+version: 1.2
 updated: 2026-10-17
 depends_on:
   - ../Architecture/AuthoringSurfaceContract.md
@@ -17,6 +17,8 @@ depends_on:
 Геймплей пакетов пишется только на authoring surface (`<package>/scripts/authoring/`). Если нужной возможности нет, геймплей не обходит её через `game.*`, сырое `game.state` или собственный presentation module, а пробел записывается сюда и реализуется отдельно, на стороне движка.
 
 Формат записи: потребность геймплея, текущее состояние, что требуется, затронутые contracts, статус.
+
+Порядок закрытия и критерий закрытия каждой записи — [Engine Gap Closure](../Plans/EngineGapClosure/README.md). Этапы выполняются последовательно: движок закрывается полностью до начала работы над экранами, экраны — до начала работы над контентом.
 
 ## Стартовый пакет `rh`: что блокирует
 
