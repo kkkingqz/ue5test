@@ -177,6 +177,11 @@ class Validation:
             and relative_name != "Plans/README.md"
             and not is_historical_location
         )
+        # The INFORMATIVE_FILES clause keeps the variable true to its name for a
+        # directory's own index, but it changes no outcome and therefore has no
+        # fixture: a router that declares 'normative' is already refused by the
+        # informative-router rule below. Mutation-checked -- removing the clause
+        # leaves all self-test cases and the whole corpus passing.
         is_normative_location = (
             relative.parts[0] in NORMATIVE_DIRECTORIES + GAME_DIRECTORIES
         ) and relative_name not in INFORMATIVE_FILES
@@ -584,6 +589,13 @@ def run_self_test(docs_root: Path) -> int:
     cases: list[tuple[str, str, dict[str, object], bool]] = [
         ("architecture", "Architecture/Fixture.md", {**common, "status": "normative"}, True),
         ("ui draft", "UI/Fixture.md", {**common, "status": "draft"}, True),
+        # GAME_DIRECTORIES is the only reason a document outside Architecture/
+        # and UI/ may be normative. Without the first case the rule is
+        # indistinguishable from its absence; the router cases below keep the
+        # directory from granting authority to its own index.
+        ("rh game rules", "RH/Fixture.md", {**common, "status": "normative"}, True),
+        ("rh game rules draft", "RH/Fixture.md", {**common, "status": "draft"}, True),
+        ("rh router", "RH/README.md", {**common, "status": "informative"}, True),
         ("root router", "README.md", {**common, "status": "informative"}, True),
         ("project brief", "ProjectBrief.md", {**common, "status": "informative"}, True),
         ("status report", "Status/Fixture.md", {**common, "status": "informative"}, True),
@@ -600,6 +612,9 @@ def run_self_test(docs_root: Path) -> int:
         ("normative root", "Fixture.md", {**common, "status": "normative"}, False),
         ("normative plan", "Plans/Work/Step.md", {**common, "status": "normative"}, False),
         ("normative status", "Status/Fixture.md", {**common, "status": "normative"}, False),
+        ("normative rh router", "RH/README.md", {**common, "status": "normative"}, False),
+        ("informative rh game rules", "RH/Fixture.md", {**common, "status": "informative"}, False),
+        ("active rh game rules", "RH/Fixture.md", {**common, "status": "active"}, False),
         ("active architecture", "Architecture/Fixture.md", {**common, "status": "active"}, False),
         ("draft concept", "Concepts/Fixture.md", {**common, "status": "draft"}, False),
         ("draft authoring reference", "Authoring/Fixture.md", {**common, "status": "draft"}, False),
@@ -632,6 +647,21 @@ def run_self_test(docs_root: Path) -> int:
             "wrong authoring header",
             "Authoring/Fixture.md",
             "# Fixture\n\n> **Задача:** неверное поле тира.",
+            False,
+        ),
+        # A game directory owns rules, so its header field is the same
+        # "Владеет" an engine contract carries -- the entry in
+        # HEADER_FIELD_BY_DIRECTORY is what these two cases measure.
+        (
+            "rh header",
+            "RH/Fixture.md",
+            "# Fixture\n\n> **Владеет:** механиками пакета rh.",
+            True,
+        ),
+        (
+            "wrong rh header",
+            "RH/Fixture.md",
+            "# Fixture\n\n> **Показывает:** неверное поле тира.",
             False,
         ),
     ]
