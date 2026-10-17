@@ -9,6 +9,13 @@
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2UiTheme.h"
 
+namespace
+{
+// The authored gap in virtual layout units (1080p basis), the value this widget has always
+// used; only the way it reaches a physical number changed.
+constexpr float BaseTitleToMessageGap = 20.0f;
+}
+
 bool UGV2RecoveryScreenWidget::InitializeRecoveryScreen(
     const FString& InTitle,
     const FString& InMessage)
@@ -50,16 +57,23 @@ bool UGV2RecoveryScreenWidget::InitializeRecoveryScreen(
     }
 
     // DCA-15 (ADR-0035): the gap between title and message follows the same
-    // viewport-derived scale the text itself is styled with (UGV2TextPipeline's
-    // text scale curve), rather than a resolution-720p literal.
-    const float ViewportScale = [this]() -> float
+    // viewport-derived scale the text itself is styled with, rather than a
+    // resolution-720p literal.
+    //
+    // The curve is resolved ONCE into a policy here and evaluated through the shared
+    // EvaluatePreparedViewportScale from then on. Before this it called
+    // UGV2UiTheme::EvaluateTextScale directly, which made this widget a second
+    // implementation path for viewport scaling: the source gate's marker set did not
+    // recognise it, so the one widget outside the prepared pipeline was also the one
+    // invisible to the gate meant to enumerate exactly such widgets.
+    if (const UGV2UiTheme* Theme = UGV2UiTheme::GetCoreMinimalTheme())
     {
-        const UGV2UiTheme* Theme = UGV2UiTheme::GetCoreMinimalTheme();
-        return Theme != nullptr
-            ? Theme->EvaluateTextScale(GV2PresentationApply::ResolveLiveViewportHeight(this, Theme->ReferenceViewportHeight))
-            : 1.0f;
-    }();
-    const float TitleToMessageGap = 20.0f * ViewportScale;
+        ScalePolicy.ScaleCurve = Theme->TextScaleCurve;
+        ScalePolicy.ReferenceViewportHeight = Theme->ReferenceViewportHeight;
+    }
+    ApplyTitleToMessageGap(GV2PresentationApply::ResolveLiveViewportHeight(
+        this, ScalePolicy.ReferenceViewportHeight));
+    const float TitleToMessageGap = EnforcedTitleToMessageGap;
 
     TitleLabel = WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TitleLabel"));
     if (TitleLabel != nullptr)
@@ -86,6 +100,28 @@ bool UGV2RecoveryScreenWidget::InitializeRecoveryScreen(
 
     WidgetTree->RootWidget = Canvas;
     return true;
+}
+
+void UGV2RecoveryScreenWidget::ApplyTitleToMessageGap(const float ViewportHeight)
+{
+    EnforcedTitleToMessageGap =
+        BaseTitleToMessageGap
+        * GV2PresentationApply::EvaluatePreparedViewportScale(ScalePolicy, ViewportHeight);
+
+    // On a refresh the slot already exists, so the new gap is written straight to it. On the
+    // initial build the slot does not exist yet and the caller applies the computed value.
+    if (TitleLabel != nullptr)
+    {
+        if (UVerticalBoxSlot* TitleSlot = Cast<UVerticalBoxSlot>(TitleLabel->Slot))
+        {
+            TitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, EnforcedTitleToMessageGap));
+        }
+    }
+}
+
+void UGV2RecoveryScreenWidget::RefreshPreparedViewportPresentation(const float ViewportHeight)
+{
+    ApplyTitleToMessageGap(ViewportHeight);
 }
 
 void UGV2RecoveryScreenWidget::NativeDestruct()

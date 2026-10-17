@@ -556,6 +556,18 @@ void WalkWidgetTreeForAbsoluteLayout(
                     TEXT("[%s] WrapBox '%s' has UseExplicitWrapSize=true (wrap threshold is a constant, not the panel's allotted width)"),
                     *AssetName, *Widget->GetName()));
             }
+            else if (!FMath::IsNearlyZero(AsWrapBox->WrapSize))
+            {
+                // DCA-15/ADR-0035: a non-zero WrapSize under bExplicitWrapSize=false does not
+                // affect layout today, which is exactly what makes it dangerous: it is the
+                // WrapSize=1200 constant left in place, and flipping the flag back on silently
+                // restores the original defect instead of requiring a new decision. The value
+                // and the mode belong together, so the gate refuses the half-state.
+                OutViolations.Add(FString::Printf(
+                    TEXT("[%s] WrapBox '%s' keeps WrapSize=%g while UseExplicitWrapSize=false ")
+                    TEXT("(a dormant wrap constant that becomes authoritative the moment the flag flips)"),
+                    *AssetName, *Widget->GetName(), AsWrapBox->WrapSize));
+            }
         }
         else if (const USizeBox* AsSizeBox = Cast<USizeBox>(Widget))
         {

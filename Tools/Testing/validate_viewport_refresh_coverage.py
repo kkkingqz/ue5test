@@ -22,16 +22,43 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-PRIVATE_UI = REPO_ROOT / "Source" / "GV2PresentationApply" / "Private" / "UI"
-PUBLIC_UI = REPO_ROOT / "Source" / "GV2PresentationApply" / "Public" / "UI"
+
+# Both UI source roots, not just the apply module's. UGV2RecoveryScreenWidget lives in the
+# GV2 module and performs viewport-dependent presentation, so scanning only
+# GV2PresentationApply left the one widget outside the prepared pipeline also outside the
+# gate meant to enumerate such widgets. Each entry pairs a private root with the public root
+# its headers live in and the API macro those headers use.
+SCAN_ROOTS = (
+    (
+        REPO_ROOT / "Source" / "GV2PresentationApply" / "Private" / "UI",
+        REPO_ROOT / "Source" / "GV2PresentationApply" / "Public" / "UI",
+    ),
+    (
+        REPO_ROOT / "Source" / "GV2" / "Private" / "UI",
+        REPO_ROOT / "Source" / "GV2" / "Public" / "UI",
+    ),
+)
+API_MACRO_PATTERN = r"(?:GV2PRESENTATIONAPPLY_API|GV2_API)"
 
 CANONICAL_SCALE_MARKERS = (
     "FGV2WidgetTextApply::Apply(",
     "FGV2WidgetTextApply::ApplyRichText(",
     "EvaluatePreparedFontSize(",
     "EvaluatePreparedViewportScale(",
+    # The Theme's own curve entry point. Its only remaining callers are inside the Theme
+    # implementation itself, which owns no widget class and is therefore skipped by the
+    # owner rule below -- but a future widget reaching for it is caught here rather than
+    # becoming a second scaling path the way the recovery screen was.
+    "EvaluateTextScale(",
 )
-OWNER_PATTERN = re.compile(r"\b(UGV2[A-Za-z0-9_]+WidgetBase)::[A-Za-z0-9_]+\s*\(")
+
+# Widened from WidgetBase to also accept a plain Widget suffix: UGV2RecoveryScreenWidget is
+# a widget that scales, and the old pattern could not name it. A file that uses a marker but
+# declares NO widget owner (UGV2UiTheme.cpp, which defines the curve) is skipped rather than
+# reported -- the limit this leaves is that a widget class named without either suffix would
+# also be skipped, which is the same hole the WidgetBase-only pattern already had and is why
+# this gate stays secondary to code review.
+OWNER_PATTERN = re.compile(r"\b(UGV2[A-Za-z0-9_]*Widget(?:Base)?)::[A-Za-z0-9_]+\s*\(")
 
 
 def strip_comments(source: str) -> str:
@@ -46,9 +73,11 @@ def derive_scaled_widget_sources(sources: dict[str, str]) -> dict[str, str]:
         if not any(marker in stripped for marker in CANONICAL_SCALE_MARKERS):
             continue
         owners = set(OWNER_PATTERN.findall(stripped))
+        if not owners:
+            continue
         if len(owners) != 1:
             raise ValueError(
-                f"{filename}: viewport-dependent source must have exactly one WidgetBase owner; "
+                f"{filename}: viewport-dependent source must have exactly one widget owner; "
                 f"found {sorted(owners)}"
             )
         derived[next(iter(owners))] = filename
@@ -71,7 +100,7 @@ def find_violations(private_sources: dict[str, str], public_headers: dict[str, s
             errors.append(f"{source_name}: matching public header {header_name} was not found")
             continue
         class_match = re.search(
-            rf"class\s+GV2PRESENTATIONAPPLY_API\s+{re.escape(class_name)}\b(?P<body>.*?\n\}};)",
+            rf"class\s+{API_MACRO_PATTERN}\s+{re.escape(class_name)}\b(?P<body>.*?\n\}};)",
             header,
             flags=re.DOTALL,
         )
@@ -114,14 +143,17 @@ def find_violations(private_sources: dict[str, str], public_headers: dict[str, s
 
 
 def repository_sources() -> tuple[dict[str, str], dict[str, str]]:
-    private = {
-        path.name: path.read_text(encoding="utf-8")
-        for path in sorted(PRIVATE_UI.glob("*WidgetBase.cpp"))
-    }
-    public = {
-        path.name: path.read_text(encoding="utf-8")
-        for path in sorted(PUBLIC_UI.glob("*WidgetBase.h"))
-    }
+    # Every .cpp/.h under the UI roots, not just *WidgetBase.*: the filename glob was a
+    # second naming restriction on top of the owner pattern, and it is what kept
+    # GV2RecoveryScreenWidget.cpp out of the scan. Which files are IN SCOPE is decided by
+    # the scale markers and the owner rule, not by what a file is called.
+    private: dict[str, str] = {}
+    public: dict[str, str] = {}
+    for private_root, public_root in SCAN_ROOTS:
+        for path in sorted(private_root.glob("*.cpp")):
+            private[path.name] = path.read_text(encoding="utf-8")
+        for path in sorted(public_root.glob("*.h")):
+            public[path.name] = path.read_text(encoding="utf-8")
     return private, public
 
 
