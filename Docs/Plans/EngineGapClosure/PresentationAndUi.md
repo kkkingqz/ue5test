@@ -1,7 +1,7 @@
 ---
 title: Engine Gap Closure Presentation And Ui
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-10-17
 depends_on:
   - ../../UI/UIDocumentAndReconciliation.md
@@ -25,27 +25,31 @@ decisions:
 
 - [ ] EGC-16 — Сделать зарегистрированный presentation source маршрутизатором
 
-**Зависимость:** EGC-07. **Файлы:** `Scripts/runtime/presentation_source.lua`, создать маршрутизатор в `Scripts/runtime/`; `GameData/textsystem/scripts/presentation/location_presenter.lua` (`build_and_publish_screen`, `register`), `Tests/Lua/presentation/location_transition_spec.lua`, `declarative_location_spec.lua`, `dynamic_menu.lua`, `inventory_tabs_spec.lua`, `rh_layered_presentation_spec.lua`. Docs: `UIDocumentAndReconciliation.md`, `AuthoringSurfaceContract.md`, `RuntimeFacadeAndRegistries.md`.
+**Зависимость:** EGC-07. **Файлы:** `Scripts/runtime/presentation_source.lua`, создать маршрутизатор в `Scripts/runtime/`; `GameData/textsystem/scripts/presentation/location_presenter.lua` (`build_and_publish_screen`, `register`), `Tests/Lua/presentation/location_transition_spec.lua`, `declarative_location_spec.lua`, `dynamic_menu.lua`, `inventory_tabs_spec.lua`, `rh_layered_presentation_spec.lua`. Docs: `ScreenTemplates.md` (нормативный владелец правила о единственном source), `UIDocumentAndReconciliation.md`, `AuthoringSurfaceContract.md`, `RuntimeFacadeAndRegistries.md`.
 
 **Инвариант:** [GAP-001](../../Status/EngineGaps.md#gap-001-presentation-router-с-регистрацией-view-provider-из-пакета), [ADR-0051](README.md). Регистрация source остаётся единственной: `PresentationSourceDuplicateRegistration` при повторной. Направление зависимостей `core → textsystem → rh` сохраняется, поэтому маршрутизатор в `core` не может знать построитель `textsystem` по имени.
 
 **Решение:** цепочка выбора построителя уже существует: `build_and_publish_screen` опрашивает четыре фикстурных модуля и затем строит экран локации. Задача не изобретает маршрутизатор, а переносит его из игрового пакета в `core` и делает участников объявленными: `core` спрашивает `modes.active()` и при активном режиме вызывает его `view`, иначе делегирует зарегистрированному построителю по умолчанию. `textsystem` продолжает регистрироваться тем же вызовом, его внутренняя цепочка фикстур остаётся как есть — это не предмет задачи. Merge документов из нескольких источников по-прежнему отвергается.
 
+`view` возвращает **только route-экран** и ничего не публикует ([ADR-0051](README.md)); слои режима открывают его команды, и владение ими — предмет EGC-17. Отдельно задача обязана сохранить порядок: решение транзакции принимается до публикации фактов, а `resolve()` вызывается после неё, поэтому ошибка маршрутизатора или `view` не откатывает каноническое состояние и не отзывает доставленные факты. Обработка такой ошибки остаётся сегодняшней — ошибка команды.
+
 Отдельно проверяется случай отложенного запуска режима (реакция на событие перехода): между командой перехода и командой запуска режима UI не должен получить интерактивную промежуточную ревизию экрана локации.
 
-**Не считается закрытием:** разрешить вторую регистрацию source; поместить вызов `view` внутрь `location_presenter`; оставить выбор построителя в `textsystem` и проверять активный режим там; переписать четыре фикстурных ветки вместо их сохранения; прогнать пять specs, названных в критериях приёмки предложения, вместо всех specs каталога.
+**Не считается закрытием:** разрешить вторую регистрацию source; поместить вызов `view` внутрь `location_presenter`; оставить выбор построителя в `textsystem` и проверять активный режим там; принимать от `view` полный документ со слоями; откатывать каноническое состояние по ошибке маршрутизатора; переписать четыре фикстурных ветки вместо их сохранения; прогнать пять specs, названных в критериях приёмки предложения, вместо всех specs каталога.
 
 **Шаги:**
 1. Зафиксировать существующее поведение: прогон **всех** specs каталога `Tests/Lua/presentation/` без правок — опорная точка. Перечислитель — каталог, а не список из критериев приёмки предложения: сегодня в каталоге десять файлов, а предложение называет пять, и остальные пять сломались бы молча.
 2. Ввести маршрутизатор в `core`; `register_source` принимает построитель по умолчанию; повторная регистрация по-прежнему отвергается.
 3. Подключить `view` активного режима; `view` вызывается только отсюда.
 4. Проверить отложенный запуск: команда перехода и отложенная команда запуска режима дают одну интерактивную ревизию, а не две.
-5. Прогнать все presentation specs каталога без изменений в них; любое изменение spec классифицировать как исправление с причиной.
+5. Записать фикстуру порядка: `view`, бросающий ошибку, оставляет каноническое состояние применённым, доставленные факты — доставленными, и даёт ошибку команды.
+6. Прогнать все presentation specs каталога без изменений в них; любое изменение spec классифицировать как исправление с причиной.
 
 **Done:**
 - Зарегистрирован ровно один presentation source; `PresentationSourceDuplicateRegistration` возникает при попытке второй регистрации.
 - Без активного режима каждый spec каталога `Tests/Lua/presentation/` проходит без правок; перечислитель — каталог.
-- При активном режиме документ строит `view` режима; `view` не вызывается из команд.
+- При активном режиме документ строит `view` режима; `view` не вызывается из команд и возвращает только route-экран.
+- Ошибка в `view` не откатывает каноническое состояние и не отзывает факты; проверено фикстурой порядка.
 - Отложенный запуск режима не публикует промежуточную интерактивную ревизию экрана локации.
 - `core` не содержит имени построителя `textsystem`; проверено перечислителем обращений модуля, а не чтением диффа.
 
@@ -61,7 +65,9 @@ decisions:
 
 **Решение:** authoring-helper полной публикации `replace_document({ route, overlays, modals })` — одна ревизия на весь документ. Слои, открытые внутри команды режима, помечаются owner = активный режим; при `finish()`/`cancel()` они удаляются той же ревизией, которой route возвращается к построителю по умолчанию. Механизм режимов использует тот же helper, что автор, а не отдельный путь.
 
-**Не считается закрытием:** добавить helper и оставить `show_screen` публикующим отдельную ревизию при смене режима; реализовать каскад только для modals, не для overlays; хранить owner вне документа.
+Поскольку `view` возвращает только route (EGC-16), слои режима существуют между ревизиями в документе, а не выводятся заново. Отсюда правило [ADR-0051](README.md), которое задача обязана сделать проверяемым: значение, решающее, открыт ли слой, и влияющее на правила режима, хранится в run, а не в документе. Подтверждение покупки, от которого зависит применение итога, — поле run; оформление того же подтверждения — слой с owner.
+
+**Не считается закрытием:** добавить helper и оставить `show_screen` публикующим отдельную ревизию при смене режима; реализовать каскад только для modals, не для overlays; хранить owner вне документа; держать в документе значение, от которого зависит правило режима.
 
 **Шаги:**
 1. Воспроизвести дефект: открыть overlay и modal, затем `show_screen` другого экрана — overlay и modal остаются; это красный spec до правки.
@@ -76,6 +82,7 @@ decisions:
 - После выхода ни один слой документа не имеет owner = режим; проверено обходом слоёв.
 - Каскад работает для overlays и modals одинаково.
 - Механизм режимов и автор используют один и тот же helper.
+- Значение, от которого зависит правило режима, лежит в run: фикстура, перенёсшая его в документ, обязана покраснеть.
 
 **Evidence:** красный и зелёный прогон spec, значения счётчика ревизий, обход слоёв, оба host-а.
 
@@ -166,11 +173,39 @@ decisions:
 
 **Evidence:** прогон набора по фильтру `Hover` до и после извлечения с числом проверок в обоих прогонах, новая проверка второго потребителя, мутационная проба, `validate_presentation_apply_field_inventory`, `validate_viewport_refresh_coverage`.
 
+## EGC-20A — Сделать реестр kind перечислителем
+
+- [ ] EGC-20A — Сделать реестр kind перечислителем
+
+**Зависимость:** EGC-20. **Файлы:** создать `Tools/Testing/validate_stable_id_kind_registry.py`; `CMakeLists.txt` (регистрация позитивного и негативного теста); `Docs/Architecture/StableIDSpecification.md` (строки `random_stream` и `subscriber`). Docs: `StableIDSpecification.md`.
+
+**Инвариант:** `AGENTS.md`, «Универсальное утверждение требует перечислителя». Реестр kind объявляет себя неполным («Core kinds включают»), грамматика разрешает в позиции kind любой segment, а проверка делается поштучно через `is_kind`/`IsOfKind`. Список уже разошёлся с кодом в обе стороны: `random_stream` и `subscriber` проверяются кодом и в реестре отсутствуют; `quest`, `widget`, `slot`, `operation` и `diagnostic` стоят в реестре без места проверки. Нарушение — следующий kind, прошедший в код и не попавший в документ молча, как эти два.
+
+**Решение:** гейт собирает три источника и требует, чтобы каждый вид из их объединения присутствовал в реестре: литералы `is_kind(..., "X")` в Lua (`Scripts`, `GameData`, `Tests`) и `IsOfKind(..., "X")` в C++ (`Source`); `definition_type` в схемах; `target_kind` в спецификациях ref-полей. Направление одностороннее — реестр ⊇ объединение: заявленные категории вроде `quest` и `widget` стоят там намеренно, и точное равенство потребовало бы их выкинуть. Прецедент гейта, читающего `Docs/`, уже есть: `validate_central_style_runtime_boundary.py` и `validate_test_content_coupling.py`.
+
+**Не считается закрытием:** требовать точного равенства и удалить заявленные категории; собирать источники рукописным списком путей вместо обхода каталогов; добавить `mode` и оставить два уже разошедшихся вида; гейт без негативного self-test; change set, добавляющий проверку и правящий реестр, без ответа в сообщении коммита, чем реестр был неправ **до** появления проверки (`AGENTS.md`, раздел «Commits»).
+
+**Шаги:**
+1. Записать кейсы self-test: вид, проверяемый кодом и отсутствующий в реестре (ошибка); вид в реестре без места проверки (не ошибка); испорченный блок реестра (ошибка); вид, добавленный только схемой (ошибка, если не задокументирован).
+2. Реализовать гейт и зарегистрировать позитивный и негативный тесты в `ctest` рядом с остальными `validate_*`.
+3. Прогнать на текущем дереве **до** правки документа: гейт обязан покраснеть ровно на `random_stream` и `subscriber` — это доказательство неслучайности проверки.
+4. Добавить два вида в реестр; гейт зеленеет; в сообщении коммита назвать, что реестр был неправ двумя видами.
+5. Мутационная проба: убрать `mode` из реестра — гейт краснеет ровно на нём.
+
+**Done:**
+- Гейт собирает три источника обходом каталогов; рукописного списка путей к источникам нет.
+- Прогон до правки документа красный ровно на `random_stream` и `subscriber`; вывод приложен.
+- После правки гейт зелёный, оба вида в реестре, `mode` в реестре.
+- Негативный self-test краснеет на каждом из названных кейсов и только на них.
+- Удаление `mode` из реестра краснит гейт; удаление `quest` — нет, потому что направление одностороннее.
+
+**Evidence:** вывод гейта до и после правки реестра, негативный self-test, `ctest`, `validate_docs`.
+
 ## EGC-21 — Перенести правила в contracts и закрыть этап по движку
 
 - [ ] EGC-21 — Перенести правила в contracts и закрыть этап по движку
 
-**Зависимость:** EGC-20. **Файлы:** `Docs/Architecture/AuthoringSurfaceContract.md`, `CanonicalStateAndSave.md`, `CommandsAndEvents.md`, `DefinitionEnvelopeAndSchemaRules.md`, `StableIDSpecification.md`; `Docs/UI/UIDocumentAndReconciliation.md`, `ScreenTemplates.md`, `WidgetRegistry.md`; `Docs/Status/EngineGaps.md`, `Docs/Status/ScreenRequests.md`, `Docs/Status/ImplementationStatus.md`; `Docs/Authoring/LuaGameplayReference.md`, `PresentationAuthoringReference.md`; `Docs/RH/GameplayArchitecture.md`; `Docs/Proposals/MutationWindowTransactionalityProposal.md`, `TemporaryGameModesProposal.md`, `Docs/Proposals/README.md`, `Docs/Proposals/Archive/README.md`.
+**Зависимость:** EGC-20A. **Файлы:** `Docs/Architecture/AuthoringSurfaceContract.md`, `CanonicalStateAndSave.md`, `CommandsAndEvents.md`, `DefinitionEnvelopeAndSchemaRules.md`, `StableIDSpecification.md`; `Docs/UI/UIDocumentAndReconciliation.md`, `ScreenTemplates.md`, `WidgetRegistry.md`; `Docs/Status/EngineGaps.md`, `Docs/Status/ScreenRequests.md`, `Docs/Status/ImplementationStatus.md`; `Docs/Authoring/LuaGameplayReference.md`, `PresentationAuthoringReference.md`; `Docs/RH/GameplayArchitecture.md`; `Docs/Proposals/MutationWindowTransactionalityProposal.md`, `TemporaryGameModesProposal.md`, `Docs/Proposals/README.md`, `Docs/Proposals/Archive/README.md`.
 
 **Инвариант:** правило ведения планов: полностью выполненный план перестаёт быть источником задач, а его нормативный результат к этому моменту обязан быть перенесён в contracts. Пока правило живёт только в плане, следующий этап опирается на документ, который не является источником правил.
 
