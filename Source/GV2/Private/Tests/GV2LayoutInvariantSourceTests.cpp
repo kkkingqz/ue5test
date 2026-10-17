@@ -5,6 +5,7 @@
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Engine/Blueprint.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/PanelWidget.h"
@@ -454,6 +455,81 @@ bool IsContentExcepted(const FString& AssetName, FString& OutReason)
     return false;
 }
 
+// --- Half C: Content/ class-defaults sweep ---------------------------------
+//
+// Same claim as Half B, applied to a place Half B structurally cannot reach: an
+// asset's own CLASS DEFAULTS rather than its widget tree. ADR-0049 was opened by
+// MinWidth=160/MinHeight=48 in BP_UIStyle_Button_Default's CDO silently deciding
+// every button's geometry -- the same class of defect as WrapSize=1200, one asset
+// over, and invisible to every gate the project had: Half A scans Source/, Half B
+// walks UWidgetTree, and a UCommonButtonStyle CDO is in neither.
+//
+// The property set is not a list: it comes from reflection over the class, so a
+// future style class, or a new dimension property on an existing one, is covered
+// without a test edit. The grammar names the CONCEPT -- a scalar whose name ends
+// in Width or Height is an absolute layout dimension -- and the value decides:
+// zero means "not authored here", non-zero means this asset states a dimension
+// that ADR-0049 says belongs to the surface.
+//
+// Deliberately NOT descended into: FMargin (padding is legitimate style, and
+// ADR-0049's own overflow check reads ButtonPadding from the style CDO) and
+// FSlateBrush::ImageSize (brush geometry is owned by the Image Resource contract,
+// which derives it from the resource's own mode and gates it separately).
+bool IsAbsoluteDimensionPropertyName(const FString& PropertyName)
+{
+    return PropertyName.EndsWith(TEXT("Width")) || PropertyName.EndsWith(TEXT("Height"));
+}
+
+void WalkClassDefaultsForAbsoluteDimensions(
+    UClass* Class,
+    const FString& AssetName,
+    TArray<FString>& OutViolations,
+    int32& OutCheckedPropertyCount)
+{
+    if (Class == nullptr)
+    {
+        return;
+    }
+    const UObject* Defaults = Class->GetDefaultObject(false);
+    if (Defaults == nullptr)
+    {
+        return;
+    }
+
+    for (TFieldIterator<FProperty> It(Class); It; ++It)
+    {
+        const FProperty* Property = *It;
+        if (Property == nullptr)
+        {
+            continue;
+        }
+        const FNumericProperty* Numeric = CastField<FNumericProperty>(Property);
+        if (Numeric == nullptr || Numeric->IsEnum())
+        {
+            continue;
+        }
+        const FString PropertyName = Property->GetName();
+        if (!IsAbsoluteDimensionPropertyName(PropertyName))
+        {
+            continue;
+        }
+        ++OutCheckedPropertyCount;
+
+        const void* ValuePtr = Property->ContainerPtrToValuePtr<void>(Defaults);
+        const double Value = Numeric->IsFloatingPoint()
+            ? Numeric->GetFloatingPointPropertyValue(ValuePtr)
+            : static_cast<double>(Numeric->GetSignedIntPropertyValue(ValuePtr));
+        if (FMath::IsNearlyZero(Value))
+        {
+            continue;
+        }
+
+        OutViolations.Add(FString::Printf(
+            TEXT("[%s] class default %s::%s = %g (absolute layout dimension authored in an asset's defaults)"),
+            *AssetName, *Class->GetName(), *PropertyName, Value));
+    }
+}
+
 void WalkWidgetTreeForAbsoluteLayout(
     UWidgetTree* Tree,
     const FString& AssetName,
@@ -638,6 +714,71 @@ bool FGV2LayoutParameterViewportDerivationTest::RunTest(const FString& Parameter
             ContentViolations.Append(AssetViolations);
         }
     }
+
+    // ---- Half C: Content/ class-defaults sweep ----
+    //
+    // Enumerated from the SAME asset set Half B uses, with no name prefix and no list of
+    // style classes: every Blueprint-generated class under the declared content roots has its
+    // own defaults reflected over. A style asset is therefore covered because it is an asset,
+    // not because it was remembered.
+    int32 DefaultsClassesWalked = 0;
+    int32 DimensionPropertiesChecked = 0;
+    int32 DefaultsExceptedCount = 0;
+    TArray<FString> DefaultsViolations;
+
+    for (const FAssetData& Asset : UiAssets)
+    {
+        const FString AssetName = Asset.AssetName.ToString();
+        // The generated class path comes from the registry's own Blueprint tag rather than
+        // from "<package>.<name>_C" assembled here. A DataAsset has no such tag and is
+        // skipped for that reason, instead of being probed with a path that cannot exist --
+        // which is also why this loop no longer logs a failed object lookup per DataAsset.
+        FString GeneratedClassPath;
+        if (!Asset.GetTagValue(FBlueprintTags::GeneratedClassPath, GeneratedClassPath))
+        {
+            continue;
+        }
+        UClass* AssetClass = LoadClass<UObject>(nullptr, *GeneratedClassPath);
+        if (AssetClass == nullptr || AssetClass->HasAnyClassFlags(CLASS_Deprecated))
+        {
+            continue;
+        }
+        ++DefaultsClassesWalked;
+
+        TArray<FString> AssetViolations;
+        WalkClassDefaultsForAbsoluteDimensions(
+            AssetClass, AssetName, AssetViolations, DimensionPropertiesChecked);
+
+        FString ExceptionReason;
+        if (!AssetViolations.IsEmpty() && IsContentExcepted(AssetName, ExceptionReason))
+        {
+            DefaultsExceptedCount += AssetViolations.Num();
+            continue;
+        }
+        DefaultsViolations.Append(AssetViolations);
+    }
+
+    TestTrue(
+        TEXT("DCA-15 Half C: at least one Blueprint class's defaults were reflected over"),
+        DefaultsClassesWalked > 0);
+    TestTrue(
+        TEXT("DCA-15 Half C: the reflection enumerator found dimension properties to check"),
+        DimensionPropertiesChecked > 0);
+
+    for (const FString& Violation : DefaultsViolations)
+    {
+        AddError(FString::Printf(
+            TEXT("DCA-15 Half C: %s -- ADR-0049: the surface owns control dimensions, an asset's ")
+            TEXT("defaults may not state them"),
+            *Violation));
+    }
+    TestEqual(
+        *FString::Printf(
+            TEXT("DCA-15 Half C: no absolute layout dimensions in class defaults across %d classes ")
+            TEXT("(%d dimension properties checked, %d excepted)"),
+            DefaultsClassesWalked, DimensionPropertiesChecked, DefaultsExceptedCount),
+        DefaultsViolations.Num(),
+        0);
 
     TestTrue(TEXT("DCA-15 Half B: at least one production WBP_* asset was walked"), AssetsWalked > 0);
     TestTrue(TEXT("DCA-15 Half B: at least one WrapBox/SizeBox widget was checked across all walked assets"), WidgetsChecked > 0);
