@@ -1,7 +1,7 @@
 ---
 title: Engine Gaps for Gameplay Authoring
 status: informative
-version: 1.1
+version: 1.2
 updated: 2026-10-17
 depends_on:
   - ../Architecture/AuthoringSurfaceContract.md
@@ -186,4 +186,49 @@ depends_on:
 - **Сейчас:** [Commands and Events](../Architecture/CommandsAndEvents.md) упорядочивает подписчиков по priority, порядку пакета и порядку регистрации, но authoring `on(event, fn)` не принимает priority (`Scripts/authoring/context.lua`, `mod.on`).
 - **Требуется:** необязательный priority в `on(event, fn, opts)`.
 - **Приоритет:** низкий: при реакциях, описанных данными (GAP-010), порядок задаёт `rh`.
+- **Статус:** open.
+
+## Авторский слой пакета с нуля
+
+Источник: решение от 2026-10-17 переписать `rh` с нуля, удалив текущую заглушку. Пробелы ниже не относятся к конкретной механике: они мешают пакету игры целиком жить на authoring surface и проверяться своими specs.
+
+### GAP-014. Поля и методы prototype на Definitions
+
+- **Потребность:** стадия и флаги квеста — runtime-state поля Definition квеста ([RH Gameplay Architecture § 5.10](../RH/GameplayArchitecture.md#510-квесты)); состояние локации — runtime-state поля Definition локации; методы на Definitions собственных kinds `rh` (`function Shop:assortment()`, методы фазы конца хода `rh:turn_phase.*`).
+- **Сейчас:** prototype `Quest`, `Location` или пользовательский PascalCase регистрирует field descriptors под своим именем (`"Quest"`, `Scripts/authoring/context.lua`, `create_entity_prototype_proxy`). Wrapper Definition ищет schema по discriminator или по kind в нижнем регистре (`"quest"`, `Scripts/authoring/properties.lua`, `wrap_definition`), поэтому объявленное поле не находится. Проверено пробным spec: после `Quest.stage = field.non_negative_integer()` чтение `stage` у Definition `rh:quest.main` возвращает `nil`, запись даёт `Cannot modify definition field 'stage' (no runtime_state schema defined)`; так же ведёт себя пользовательский prototype для kind `turn_phase`. Wrapper экземпляра персонажа ищет schema через `get_effective_schema(..., "Actor")`, поэтому у `Actor` поля работают. Методы Definition ищутся под именем kind с заглавной первой буквой (`Turn_phase` для `turn_phase`), а prototype `TurnPhase` регистрируется под `"TurnPhase"`: соответствие имени prototype и многословного kind не определено (по коду, без пробного запуска).
+- **Требуется:**
+  - field descriptors и методы prototype применяются к Definitions соответствующего kind через `def.<kind>(name)` и `location(name)`;
+  - определённое соответствие имени prototype и kind (`TurnPhase` ↔ `turn_phase`);
+  - conformance через production-путь wrapper Definition, а не прямой вызов `register_schema("quest", ...)`, как в нынешних specs.
+- **Затрагивает:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md#entities-fields-and-references), [Lua Gameplay Reference](../Authoring/LuaGameplayReference.md#объявить-поля-и-методы-сущности).
+- **Приоритет:** блокирует квесты в принятой форме и методы на собственных kinds `rh`.
+- **Статус:** open.
+
+### GAP-015. Старт новой игры из authoring
+
+- **Потребность:** начальное состояние новой игры (игрок, NPC, их размещение, стартовые предметы, роли и флаги) создаётся командой пакета по данным сценария старта, без кода вне authoring surface.
+- **Сейчас:** [Bootstrap and Session Lifecycle](../Architecture/BootstrapAndSessionLifecycle.md) даёт пакету `start` hook module, который создаёт начальное состояние через зарегистрированную command. У authoring module возвращаемое значение игнорируется, поэтому объявить `start` в нём нельзя. В `rh` это делает обычный module `GameData/rh/scripts/runtime/session_start.lua` через programmer API: определяет новую игру по `game.instances.actors.player() == nil` и вызывает `game.runtime.dispatch_command`.
+- **Требуется:** authoring-объявление стартовой команды пакета (например, `new_game = commands.start` или поле в manifest пакета), которую lifecycle вызывает только при новой игре, а не после load; признак «новая игра» определяет lifecycle, а не проверка наличия игрока.
+- **Временно:** `rh` сохраняет один module-мост вне authoring: вызов стартовой команды без логики.
+- **Затрагивает:** [Bootstrap and Session Lifecycle](../Architecture/BootstrapAndSessionLifecycle.md), [Authoring Surface](../Architecture/AuthoringSurfaceContract.md).
+- **Статус:** open.
+
+### GAP-016. Место specs пакета игры
+
+- **Потребность:** specs механик, обходы контента и эталонные прогоны `rh` ([RH Gameplay Architecture § 9](../RH/GameplayArchitecture.md#9-проверка)) лежат рядом с пакетом и исполняются на реальном пакете `rh` и его зависимостях.
+- **Сейчас:** spec runner находит specs только в `Tests/Lua/<subtree>/`, а соответствие subtree уровню пакетов задано списком в C++ (`Source/GV2TestSupport/Private/LuaSpecRunner.cpp`, `GetAllSubtreeTierConfigs`); незарегистрированный subtree — ошибка. Subtrees уровня FullGame (`authoring`, `economy`, `presentation`) заняты specs движка. В каталоге пакета места для specs нет.
+- **Требуется:** каталог specs пакета (например, `GameData/<pkg>/tests/`), который runner находит сам и исполняет на сессии из пакета и его зависимостей; классификация таких specs по [ADR-0046](../ADR/0046-test-content-coupling-boundary.md) как тестов игры, а не contract-тестов движка.
+- **Затрагивает:** [Add Lua Spec](../Guides/AddLuaSpec.md), [Build and Tooling](../Architecture/BuildAndTooling.md#test-content-decoupling), [Headless Simulation](../Architecture/HeadlessSimulationContract.md).
+- **Приоритет:** блокирует стратегию проверки `rh`.
+- **Статус:** open.
+
+### GAP-017. Тесты движка опираются на заглушку `rh`
+
+- **Потребность:** удалить текущую заглушку `rh` (команды `travel`, `time.wait_day`, `work.do_work`, `request_buy`/`buy`, их Definitions, экраны и тексты) и написать пакет заново.
+- **Сейчас:** проверки движка используют содержимое заглушки:
+  - Lua specs уровня FullGame на реальном пакете `rh`: `Tests/Lua/economy/` (например, `travel_stamina.lua` вызывает `rh:command.travel`), `Tests/Lua/presentation/` (например, `dynamic_menu.lua` ждёт binding `rh:command.request_buy`), часть `Tests/Lua/authoring/`;
+  - C++ тесты, загружающие пакет `rh` или его расширения (например, `GV2ContentSmokeTests.cpp` читает блок `extensions.rh`);
+  - Editor profile `core + textsystem + rh` (`Config/DefaultGame.ini`, `EditorPackageRoots`), где `rh` обязан создать начальное состояние и показать `textsystem:screen.location` ([Build and Tooling](../Architecture/BuildAndTooling.md)).
+- **Требуется:** до удаления заглушки перевести эти проверки на синтетические фикстуры или fixture package движка ([ADR-0046](../ADR/0046-test-content-coupling-boundary.md), `STATUS-028` в [Implementation Status](ImplementationStatus.md)) либо явно перечислить, что из содержимого `rh` остаётся контрактом для тестов движка.
+- **Приоритет:** блокирует удаление заглушки; новый `rh` нельзя положить на место старого, пока на старый опираются тесты.
 - **Статус:** open.
