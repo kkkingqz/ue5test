@@ -345,6 +345,26 @@ function M.validate_field_value(field_name, field_spec, raw_value)
                 M.validate_field_value(field_name .. "[" .. tostring(i) .. "]", field_spec.items, item)
             end
         end
+    elseif kind == "random_stream" then
+        -- EGC-05/ADR-0051 §D5: the exact shape state_validator checks for
+        -- meta.prng -- algorithm tag plus four 32-bit words of lowercase hex
+        -- -- so a corrupted word is rejected here, before it ever reaches a
+        -- draw's bit arithmetic. Unlike state_validator's check (which runs
+        -- against the raw canonical tree), the value reaching this branch is
+        -- read back through mutation_window's guarded run proxy and so is
+        -- itself wrapped -- a metatable here is normal, not corruption.
+        if type(value) ~= "table" then
+            error("FieldValidationTypeMismatch: field '" .. tostring(field_name) .. "' expected a random_stream state table, got " .. type(value), 2)
+        end
+        if value.algorithm ~= "xoshiro128ss-v1" then
+            error("FieldValidationTypeMismatch: field '" .. tostring(field_name) .. "' has invalid algorithm tag: " .. tostring(value.algorithm), 2)
+        end
+        for _, word in ipairs({ "s0", "s1", "s2", "s3" }) do
+            local word_val = value[word]
+            if type(word_val) ~= "string" or not word_val:match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") then
+                error("FieldValidationConstraintFailed: field '" .. tostring(field_name) .. "' word '" .. word .. "' is not 8 lowercase hex characters: " .. tostring(word_val), 2)
+            end
+        end
     end
 
     return true, value

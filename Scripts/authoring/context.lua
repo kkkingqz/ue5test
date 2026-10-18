@@ -21,6 +21,7 @@ local entity_extension_registry = require("core:module.runtime.entity_extension_
 local field_module = require("core:module.authoring.field")
 local instance_registry = require("core:module.runtime.instance_registry")
 local test_state_registry = require("core:module.runtime.test_state_registry")
+local mode_store = require("core:module.runtime.mode_store")
 
 local M = {
     id = "core:module.authoring.context",
@@ -71,6 +72,23 @@ function M.guard_validator_side_effect(operation_name)
             .. "' in package '" .. tostring(current_scope.package_id)
             .. "' attempted side-effect operation '" .. tostring(operation_name or "unknown") .. "'", 2)
     end
+end
+
+-- EGC-05/ADR-0051 §D3: `view` is a pure projection the presentation builder
+-- calls, not a command operation -- by analogy with guard_validator_side_effect,
+-- guarded by execution scope rather than by trusting every future caller.
+-- Lives here (not in mode_store.lua) because only context.lua holds
+-- current_scope, and mode_store must not require context.lua back (cycle).
+function M.call_active_mode_view()
+    if current_scope.kind == "command" then
+        error("ModeViewCalledFromCommand: view() must be called by the presentation builder, not from within a command handler", 2)
+    end
+    local active_id = mode_store.active()
+    if active_id == nil then
+        return nil
+    end
+    local decl = mode_store.get_declaration(active_id)
+    return decl.view_fn(_G.game and _G.game.state, mode_store.run_proxy())
 end
 
 local function canonicalize_error_id(package_id, key)
@@ -363,6 +381,215 @@ function M.gameplay(package_id, opt_module_id)
         end,
     })
 
+    -- EGC-05/ADR-0051 §D2: `modes.<key> = { start, view }` declares a mode the
+    -- same way `services.<key> = {...}` declares a service (duplicate/late
+    -- declaration rejected the same way); `modes.<key>.<field> = field.*(...)`
+    -- then declares run content on the handle it returned, the same way
+    -- `Actor.gold = field.*(...)` declares an entity field. The six verb
+    -- names are reserved and can never be used as a mode key.
+    local RESERVED_MODE_KEYS = {
+        start = true, require_active = true, state = true,
+        finish = true, cancel = true, active = true,
+    }
+    local declared_mode_handles = {}
+
+    local function resolve_mode_id(key_or_id)
+        if type(key_or_id) ~= "string" or key_or_id == "" then
+            error("InvalidModeReference: expected mode key or Stable ID, got " .. tostring(key_or_id), 2)
+        end
+        if stable_id.is_kind(key_or_id, "mode") then
+            return key_or_id
+        end
+        return package_id .. ":mode." .. key_or_id
+    end
+
+    local function mode_fail(key, params)
+        return M.fail(key, params, "core")
+    end
+
+    local function make_run_wrapper(decl)
+        local run_proxy = mode_store.run_proxy()
+        return setmetatable({}, {
+            __index = function(_, key)
+                local val = run_proxy[key]
+                if val ~= nil then
+                    return val
+                end
+                local field_spec = decl.fields[key]
+                return field_spec and field_spec.default or nil
+            end,
+            __newindex = function(_, key, value)
+                local field_spec = decl.fields[key]
+                if not field_spec then
+                    error("ModeRunFieldUnknown: field '" .. tostring(key) .. "' is not declared for mode '" .. decl.mode_id .. "'", 2)
+                end
+                local write_policy = field_spec.write_policy or "plain"
+                if write_policy == "read_only" then
+                    error("ModeRunFieldReadOnly: cannot modify read_only field '" .. tostring(key) .. "' of mode '" .. decl.mode_id .. "'", 2)
+                elseif write_policy == "managed" then
+                    local ops_str = ""
+                    if type(field_spec.operations) == "table" and #field_spec.operations > 0 then
+                        ops_str = " (use domain operations: " .. table.concat(field_spec.operations, ", ") .. ")"
+                    end
+                    error("ModeRunFieldManaged: cannot assign directly to managed field '" .. tostring(key) .. "' of mode '" .. decl.mode_id .. "'" .. ops_str, 2)
+                end
+                local _, canonical_val = properties_module.validate_field_value(key, field_spec, value)
+                run_proxy[key] = canonical_val
+            end,
+            __tostring = function(_)
+                return "ModeRunWrapper(" .. decl.mode_id .. ")"
+            end,
+        })
+    end
+
+    local function modes_active()
+        return mode_store.active()
+    end
+
+    local function modes_require_active(opt_key_or_id)
+        local active_id = mode_store.active()
+        if active_id == nil then
+            mode_fail("mode.not_active", {})
+        end
+        if opt_key_or_id ~= nil then
+            local expected_id = resolve_mode_id(opt_key_or_id)
+            if expected_id ~= active_id then
+                mode_fail("mode.not_active", { expected_mode_id = expected_id, active_mode_id = active_id })
+            end
+        end
+        return active_id
+    end
+
+    local function modes_state()
+        local active_id = mode_store.active()
+        if active_id == nil then
+            mode_fail("mode.not_active", {})
+        end
+        local decl = mode_store.get_declaration(active_id)
+        return make_run_wrapper(decl)
+    end
+
+    local function modes_start(key_or_id, ...)
+        if mode_store.active() ~= nil then
+            mode_fail("mode.already_active", { active_mode_id = mode_store.active() })
+        end
+        local mode_id = resolve_mode_id(key_or_id)
+        local decl = mode_store.get_declaration(mode_id)
+        if decl == nil then
+            error("UnknownModeId: mode '" .. mode_id .. "' is not declared", 2)
+        end
+
+        mode_store.begin(mode_id)
+
+        for field_name, field_spec in pairs(decl.fields) do
+            if field_spec.kind == "random_stream" then
+                if not (game and game.random and game.random.next_u32) then
+                    error("GameRandomNotAvailable: game.random is not available to seed mode '" .. mode_id .. "'", 2)
+                end
+                local seed = game.random.next_u32("core:random_stream.mode_seed")
+                mode_store.seed_random_stream_field(field_name, seed)
+            end
+        end
+
+        return decl.start_fn(...)
+    end
+
+    local function modes_finish()
+        if mode_store.active() == nil then
+            mode_fail("mode.not_active", {})
+        end
+        mode_store.end_mode()
+    end
+
+    local function modes_cancel()
+        if mode_store.active() == nil then
+            mode_fail("mode.not_active", {})
+        end
+        mode_store.end_mode()
+    end
+
+    local MODE_VERBS = {
+        start = modes_start,
+        require_active = modes_require_active,
+        state = modes_state,
+        finish = modes_finish,
+        cancel = modes_cancel,
+        active = modes_active,
+    }
+
+    local modes_proxy = setmetatable({}, {
+        __newindex = function(_, key, val)
+            if RESERVED_MODE_KEYS[key] then
+                error("ModeReservedKeyName: '" .. tostring(key) .. "' is a reserved modes.* operation and cannot be declared as a mode key", 2)
+            end
+            if is_module_frozen or (proxy_ctrl and proxy_ctrl.is_frozen and proxy_ctrl.is_frozen()) then
+                error("ModeDeclarationAfterFreeze: cannot declare mode '" .. tostring(key) .. "' after freeze in package '" .. package_id .. "'", 2)
+            end
+            if type(key) ~= "string" or key == "" or not key:match("^[a-z][a-z0-9_]*$") then
+                error("InvalidModeName: mode name must be a single lowercase alphanumeric segment, got '" .. tostring(key) .. "'", 2)
+            end
+            if type(val) ~= "table" or type(val.start) ~= "function" then
+                error("InvalidModeDeclaration: mode '" .. key .. "' must declare a 'start' function", 2)
+            end
+            if type(val.view) ~= "function" then
+                error("ModeMissingView: mode '" .. key .. "' must declare a 'view' function", 2)
+            end
+            if declared_mode_handles[key] ~= nil then
+                error("ModeDuplicateDeclaration: mode '" .. key .. "' is already declared in package '" .. package_id .. "'", 2)
+            end
+
+            local mode_id = package_id .. ":mode." .. key
+            local fields = {}
+            local decl = {
+                mode_id = mode_id,
+                start_fn = val.start,
+                view_fn = val.view,
+                fields = fields,
+                declaring_package = package_id,
+            }
+            mode_store.declare(mode_id, decl)
+
+            local handle = setmetatable({}, {
+                __newindex = function(_, field_name, field_val)
+                    if is_module_frozen or (proxy_ctrl and proxy_ctrl.is_frozen and proxy_ctrl.is_frozen()) then
+                        error("ModeFieldDeclarationAfterFreeze: cannot declare field '" .. tostring(field_name) .. "' for mode '" .. mode_id .. "' after freeze", 2)
+                    end
+                    if type(field_val) ~= "table" or not field_val.__gv2_field_descriptor then
+                        error("InvalidModeFieldDescriptor: mode '" .. key .. "' field '" .. tostring(field_name) .. "' must be a field.* descriptor, got " .. type(field_val), 2)
+                    end
+                    if fields[field_name] ~= nil then
+                        error("ModeFieldDuplicateDeclaration: mode '" .. key .. "' field '" .. tostring(field_name) .. "' is already declared", 2)
+                    end
+                    if field_val.kind == "random_stream" then
+                        for existing_name, existing_spec in pairs(fields) do
+                            if existing_spec.kind == "random_stream" then
+                                error("ModeMultipleRandomStreams: mode '" .. key .. "' already declares a random_stream field '" .. existing_name .. "'", 2)
+                            end
+                        end
+                    end
+                    fields[field_name] = field_val
+                end,
+                __index = function(_, field_name)
+                    return fields[field_name]
+                end,
+                __tostring = function(_)
+                    return "ModeHandle(" .. mode_id .. ")"
+                end,
+            })
+            declared_mode_handles[key] = handle
+        end,
+        __index = function(_, key)
+            if MODE_VERBS[key] then
+                return MODE_VERBS[key]
+            end
+            local handle = declared_mode_handles[key]
+            if handle then
+                return handle
+            end
+            error("UnknownModeKey: '" .. tostring(key) .. "' is not a modes operation or declared mode in package '" .. package_id .. "'", 2)
+        end,
+    })
+
     local actions_proxy = setmetatable({}, {
         __newindex = function(_, key, val)
             local action_id
@@ -423,6 +650,7 @@ function M.gameplay(package_id, opt_module_id)
     mod.commands = commands_proxy
     mod.actions = actions_proxy
     mod.services = services_proxy
+    mod.modes = modes_proxy
     mod.action = presentation_module.create_action_helper(package_id)
     mod.button = presentation_module.create_button_helper(package_id)
     mod.text = presentation_module.create_text_helper(package_id)
@@ -853,6 +1081,7 @@ end
 function M.freeze()
     M.verify_validator_targets()
     M.verify_service_targets()
+    mode_store.freeze()
     is_frozen = true
 end
 
@@ -907,6 +1136,7 @@ function M.create_authoring_environment(package_id, opt_module_id)
         Item = mod.Item,
         field = mod.field,
         instances = mod.instances,
+        modes = mod.modes,
     }
 
     local env = {}

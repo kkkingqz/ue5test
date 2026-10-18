@@ -2,7 +2,7 @@
   "manifest_format_version": 2,
   "lua_release_num": 50408,
   "repository_content_hash": "292a5ee53437e70fc8478cba179248adc035d688d83141ea5397a18e5e9d48e5",
-  "script_set_hash": "95099297c01203c267b26c1931a565cc4c6528bd044cdcfd534f0e95bf79ef47",
+  "script_set_hash": "a6e35b972d8bb679b9af8445fc727fc32dc87339b731002819349d775732898c",
   "seed": "000000000000002a",
   "accepted_commands": [
     {

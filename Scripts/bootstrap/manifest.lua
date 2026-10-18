@@ -309,6 +309,7 @@ return {
                 "core:module.runtime.entity_extension_registry",
                 "core:module.runtime.instance_registry",
                 "core:module.runtime.test_state_registry",
+                "core:module.runtime.mode_store",
             },
             replaceable = false,
         },
@@ -322,6 +323,17 @@ return {
             module_id = "core:module.runtime.test_state_registry",
             source = "runtime/test_state_registry.lua",
             dependencies = {},
+            replaceable = false,
+        },
+        {
+            module_id = "core:module.runtime.mode_store",
+            source = "runtime/mode_store.lua",
+            dependencies = {
+                "core:module.runtime.mutation_window",
+                "core:module.runtime.test_state_registry",
+                "core:module.authoring.properties",
+                "core:module.runtime.random",
+            },
             replaceable = false,
         },
         {
@@ -367,6 +379,7 @@ return {
             source = "runtime/session_controls.lua",
             dependencies = {
                 "core:module.runtime.stable_id",
+                "core:module.runtime.mode_store",
             },
             replaceable = false,
         },
@@ -404,6 +417,7 @@ return {
                 "core:module.authoring.field",
                 "core:module.authoring.context",
                 "core:module.runtime.test_state_registry",
+                "core:module.runtime.mode_store",
                 "core:module.runtime.presentation_source",
                 "core:module.runtime.command_dispatcher",
                 "core:module.bootstrap.registry_lifecycle",

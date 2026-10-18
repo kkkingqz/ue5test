@@ -1,8 +1,8 @@
 ---
 title: Lua Gameplay Authoring Reference
 status: informative
-version: 1.0
-updated: 2026-09-14
+version: 1.1
+updated: 2026-10-18
 depends_on:
   - README.md
   - ../Architecture/AuthoringSurfaceContract.md
@@ -348,6 +348,44 @@ end
 Стандартный `math.random` отключён для предотвращения недетерминизма. Состояние каждого потока сохраняется в `state.meta.prng[stream_id]` (алгоритм `xoshiro128ss-v1`) и восстанавливается при загрузке без повторного сидирования. Идентификатор потока обязан быть Stable ID вида `<namespace>:random_stream.<path>`. При загрузке слота сохранённая сессия продолжает генерацию чисел строго с зафиксированного шага (детерминированное продолжение stream без разрывов и сбросов), а новые команды продолжают мутировать восстановленный canonical state.
 
 Типичные ошибки: `InvalidRandomStreamId`, `InvalidRandomRange`, `InvalidSeedHex`.
+
+## Временный игровой режим: modes
+
+Назначение: вести ограниченную во времени механику (торговля, диалог, бой), чьё промежуточное состояние влияет на gameplay, но не входит в canonical state и не сохраняется.
+Нормативно: [ADR-0051](../ADR/0051-temporary-modes-and-presentation-routing.md).
+
+Объявление (как `services.name = {...}`, но с двумя обязательными полями):
+
+```lua
+modes.duel = {
+    start = function(opponent)
+        -- вызывается modes.start() внутри command; run ещё пуст
+    end,
+    view = function(canonical_state, run)
+        -- чистая проекция (canonical state, run) -> route-экран; мутация run здесь невозможна
+        return show_screen("rh:screen.duel")
+    end,
+}
+
+-- run content объявляется после, тем же синтаксисом, что Actor.<field> = field.*(...)
+modes.duel.rounds_won = field.integer({ default = 0 })
+modes.duel.dice = field.random_stream() -- не более одного на режим
+```
+
+Вызовы (зарезервированные имена, не могут быть ключом режима):
+
+```lua
+modes.start("duel", opponent)   -- mode.already_active, если режим уже активен
+modes.require_active("duel")    -- mode.not_active, если нет или активен другой
+modes.state().rounds_won = modes.state().rounds_won + 1  -- запись необъявленного поля отклоняется
+modes.finish()                  -- mode.not_active, если нет активного режима
+modes.cancel()
+modes.active()                  -- id активного режима или nil
+```
+
+`finish()` и `start()` другого режима разрешены в одной command (переход диалог → бой без промежуточного кадра). Поле `field.random_stream()` — единственное на режим; `start()` сам тянет зерно `game.random.next_u32("core:random_stream.mode_seed")` и сидирует run-локальный поток; прямая запись в него отклоняется (`ModeRunFieldManaged`), как managed field сущности. `core:command.session.save` отклоняется `core:error.mode.active`, пока режим активен.
+
+Форма проверена в `Tests/Lua/authoring/modes.lua`. `view` может быть вызван только построителем презентации, а не из command (`ModeViewCalledFromCommand`); реализация маршрутизации — EGC-16/17.
 
 ## Быстрая самопроверка
 

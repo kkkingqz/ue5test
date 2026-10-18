@@ -88,4 +88,12 @@ function M.ref_instance(target_kind, opts)
     return descriptor
 end
 
+-- EGC-05/ADR-0051 §D5: the state of a mode's run-local random stream. `core`
+-- is the only writer (seeded once by mode_store.start, advanced by its draw
+-- function), so this is always "managed" -- an author assigning to it
+-- directly is rejected the same way a managed entity field is.
+function M.random_stream(opts)
+    return make_descriptor("random_stream", { storage = "runtime_state", write_policy = "managed" }, opts)
+end
+
 return M

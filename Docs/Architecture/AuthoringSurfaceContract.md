@@ -1,8 +1,8 @@
 ---
 title: Lua Authoring Surface Contract
 status: normative
-version: 1.0
-updated: 2026-08-20
+version: 1.1
+updated: 2026-10-18
 depends_on:
   - RuntimeFacadeAndRegistries.md
   - CommandsAndEvents.md
@@ -38,6 +38,7 @@ Authoring surface — designer-facing adapter над единственным ru
 |---|---|
 | `commands`, `validate` | команды и независимые read-only validators |
 | `services`, `actions` | gameplay services и semantic action bindings |
+| `modes` | временный игровой режим (ADR-0051) |
 | `Actor`, `Location`, `Quest`, `Item`, custom PascalCase prototype | методы и field descriptors типов сущностей |
 | `field`, `instances` | schema fields и generic instance categories |
 | `player`, `world`, `def`, `location`, `actor`, `actors` | dynamic accessors к definitions/runtime instances |
@@ -72,6 +73,8 @@ Authoring declarations накапливаются при загрузке module
 `validate(command_ref, name, fn)` принимает descriptor или canonical command ID. Validator ID непрозрачен; target хранится отдельным полем и разрешается после загрузки всех packages. Missing target даёт `AuthoringValidatorTargetMissing`, duplicate — `AuthoringValidatorDuplicate`. Validator ordering и refusal normalization принадлежат Commands contract.
 
 `services.name = { method = function ... }` — атомарное объявление stateless service; distributed assignment запрещён. Поля обязаны быть functions (`ServiceFieldNotFunction`), повторное/late объявление дают `ServiceDuplicateDeclaration`/`ServiceDeclarationAfterFreeze`. Реализация immutable после регистрации. `services["other:service.name"]` разрешается на freeze; missing target даёт `ServiceTargetMissing`.
+
+`modes.name = { start, view }` (ADR-0051) — объявляет временный игровой режим `<pkg>:mode.name` тем же протоколом, что `services`: отсутствие `view` даёт `ModeMissingView`, повторное/late объявление — `ModeDuplicateDeclaration`/`ModeDeclarationAfterFreeze`. `modes.name.<field> = field.*(...)`, объявленный после, добавляет run content тем же синтаксисом, что `Actor.<field> = field.*(...)`. Шесть verb-имён (`start`, `require_active`, `state`, `finish`, `cancel`, `active`) зарезервированы и не могут быть именем режима. Нормативный перенос правил `modes` в этот раздел — задача EGC-21 плана [Engine Gap Closure](../Plans/EngineGapClosure/README.md); здесь — указатель на ADR-0051 и `Scripts/runtime/mode_store.lua`/`Scripts/authoring/context.lua`.
 
 ### Entities, fields and references
 

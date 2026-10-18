@@ -4,12 +4,26 @@
 -- to game.bridge. Handlers do NOT execute storage operations directly.
 
 local stable_id = require("core:module.runtime.stable_id")
+local mode_store = require("core:module.runtime.mode_store")
 
 local M = {
     id = "core:module.runtime.session_controls",
 }
 
 function M.handle_save(request)
+    -- ADR-0051 §D6: save while a mode is active would silently drop its run
+    -- (run is never saved), so it is refused rather than losing progress
+    -- quietly. Reversible: finish()/cancel() the mode, then save succeeds.
+    if mode_store.active() ~= nil then
+        return {
+            ok = false,
+            error = {
+                code = "core:error.mode.active",
+                params = { active_mode_id = mode_store.active() },
+            },
+        }
+    end
+
     local args = (type(request) == "table" and type(request.args) == "table") and request.args or {}
     local slot_id = args.slot_id
 

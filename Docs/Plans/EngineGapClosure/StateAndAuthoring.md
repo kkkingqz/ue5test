@@ -1,7 +1,7 @@
 ---
 title: Engine Gap Closure State And Authoring
 status: active
-version: 1.7
+version: 1.8
 updated: 2026-10-18
 decisions:
   - ../../ADR/0050-transactional-mutation-window.md
@@ -121,7 +121,7 @@ Spec протечки (`Tests/Lua/authoring/runtime_state.lua`): синтети�
 
 ## EGC-05 — Ввести хранилище режимов и `modes` в authoring surface
 
-- [ ] EGC-05 — Ввести хранилище режимов и `modes` в authoring surface
+- [x] EGC-05 — Ввести хранилище режимов и `modes` в authoring surface
 
 **Зависимость:** EGC-02, EGC-04. **Файлы:** создать `Scripts/runtime/mode_store.lua`, `Scripts/authoring/modes.lua`, `Tests/Lua/authoring/modes.lua`; изменить `Scripts/authoring/context.lua` (`create_authoring_environment`, freeze, `verify_service_targets`), `Scripts/runtime/session_controls.lua` (отказ сохранения при активном режиме), `Scripts/runtime/random.lua` (вывод run-потока), `Scripts/bootstrap/manifest.lua`. Docs: `AuthoringSurfaceContract.md`, `RuntimeFacadeAndRegistries.md`, `Authoring/LuaGameplayReference.md`.
 
@@ -148,7 +148,13 @@ Spec протечки (`Tests/Lua/authoring/runtime_state.lua`): синтети�
 - Хранилище является участником реестра изоляции из EGC-04, и это проверено spec протечки между case.
 - `view` невозможно вызвать из команды.
 
-**Evidence:** specs на обоих host-ах, перечень отказов, прогон spec протечки с активным режимом, `ctest`.
+**Evidence:** новый `Scripts/runtime/mode_store.lua` — один `core`-store (`declare`/`freeze`/`is_frozen`/`get_declaration`/`active`/`begin`/`end_mode`/`run_proxy`/`seed_random_stream_field`/`draw_u32`), два raw table (`active_raw`, `run_raw`), каждый обёрнут один раз `mutation_window.guard_state(_, "transient")` с устойчивой identity; зарегистрирован участником `test_state_registry` (EGC-04) с restore/reset, пишущими в raw table напрямую (не через proxy — вне команды окно закрыто). Типизированные отказы (`mode.not_active`, `mode.already_active`) и команда (`modes.start`/`require_active`/`state`/`finish`/`cancel`/`active`) реализованы в `Scripts/authoring/context.lua`, а не в `mode_store.lua`, — там же живёт `M.fail`, нужный для typed refusal, и `current_scope`, нужный guard-у `call_active_mode_view` (избегает цикла зависимостей, т.к. `mode_store` не должен требовать `context.lua` обратно). `modes.<key> = { start, view }` объявляется тем же протоколом, что `services` (`ModeMissingView`/`ModeDuplicateDeclaration`/`ModeDeclarationAfterFreeze`), `modes.<key>.<field> = field.*(...)` добавляет run content тем же синтаксисом, что `Actor.<field> = field.*(...)`; шесть verb-имён зарезервированы (`ModeReservedKeyName`). Новый дескриптор `field.random_stream()` (`Scripts/authoring/field.lua`, `write_policy = "managed"`) и его форма (`properties.validate_field_value`, kind `"random_stream"`) проверяются тем же правилом, что `state_validator` для `meta.prng`. `Scripts/runtime/random.lua` вынес шаг xoshiro128** в `step_xoshiro128ss` (используется и канонической, и run-локальной записью) и добавил `derive_run_stream(seed_u32)` с доменным тегом `gv2-prng-run-v1`. `Scripts/runtime/session_controls.lua` отказывает `core:command.session.save` кодом `core:error.mode.active`, пока активен режим.
+
+`Tests/Lua/authoring/modes.lua` — 24 кейса: отказ без `view`/без `start`, дубликат, объявление после freeze, зарезервированное имя verb-а, неизвестный ключ (ошибка, а не `nil`), объявление run-field тем же синтаксисом, что у сущности (дубликат поля, не-`field.*` значение, второй `random_stream` на режим — отвергнут), `require_active`/`start`/`finish` без активного режима → `mode.not_active`, `start` при активном режиме → `mode.already_active`, `finish()`+`start()` другого режима в одной команде (проходит), `cancel()`, запись необъявленного run-field (`ModeRunFieldUnknown`), round-trip объявленного поля через `modes.state()` со sparse-default, прямая запись в managed `random_stream` field (`ModeRunFieldManaged`), сидирование потока на `start()` и проверка формы (`xoshiro128ss-v1` + 4×8 hex), испорченное слово отвергается дескриптором до броска (`FieldValidationConstraintFailed`, не доходит до `step_xoshiro128ss`), `view()` из команды (`ModeViewCalledFromCommand`), `view()` снаружи команды — попытка мутации run отклонена закрытым окном мутации (`MutationWindowClosed`, не отдельной проверкой — ADR-0051 §D3 "view — чистая проекция" выполняется самим мутационным окном), `view()` без побочных эффектов возвращает route, `view()` без активного режима возвращает `nil`, отказ `session.save` при активном режиме, прогон двух case подряд, доказывающий отсутствие протечки активного режима между spec case (EGC-04 participant).
+
+`ctest --test-dir build` — 139/139, включая golden replay (`state_hash` не изменился: `2b063c31c91de84ca867cf8f2980e6c67aa7d2a6116f1efc62f410ad34c6acad`; обновлены только `script_set_hash`/`digest_hash` по `Guides/RegenerateGolden.md`, ожидаемо при правке `Scripts/`). `UnrealEditor-Cmd ... -ExecCmds="Automation RunTests GV2;Quit"` — 211/211. `validate_docs.py` — 209 файлов чисто.
+
+Мутационные пробы (обе зафиксированы и возвращены, финальный прогон после возврата снова 139/139): (1) удалена регистрация `mode_store` в `test_state_registry` — каскадно краснеют почти все кейсы `modes.lua` (не один): `is_frozen` утекает `true` из первого же `M.register()`, и все последующие объявления `modes.<key> = {...}` в других case получают `ModeDeclarationAfterFreeze` — сильный, а не точечный сигнал, но подтверждающий, что регистрация участника load-bearing, а не no-op. (2) снята проверка `write_policy == "managed"` в `make_run_wrapper` (`context.lua`) — краснеет ровно `managed_random_stream_field_cannot_be_written_directly`, остальные зелёные.
 
 ## EGC-06 — Сделать run транзакционным вместе с командой и публиковать факты режима
 

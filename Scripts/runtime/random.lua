@@ -42,6 +42,67 @@ function M.derive_stream(seed_hex, stream_id)
     }
 end
 
+-- EGC-05/ADR-0051 §D5: a mode's run-local stream is seeded from one u32 draw
+-- off the canonical stream (not a 16-hex seed_hex), with its own domain tag so
+-- the run sequence never coincides with the canonical one at the same seed.
+local RUN_DOMAIN_TAG = "gv2-prng-run-v1"
+
+function M.derive_run_stream(seed_u32)
+    if type(seed_u32) ~= "number" or math.type(seed_u32) ~= "integer" or seed_u32 < 0 or seed_u32 > 0xffffffff then
+        error("InvalidRunStreamSeed: seed_u32 must be an unsigned 32-bit integer, got " .. tostring(seed_u32), 2)
+    end
+
+    local digest = state_hasher.sha256(RUN_DOMAIN_TAG .. "\0" .. string.format("%08x", seed_u32))
+    local s0 = tonumber(string.sub(digest, 1, 8), 16)
+    local s1 = tonumber(string.sub(digest, 9, 16), 16)
+    local s2 = tonumber(string.sub(digest, 17, 24), 16)
+    local s3 = tonumber(string.sub(digest, 25, 32), 16)
+
+    if s0 == 0 and s1 == 0 and s2 == 0 and s3 == 0 then
+        s3 = 1
+    end
+
+    return {
+        algorithm = ALGORITHM_TAG,
+        s0 = string.format("%08x", s0),
+        s1 = string.format("%08x", s1),
+        s2 = string.format("%08x", s2),
+        s3 = string.format("%08x", s3),
+    }
+end
+
+-- Pure xoshiro128** step over an explicit {algorithm, s0..s3} table: mutates
+-- and returns the table's words, independent of where that table lives
+-- (state.meta.prng for the canonical stream via next_u32 below, or a mode's
+-- run for a run-local stream via mode_store). Shape is assumed already
+-- validated by the caller -- for a run-local stream that is
+-- properties.validate_field_value against a field.random_stream() descriptor.
+local function step_xoshiro128ss(stream_state)
+    local s0 = tonumber(stream_state.s0, 16)
+    local s1 = tonumber(stream_state.s1, 16)
+    local s2 = tonumber(stream_state.s2, 16)
+    local s3 = tonumber(stream_state.s3, 16)
+
+    local result = (rotl32((s1 * 5) & 0xffffffff, 7) * 9) & 0xffffffff
+    local t = (s1 << 9) & 0xffffffff
+
+    s2 = (s2 ~ s0) & 0xffffffff
+    s3 = (s3 ~ s1) & 0xffffffff
+    s1 = (s1 ~ s2) & 0xffffffff
+    s0 = (s0 ~ s3) & 0xffffffff
+    s2 = (s2 ~ t) & 0xffffffff
+    s3 = rotl32(s3, 11)
+
+    stream_state.s0 = string.format("%08x", s0)
+    stream_state.s1 = string.format("%08x", s1)
+    stream_state.s2 = string.format("%08x", s2)
+    stream_state.s3 = string.format("%08x", s3)
+
+    return result
+end
+
+M.step_xoshiro128ss = step_xoshiro128ss
+
 local function get_stream_state(stream_id)
     if not _G.game or not _G.game.state then
         error("NoActiveGameState: game.state is not available for random stream access", 3)
@@ -77,28 +138,7 @@ function M.next_u32(stream_id)
     end
 
     local stream_state = get_stream_state(stream_id)
-    local s0 = tonumber(stream_state.s0, 16)
-    local s1 = tonumber(stream_state.s1, 16)
-    local s2 = tonumber(stream_state.s2, 16)
-    local s3 = tonumber(stream_state.s3, 16)
-
-    -- xoshiro128** algorithm
-    local result = (rotl32((s1 * 5) & 0xffffffff, 7) * 9) & 0xffffffff
-    local t = (s1 << 9) & 0xffffffff
-
-    s2 = (s2 ~ s0) & 0xffffffff
-    s3 = (s3 ~ s1) & 0xffffffff
-    s1 = (s1 ~ s2) & 0xffffffff
-    s0 = (s0 ~ s3) & 0xffffffff
-    s2 = (s2 ~ t) & 0xffffffff
-    s3 = rotl32(s3, 11)
-
-    stream_state.s0 = string.format("%08x", s0)
-    stream_state.s1 = string.format("%08x", s1)
-    stream_state.s2 = string.format("%08x", s2)
-    stream_state.s3 = string.format("%08x", s3)
-
-    return result
+    return step_xoshiro128ss(stream_state)
 end
 
 function M.next_unit(stream_id)
