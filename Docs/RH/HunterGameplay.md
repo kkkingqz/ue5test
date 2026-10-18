@@ -1462,7 +1462,7 @@ GameData/rh/
   localization/en.po                         английский перевод; msgctxt — text_id
 ```
 
-- Область — `characters`, `beast`, `world`, `combat`, `dialogues`, `shops`, `messages`, `interactions`, `dance`, `errors`, `core_interface`.
+- Область — `system`, `intro`, `characters`, `beast`, `world`, `hunt`, `combat`, `dialogues`, `shops`, `messages`, `interactions`, `dance`, `errors`, `core_interface`.
 - Вариант текста — отдельный `text_id`; выбор между вариантами делает правило или условие данных, а не разбор строки. Например, побег добычи — `catch.escaped` при отдыхе и сне, `catch.escaped_walk` при ходьбе.
 - Параметры — `{имя}`, окончание по числу — `{n}|plural(…)` с формами своего языка, выделение — `<style=emphasis>…</>`. Токен `emphasis` объявляет тема ([заявка](../Status/ResourceRequests.md#26-токены-темы)).
 - Набор параметров и тегов в переводе совпадает с исходной строкой.
