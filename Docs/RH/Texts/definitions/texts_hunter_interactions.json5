@@ -116,11 +116,11 @@
       data: { source_message: "Поесть мяса" },
     },
     {
-      id: "rh:text.interaction.camp.feed_hound.title",
+      id: "rh:text.interaction.food.feed_hound.title",
       data: { source_message: "Покормить ищейку" },
     },
     {
-      id: "rh:text.interaction.camp.feed_retriever.title",
+      id: "rh:text.interaction.food.feed_retriever.title",
       data: { source_message: "Покормить ретривера" },
     },
     {

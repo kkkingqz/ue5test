@@ -1412,11 +1412,11 @@ msgctxt "rh:text.interaction.food.eat_meat.title"
 msgid "Поесть мяса"
 msgstr "Eat meat"
 
-msgctxt "rh:text.interaction.camp.feed_hound.title"
+msgctxt "rh:text.interaction.food.feed_hound.title"
 msgid "Покормить ищейку"
 msgstr "Feed the hound"
 
-msgctxt "rh:text.interaction.camp.feed_retriever.title"
+msgctxt "rh:text.interaction.food.feed_retriever.title"
 msgid "Покормить ретривера"
 msgstr "Feed the retriever"
 
