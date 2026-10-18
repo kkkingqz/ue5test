@@ -1,8 +1,8 @@
 ---
 title: RH Game Documentation Index
 status: informative
-version: 1.0
-updated: 2026-10-17
+version: 1.1
+updated: 2026-10-18
 ---
 
 # Документация игры RH
@@ -13,4 +13,5 @@ updated: 2026-10-17
 
 | Документ | Статус | Содержание |
 |---|---|---|
-| [Gameplay Architecture](GameplayArchitecture.md) | draft | Слои пакета, модель данных, механики, основные сценарии, расширяемость и стратегия проверки |
+| [Gameplay Architecture](GameplayArchitecture.md) | draft | Устройство пакета: слои, модель данных, общие механики, модули диалога, боя и торговли, итог команды, сборка экрана, расширяемость и стратегия проверки |
+| [Hunter Gameplay](HunterGameplay.md) | draft | Правила игры «Охотник»: классы, формулы, предметы, локации, охота, добыча, встречи, торговля, танец, старт и конец игры, ресурсы |
