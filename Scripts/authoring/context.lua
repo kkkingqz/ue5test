@@ -385,11 +385,12 @@ function M.gameplay(package_id, opt_module_id)
     -- same way `services.<key> = {...}` declares a service (duplicate/late
     -- declaration rejected the same way); `modes.<key>.<field> = field.*(...)`
     -- then declares run content on the handle it returned, the same way
-    -- `Actor.gold = field.*(...)` declares an entity field. The six verb
-    -- names are reserved and can never be used as a mode key.
+    -- `Actor.gold = field.*(...)` declares an entity field. The seven verb
+    -- names (ADR-0051's six plus EGC-07's draw_u32) are reserved and can
+    -- never be used as a mode key.
     local RESERVED_MODE_KEYS = {
         start = true, require_active = true, state = true,
-        finish = true, cancel = true, active = true,
+        finish = true, cancel = true, active = true, draw_u32 = true,
     }
     local declared_mode_handles = {}
 
@@ -508,6 +509,26 @@ function M.gameplay(package_id, opt_module_id)
         mode_store.end_mode("cancelled")
     end
 
+    -- EGC-07: the authoring-facing draw call a mode's own commands need to
+    -- make a roll (e.g. the fixture's `roll_dice`), so content never has to
+    -- reach past `modes` into core:module.runtime.mode_store directly to
+    -- exercise its own declared field.random_stream(). Validates the field
+    -- is actually a random_stream of the active mode before stepping it, so
+    -- a typo'd field name fails the same way an unknown run field would.
+    local function modes_draw_u32(field_name)
+        local active_id = mode_store.active()
+        if active_id == nil then
+            mode_fail("mode.not_active", {})
+        end
+        local decl = mode_store.get_declaration(active_id)
+        local field_spec = decl.fields[field_name]
+        if not field_spec or field_spec.kind ~= "random_stream" then
+            error("ModeRunFieldNotRandomStream: field '" .. tostring(field_name)
+                .. "' is not a declared field.random_stream() of mode '" .. active_id .. "'", 2)
+        end
+        return mode_store.draw_u32(field_name, field_spec)
+    end
+
     local MODE_VERBS = {
         start = modes_start,
         require_active = modes_require_active,
@@ -515,6 +536,7 @@ function M.gameplay(package_id, opt_module_id)
         finish = modes_finish,
         cancel = modes_cancel,
         active = modes_active,
+        draw_u32 = modes_draw_u32,
     }
 
     local modes_proxy = setmetatable({}, {

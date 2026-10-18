@@ -116,6 +116,43 @@ def validate_no_hardcoded_lua_subtree_lists() -> list[str]:
     return errors
 
 
+def validate_no_hardcoded_package_root_gluing() -> list[str]:
+    """EGC-07: each host used to take GV2TestSupport's shared tier-to-
+    package-*names* list and glue it to its own GameData-root-joined path
+    independently (GameDataDir/PkgName in Headless, FPaths::Combine in UE) --
+    the names were shared, but the actual filesystem roots were not, so a
+    root that needs to live somewhere other than GameData/<name> (the
+    SyntheticMechanicalFixture/synthetic fixture package EGC-07 adds) could
+    be added to one host's glue and forgotten in the other's, loading
+    silently in one host and silently not in the other. Both hosts must
+    call the single shared GV2TestSupport::GetPackageRootsForTier() instead.
+    """
+    errors: list[str] = []
+    candidates = [
+        HEADLESS_DIR / "Source" / "main.cpp",
+        UE_TESTS_DIR / "GV2LuaSpecRunnerHostTests.cpp",
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        content = path.read_text(encoding="utf-8")
+        if "GetSubtreesForTier" not in content:
+            continue
+        if "GetPackageRootsForTier" not in content:
+            errors.append(
+                f"{path}: builds tier package roots without calling the shared "
+                "GV2TestSupport::GetPackageRootsForTier() -- a package root added to "
+                "one host's own glue code can silently diverge from the other host's."
+            )
+        if "GetPackageNamesForTier" in content:
+            errors.append(
+                f"{path}: still calls GV2TestSupport::GetPackageNamesForTier() directly -- "
+                "package roots must come from GetPackageRootsForTier() instead of names "
+                "joined against a host-local GameData path."
+            )
+    return errors
+
+
 def is_test_file(path: Path) -> bool:
     """Identifies test/conformance fixtures where embedded Lua test sources are allowed."""
     if "Conformance" in path.name:
@@ -272,6 +309,7 @@ def main() -> int:
     errors.extend(validate_no_embedded_lua_in_production())
     errors.extend(validate_no_new_lua_rule_conformance())
     errors.extend(validate_no_hardcoded_lua_subtree_lists())
+    errors.extend(validate_no_hardcoded_package_root_gluing())
 
     if errors:
         print(f"FAILED: Host conformance parity validation failed with {len(errors)} error(s):", file=sys.stderr)

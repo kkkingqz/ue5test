@@ -1,7 +1,7 @@
 ---
 title: Add Lua Spec
 status: informative
-version: 2.2
+version: 2.3
 updated: 2026-10-18
 depends_on:
   - README.md
@@ -24,7 +24,7 @@ depends_on:
 |---|---|---|
 | `Core` | `core` | `actions`, `actors`, `events`, `lifecycle`, `resources`, `save` |
 | `TextSystem` | `core`, `textsystem`, `sample` | `world` |
-| `FullGame` | `core`, `textsystem`, `rh` | `authoring`, `economy`, `presentation` |
+| `FullGame` | `core`, `textsystem`, `rh`, `synthetic` (`Tests/Fixtures/SyntheticMechanicalFixture/synthetic/`, EGC-07) | `authoring`, `economy`, `presentation` |
 | `FixtureCommands` | изолированная command fixture | `commands` |
 
 Новый top-level subtree сначала требует явной записи в `GV2TestSupport` и host mapping. Необъявленный subtree отклоняется кодом 16.
@@ -47,7 +47,8 @@ return {
 - Case не зависит от порядка и восстанавливает изменённое state/registries.
 - Нужные до freeze declarations помещаются в подходящий fixture tier, а не внедряются в production session.
 - Проверка включает отрицательный case и убеждается, что без исправления действительно падает.
-- Новое module-level временное состояние в любом модуле `core` регистрируется в `core:module.runtime.test_state_registry` в момент появления — функциями `snapshot`/`restore`/`reset`, а не добавлением в чей-то рукописный список (GAP-003, EGC-04). Незарегистрированное состояние обнаруживает перечислитель `test_state_registry.find_unregistered_state`, выводящий upvalue-ы модуля по идентичности (`debug.upvalueid`), а не по списку имён; `Tests/Lua/lifecycle/registry_sealing.lua` держит эту проверку для `core:module.authoring.context`.
+- Новое module-level временное состояние в любом модуле `core` регистрируется в `core:module.runtime.test_state_registry` в момент появления — функциями `snapshot`/`restore`/`reset`, а не добавлением в чей-то рукописный список (GAP-003, EGC-04). Незарегистрированное состояние обнаруживает статический чекер `Tools/Content/validate_test_state_registry.py` — не runtime-рефлексия: песочница, в которой исполняются модули (`Source/GV2RuntimeCore/.../OpenEnvironment`), не открывает `debug`/`io`/`load`, поэтому ни один модуль не может обойти чужие upvalue во время исполнения; чекер статически выводит переприсваиваемые module-level `local` проверяемого файла и сверяет их с `test_state_registry.register_participant(...)`-вызовами того же файла. `Tests/Lua/lifecycle/registry_sealing.lua` держит runtime-половину (реестр содержит ожидаемых участников) для `core:module.authoring.context`.
+- Fixture, которой нужен полноценный production bootstrap (definitions, screens, action bindings — не просто `authoring_context.gameplay(...)` прямо в spec-файле), становится отдельным content-пакетом в `Tests/Fixtures/<Fixture>/<package_id>/` (имя каталога пакета обязано совпадать с его `package_id` — префикс Lua-источников оба host-а берут из имени каталога корня, а не из `package.json5`), и регистрируется в `GV2TestSupport::GetPackageRootsForTier` для ровно того tier, где лежат её specs (EGC-07). Второй пакет с `package_id: "core"` собрать нельзя: Lua-код пакета `core` оба host-а берут из `Scripts/`, а при обходе `scripts/` пакетный `core` пропускают явным `continue` — фикстуре нужен свой namespace.
 
 Запуск:
 

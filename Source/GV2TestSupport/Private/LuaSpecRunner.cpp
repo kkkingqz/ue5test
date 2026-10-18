@@ -57,6 +57,8 @@ std::vector<std::string> GetSubtreesForTier(ELuaSpecTier Tier)
     return Names;
 }
 
+namespace
+{
 std::vector<std::string> GetPackageNamesForTier(ELuaSpecTier Tier)
 {
     switch (Tier)
@@ -71,6 +73,28 @@ std::vector<std::string> GetPackageNamesForTier(ELuaSpecTier Tier)
         return { "core" };
     }
     return { "core" };
+}
+} // namespace
+
+std::vector<std::filesystem::path> GetPackageRootsForTier(
+    ELuaSpecTier Tier,
+    const std::filesystem::path& GameDataRoot,
+    const std::filesystem::path& ProjectRoot)
+{
+    std::vector<std::filesystem::path> Roots;
+    for (const std::string& Name : GetPackageNamesForTier(Tier))
+    {
+        Roots.push_back(GameDataRoot / Name);
+    }
+    if (Tier == ELuaSpecTier::FullGame)
+    {
+        // EGC-07: nested inside the existing fixture directory, but its own
+        // package (package_id == directory name == "synthetic"), so the
+        // pre-existing core:-namespaced definitions/schemas one level up
+        // (read directly by unrelated C++ contract tests) are untouched.
+        Roots.push_back(ProjectRoot / "Tests" / "Fixtures" / "SyntheticMechanicalFixture" / "synthetic");
+    }
+    return Roots;
 }
 
 bool ValidateAllSubtreesRegistered(

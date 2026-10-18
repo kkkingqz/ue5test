@@ -72,12 +72,25 @@ GV2_TEST_SUPPORT_API std::optional<ELuaSpecTier> GetSubtreeTier(const std::strin
 GV2_TEST_SUPPORT_API std::vector<std::string> GetSubtreesForTier(ELuaSpecTier Tier);
 
 /**
- * Returns the package names required for a given tier.
- * Core -> {"core"}
- * TextSystem -> {"core", "textsystem", "sample"}
- * FullGame -> {"core", "textsystem", "rh"}
+ * EGC-07: returns the actual filesystem roots for a tier's packages --
+ * GameDataRoot/<name> for every ordinary package (Core -> {core};
+ * TextSystem -> {core, textsystem, sample}; FullGame -> {core, textsystem,
+ * rh}), plus, for FullGame only, the mode-lifecycle fixture package nested
+ * at ProjectRoot/Tests/Fixtures/SyntheticMechanicalFixture/synthetic (not
+ * under GameData/, so it never collides with that fixture's own
+ * pre-existing core:-namespaced definitions, read directly by unrelated
+ * C++ contract tests).
+ *
+ * Replaces a prior GetPackageNamesForTier(): both hosts used to take that
+ * name list and glue it to GameDataRoot/<name> themselves, independently --
+ * a root added to one host's own glue (such as the fixture package above)
+ * could silently diverge from the other host's. This is the one shared
+ * place both hosts call instead.
  */
-GV2_TEST_SUPPORT_API std::vector<std::string> GetPackageNamesForTier(ELuaSpecTier Tier);
+GV2_TEST_SUPPORT_API std::vector<std::filesystem::path> GetPackageRootsForTier(
+    ELuaSpecTier Tier,
+    const std::filesystem::path& GameDataRoot,
+    const std::filesystem::path& ProjectRoot);
 
 /**
  * Validates that every immediate subdirectory under TestsLuaRoot is declared

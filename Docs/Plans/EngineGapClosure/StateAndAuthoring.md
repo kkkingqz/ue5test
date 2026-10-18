@@ -1,7 +1,7 @@
 ---
 title: Engine Gap Closure State And Authoring
 status: active
-version: 1.10
+version: 1.11
 updated: 2026-10-18
 decisions:
   - ../../ADR/0050-transactional-mutation-window.md
@@ -201,7 +201,7 @@ Spec протечки (`Tests/Lua/authoring/runtime_state.lua`): синтети�
 
 ## EGC-07 — Завести демонстрационный режим в тестовой фикстуре
 
-- [ ] EGC-07 — Завести демонстрационный режим в тестовой фикстуре
+- [x] EGC-07 — Завести демонстрационный режим в тестовой фикстуре
 
 **Зависимость:** EGC-06. Закрывает тестовую половину [GAP-003](../../Status/EngineGaps.md#gap-003-сброс-временного-состояния-authoring-modules-между-lua-specs). **Файлы:** `Tests/Fixtures/SyntheticMechanicalFixture/synthetic/` (новый фикстурный пакет: `package.json5`, `definitions/`, `scripts/manifest.lua`, authoring-модуль режима), `Source/GV2TestSupport/Public/GV2TestSupport/LuaSpecRunner.h`, `Source/GV2TestSupport/Private/LuaSpecRunner.cpp`, `Headless/Source/main.cpp`, `Source/GV2/Private/Tests/GV2LuaSpecRunnerHostTests.cpp`, `Tools/Content/validate_host_conformance_parity.py`, `Tests/Lua/authoring/modes.lua`. Docs: `AddLuaSpec.md`.
 
@@ -244,7 +244,17 @@ Spec протечки (`Tests/Lua/authoring/runtime_state.lua`): синтети�
 - Фикстура не содержит идентификаторов игровых пакетов.
 - Граница с EGC-08: пакет, созданный здесь, — тот самый, в котором EGC-08 объявит предметы с владельцем; второго фикстурного пакета не появляется, и EGC-08 не заводит свой способ загрузки.
 
-**Evidence:** specs обоих host-ов, содержимое сейва, прогон двух case, красный прогон гейта parity до правки хостов, `validate_test_content_coupling`.
+**Evidence:** `Source/GV2TestSupport/Public/GV2TestSupport/LuaSpecRunner.h`/`.cpp` — `GetPackageNamesForTier` стал internal-хелпером (`namespace {}` в .cpp, больше не экспортируется); новый `GetPackageRootsForTier(Tier, GameDataRoot, ProjectRoot)` возвращает реальные `std::filesystem::path`, добавляя для `FullGame` единственный лишний корень `ProjectRoot/Tests/Fixtures/SyntheticMechanicalFixture/synthetic`. `Headless/Source/main.cpp` и `Source/GV2/Private/Tests/GV2LuaSpecRunnerHostTests.cpp` вызывают этот общий перечислитель вместо собственной склейки `GameDataDir/PkgName` каждый.
+
+Шаг 1 выполнен в заявленном порядке: `Tools/Content/validate_host_conformance_parity.py` расширен новой проверкой `validate_no_hardcoded_package_root_gluing` **до** правки хостов; прогон до правки дал 4 ошибки (по две на каждый host — отсутствие вызова `GetPackageRootsForTier` и прямой вызов `GetPackageNamesForTier`); это красное состояние зафиксировано этой записью и в коммите — до правки каждый host строил корни сам, общим был только список имён. После правки хостов гейт зелёный.
+
+`Tests/Fixtures/SyntheticMechanicalFixture/synthetic/` — новый пакет: `package.json5` (`package_id`/`namespace: "synthetic"`, `dependencies: [{package_id: "core", load_after: true}]`), `scripts/manifest.lua` (один authoring-модуль `synthetic:module.authoring.modes`), `scripts/authoring/modes.lua`, `definitions/actions.json5`. Существующие `definitions/`/`schemas/` фикстуры (namespace `core:`, читаемые C++ тестами напрямую) не тронуты. Пакет объявляет **два** режима: `duel` (без потока, `rounds_won`) и `dice_duel` (с `field.random_stream()` полем `dice` — не более одного на режим, EGC-05). Команды: `start_duel`, `start_dice_duel`, `bump_rounds`, `bump_then_fail` (`fail()` после записи в run), `finish_duel`, `cancel_duel`, `roll_dice`, `roll_dice_then_fail`, `query_last_mode_events` (read-only витрина того, что увидели подписчики — event-scope не может писать canonical state, поэтому факты держатся в module-level upvalue и отдаются обычным command-результатом). Подписка на `core:event.mode.started`/`core:event.mode.finished` — первый потребитель этих фактов за пределами `Tests/Lua` (правило 2 плана). Один action binding (`synthetic:action.start_duel` → `synthetic:command.start_duel`).
+
+Побочно, но необходимо для «брос в команде режима» (шаг 6): у `modes` не было authoring-facing вызова для броска (EGC-05/06 проверяли `mode_store.draw_u32` только напрямую из спеков, в обход authoring-поверхности). Добавлен `modes.draw_u32(field_name)` в `Scripts/authoring/context.lua` — седьмой зарезервированный verb, проверяет, что поле объявлено и что оно `field.random_stream()`, и делегирует `mode_store.draw_u32`. Без этого фикстурный пакет не мог бы бросать кость командой, а был бы вынужден обращаться к `mode_store` напрямую, что для `rh`-подобного пакета запрещено.
+
+`Tests/Lua/authoring/modes.lua` — 12 новых кейсов (`egc07_fixture_*`), диспетчеризуют реальные, зарегистрированные на bootstrap команды `synthetic:command.*` через `game.runtime.dispatch_command` — не `test_isolation.with_isolated_context` (изоляция подменила бы handler registry и спрятала бы реальные команды). Каждый кейс оборачивается `egc07_run_case`, который снимает активный режим до и после тела через `pcall`, — утечка активного режима из упавшего кейса не должна достаться следующему, изолированному или нет. Кейсы: полный цикл командами без потока; `bump_then_fail` — обычный refusal (`synthetic:error.too_far`), не `AuthoringFailAfterMutation`, run откатывается; команда после `finish()` → `core:error.mode.not_active`; `cancel()` без потока — хеш равен полностью; `cancel()` с потоком — ровно одно расхождение в `meta.prng["core:random_stream.mode_seed"]`, доказано нейтрализацией слова; `roll_dice_then_fail` откатывает run-поток слово-в-слово, повторный `roll_dice` с тем же стартовым словом даёт тот же бросок; `core:command.session.save` отказывается `core:error.mode.active` при активном режиме и проходит после `finish()` (через `core:module.boundary.outbound`, как `save_path.lua`); `core:command.session.load` не отказывается при активном режиме (сейв/реальная замена VM — за пределами этого host-а Lua, уже покрыта `GV2ColdStartLoadConformance`, не передоказывается здесь); сериализованный сейв после `finish()` не содержит имён run-полей/id режима (`save_module.build_envelope`/`serialize_envelope`, `decode_and_prepare` успешен); оба факта потреблены фикстурным подписчиком с ожидаемым `outcome`; прогон двух case подряд без утечки активного режима.
+
+`ctest --test-dir build` — 139/139, включая golden replay (`state_hash` не изменился: `2b063c31c91de84ca867cf8f2980e6c67aa7d2a6116f1efc62f410ad34c6acad`; `script_set_hash`/`digest_hash` обновлены по `Guides/RegenerateGolden.md`). `validate_host_conformance_parity.py`, `validate_test_content_coupling.py`, `validate_docs.py` (209 файлов) — чисто. `RunUBT.sh GV2Editor Linux Development` — Succeeded; `UnrealEditor-Cmd ... -ExecCmds="Automation RunTests GV2;Quit"` — 211/211 (без нового C++ conformance entry point — ADR-0024 запрещает проверять Lua-правило новым C++ тестом, а здесь и не Lua-правило, а сама загрузка пакета; существующий `GV2.Runtime.Lua.SpecRunnerHost` покрывает её тем же общим раннером).
 
 ## EGC-08 — Операции с экземплярами любого kind
 

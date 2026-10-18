@@ -1378,12 +1378,8 @@ int Run(
                 continue;
             }
 
-            const std::vector<std::string> PackageNames = GV2TestSupport::GetPackageNamesForTier(Tier);
-            std::vector<std::filesystem::path> TierPackageRoots;
-            for (const std::string& PkgName : PackageNames)
-            {
-                TierPackageRoots.push_back(GameDataRoot / PkgName);
-            }
+            const std::vector<std::filesystem::path> TierPackageRoots =
+                GV2TestSupport::GetPackageRootsForTier(Tier, GameDataRoot, GameDataRoot.parent_path());
 
             const GV2ContentCore::FBuildResult TierRepoBuild = BuildRepositoryFromDirectories(TierPackageRoots);
             if (TierRepoBuild.IsFailure())

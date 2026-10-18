@@ -30,6 +30,17 @@
 --  12. EGC-06: start()/finish()/cancel() publish core:event.mode.started/
 --      finished post-commit (outcome "finished"/"cancelled"); a rolled-back
 --      start() publishes nothing.
+--  13. EGC-07: the Tests/Fixtures/SyntheticMechanicalFixture/synthetic
+--      package is the first consumer of the mode mechanism outside
+--      Tests/Lua itself (plan rule 2) -- full lifecycle through its real,
+--      bootstrap-registered commands (synthetic:command.*), not modes.*
+--      called directly from the spec. Covers both halves of EGC-06's
+--      cancel() hash criterion (with/without a declared stream), a failed
+--      draw's rollback/replay, core:command.session.save refusing while
+--      active and succeeding after finish(), core:command.session.load not
+--      refusing while active, a saved envelope carrying no run data, event
+--      consumption by the fixture's own subscriber, and no leak of the
+--      active mode between spec cases.
 
 local authoring_context = require("core:module.authoring.context")
 local test_isolation = require("core:module.runtime.test_isolation")
@@ -37,6 +48,30 @@ local mode_store = require("core:module.runtime.mode_store")
 local field = require("core:module.authoring.field")
 local state_hasher = require("core:module.runtime.state_hasher")
 local mutation_window = require("core:module.runtime.mutation_window")
+local save_module = require("core:module.runtime.save")
+local load_module = require("core:module.runtime.load")
+local outbound = require("core:module.boundary.outbound")
+
+-- EGC-07: synthetic:command.* are real, bootstrap-registered commands (not
+-- isolated per case like the EGC-05/06 fixtures above, since isolating the
+-- handler registry would hide them). Nothing resets mode_store between
+-- these cases automatically, so each one defensively clears any active mode
+-- before and after its body -- a failure partway through must not leak a
+-- stuck mode into whatever spec case (isolated or not) runs next.
+local function egc07_ensure_mode_cleared()
+    if mode_store.active() ~= nil then
+        game.runtime.dispatch_command({ command_id = "synthetic:command.cancel_duel" })
+    end
+end
+
+local function egc07_run_case(body)
+    egc07_ensure_mode_cleared()
+    local ok, err = pcall(body)
+    egc07_ensure_mode_cleared()
+    if not ok then
+        error(err, 0)
+    end
+end
 
 return {
     mode_declaration_requires_view = function()
@@ -739,5 +774,249 @@ return {
             assert(#received == 0, "a rolled-back start() must not publish core:event.mode.started")
             assert(mode_store.active() == nil, "the mode must not be active after rollback")
         end)
+    end,
+
+    egc07_fixture_lifecycle_through_commands_no_stream = function()
+        egc07_run_case(function()
+            assert(mode_store.active() == nil)
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_duel" })
+            assert(game.runtime.last_command_result.ok == true, "start_duel must succeed")
+            assert(mode_store.active() == "synthetic:mode.duel")
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.bump_rounds" })
+            assert(game.runtime.last_command_result.ok == true, "bump_rounds must succeed")
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.finish_duel" })
+            assert(game.runtime.last_command_result.ok == true, "finish_duel must succeed")
+            assert(mode_store.active() == nil)
+        end)
+    end,
+
+    egc07_fixture_bump_then_fail_is_normal_refusal_and_rolls_back = function()
+        egc07_run_case(function()
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.bump_then_fail" })
+            local res = game.runtime.last_command_result
+            assert(res.ok == false, "bump_then_fail must refuse, not raise AuthoringFailAfterMutation")
+            assert(res.error.code == "synthetic:error.too_far", "refusal must be the package's own fail() code, got: " .. tostring(res.error.code))
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.finish_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+        end)
+    end,
+
+    egc07_fixture_command_after_finish_refused_mode_not_active = function()
+        egc07_run_case(function()
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+            game.runtime.dispatch_command({ command_id = "synthetic:command.finish_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.bump_rounds" })
+            local res = game.runtime.last_command_result
+            assert(res.ok == false, "a mode command after finish() must refuse")
+            assert(res.error.code == "core:error.mode.not_active", "Error code must be core:error.mode.not_active, got: " .. tostring(res.error.code))
+        end)
+    end,
+
+    egc07_fixture_cancel_without_stream_leaves_hash_exactly_unchanged = function()
+        egc07_run_case(function()
+            local hash_before = state_hasher.hash_state(game.state)
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+            game.runtime.dispatch_command({ command_id = "synthetic:command.cancel_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+            local hash_after = state_hasher.hash_state(game.state)
+            assert(hash_after == hash_before, "cancel() of the no-stream fixture mode must leave the hash exactly unchanged")
+        end)
+    end,
+
+    egc07_fixture_cancel_with_stream_leaves_exactly_one_divergence = function()
+        egc07_run_case(function()
+            local hash_before = state_hasher.hash_state(game.state)
+            local prng_was_absent = (game.state.meta.prng == nil)
+            local seed_before = nil
+            if not prng_was_absent then
+                local live = game.state.meta.prng["core:random_stream.mode_seed"]
+                if live ~= nil then
+                    seed_before = { algorithm = live.algorithm, s0 = live.s0, s1 = live.s1, s2 = live.s2, s3 = live.s3 }
+                end
+            end
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_dice_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+            game.runtime.dispatch_command({ command_id = "synthetic:command.cancel_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+
+            local seed_after = game.state.meta.prng["core:random_stream.mode_seed"]
+            assert(seed_after ~= nil, "starting the dice_duel fixture mode must draw core:random_stream.mode_seed")
+
+            local hash_after = state_hasher.hash_state(game.state)
+            assert(hash_after ~= hash_before, "drawing the mode_seed stream must change the state hash")
+
+            mutation_window.execute_in_window(function()
+                if prng_was_absent then
+                    game.state.meta.prng = nil
+                else
+                    game.state.meta.prng["core:random_stream.mode_seed"] = seed_before
+                end
+            end)
+            local neutralized_hash = state_hasher.hash_state(game.state)
+            assert(neutralized_hash == hash_before,
+                "neutralizing core:random_stream.mode_seed must exactly restore the pre-start hash")
+        end)
+    end,
+
+    egc07_fixture_roll_then_fail_rolls_back_and_replay_gives_same_sequence = function()
+        egc07_run_case(function()
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_dice_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+
+            local function copy_dice()
+                local d = mode_store.run_proxy().dice
+                return { s0 = d.s0, s1 = d.s1, s2 = d.s2, s3 = d.s3 }
+            end
+
+            local stream_before = copy_dice()
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.roll_dice_then_fail" })
+            local fail_res = game.runtime.last_command_result
+            assert(fail_res.ok == false, "roll_dice_then_fail must refuse")
+            assert(fail_res.error.code == "synthetic:error.bad_luck")
+
+            local stream_after_rollback = copy_dice()
+            assert(stream_after_rollback.s0 == stream_before.s0 and stream_after_rollback.s1 == stream_before.s1
+                and stream_after_rollback.s2 == stream_before.s2 and stream_after_rollback.s3 == stream_before.s3,
+                "a refused roll must roll back the run-local stream word-for-word")
+
+            -- roll_dice is an authoring command: SAS-04 wraps its plain
+            -- table return as {ok=true, value={rolled=...}}.
+            game.runtime.dispatch_command({ command_id = "synthetic:command.roll_dice" })
+            local res1 = game.runtime.last_command_result
+            assert(res1.ok == true)
+            local first_roll = res1.value.rolled
+
+            mutation_window.execute_in_window(function()
+                local dice = mode_store.run_proxy().dice
+                dice.s0, dice.s1, dice.s2, dice.s3 = stream_before.s0, stream_before.s1, stream_before.s2, stream_before.s3
+            end)
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.roll_dice" })
+            local res2 = game.runtime.last_command_result
+            assert(res2.ok == true)
+            assert(res2.value.rolled == first_roll, "replaying from the same stream state must give the same draw")
+        end)
+    end,
+
+    egc07_fixture_save_refused_during_active_mode_and_succeeds_after_finish = function()
+        egc07_run_case(function()
+            outbound.clear_queue()
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+
+            game.runtime.dispatch_command({
+                command_id = "core:command.session.save",
+                args = { slot_id = "egc07_fixture_slot" },
+            })
+            local refuse_res = game.runtime.last_command_result
+            assert(refuse_res ~= nil and refuse_res.ok == false, "save must be refused while the fixture mode is active")
+            assert(refuse_res.error.code == "core:error.mode.active", "Error code must be core:error.mode.active, got: " .. tostring(refuse_res.error.code))
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.finish_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+
+            game.runtime.dispatch_command({
+                command_id = "core:command.session.save",
+                args = { slot_id = "egc07_fixture_slot" },
+            })
+            local save_res = game.runtime.last_command_result
+            assert(save_res ~= nil and save_res.ok == true,
+                "save after finish() must succeed, got: " .. tostring(save_res and save_res.error and save_res.error.code))
+
+            local pending = outbound.take_pending_requests()
+            assert(pending ~= nil and #pending == 1 and pending[1].slot_id == "egc07_fixture_slot",
+                "save after finish() must enqueue exactly one committed request")
+        end)
+    end,
+
+    egc07_fixture_load_does_not_refuse_during_active_mode = function()
+        egc07_run_case(function()
+            outbound.clear_queue()
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+
+            game.runtime.dispatch_command({
+                command_id = "core:command.session.load",
+                args = { slot_id = "egc07_fixture_slot", revision = "current" },
+            })
+            local res = game.runtime.last_command_result
+            assert(res ~= nil and res.ok == true,
+                "core:command.session.load must not refuse while a mode is active, got: " .. tostring(res and res.error and res.error.code))
+
+            -- ADR-0051 §D6: what actually discards the active mode on load is
+            -- the host-side VM replacement this request triggers (outside
+            -- this Lua VM entirely) -- already covered by
+            -- GV2ColdStartLoadConformance's C++ tests, not re-provable from
+            -- inside the surviving VM here.
+            local pending = outbound.take_pending_requests()
+            assert(pending ~= nil and #pending == 1 and pending[1].kind == "load")
+        end)
+    end,
+
+    egc07_fixture_save_envelope_after_finish_contains_no_run_data = function()
+        egc07_run_case(function()
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_dice_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+            game.runtime.dispatch_command({ command_id = "synthetic:command.bump_rounds" })
+            assert(game.runtime.last_command_result.ok == true)
+            game.runtime.dispatch_command({ command_id = "synthetic:command.finish_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+            assert(mode_store.active() == nil)
+
+            local envelope = save_module.build_envelope(game.state, "egc07_save_id", "repo_hash", "script_hash", { "core" })
+            local container = save_module.serialize_envelope(envelope)
+            assert(not string.find(container, "rounds_won", 1, true), "serialized save must not contain run field names")
+            assert(not string.find(container, "dice_duel", 1, true), "serialized save must not contain the mode id")
+
+            local loaded_state, err = load_module.decode_and_prepare(container)
+            assert(loaded_state ~= nil, "decode_and_prepare must succeed: " .. tostring(err))
+        end)
+    end,
+
+    egc07_fixture_events_consumed_by_subscriber_with_outcome = function()
+        egc07_run_case(function()
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+            game.runtime.dispatch_command({ command_id = "synthetic:command.cancel_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+
+            game.runtime.dispatch_command({ command_id = "synthetic:command.query_last_mode_events" })
+            local res = game.runtime.last_command_result
+            assert(res.ok == true)
+            -- query_last_mode_events is an authoring command: SAS-04 wraps a
+            -- plain table return as {ok=true, value=res}, unlike the raw
+            -- (unwrapped) synthetic:command.roll_dice above.
+            local value = res.value
+            assert(value.started_mode_id == "synthetic:mode.duel", "fixture subscriber must have consumed core:event.mode.started")
+            assert(value.finished_mode_id == "synthetic:mode.duel", "fixture subscriber must have consumed core:event.mode.finished")
+            assert(value.finished_outcome == "cancelled", "finished outcome must be 'cancelled', got: " .. tostring(value.finished_outcome))
+        end)
+    end,
+
+    egc07_fixture_mode_not_leaked_between_cases_case_a_starts_mode = function()
+        egc07_run_case(function()
+            game.runtime.dispatch_command({ command_id = "synthetic:command.start_duel" })
+            assert(game.runtime.last_command_result.ok == true)
+            assert(mode_store.active() == "synthetic:mode.duel")
+        end)
+    end,
+
+    egc07_fixture_mode_not_leaked_between_cases_case_b_sees_no_active_mode = function()
+        assert(mode_store.active() == nil, "the fixture package's mode must not leak across spec cases")
     end,
 }

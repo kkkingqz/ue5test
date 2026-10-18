@@ -1,0 +1,14 @@
+{
+  schema_version: 1,
+  type: "action",
+  definitions: [
+    {
+      id: "synthetic:action.start_duel",
+      data: {},
+      tags: ["synthetic", "mode"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

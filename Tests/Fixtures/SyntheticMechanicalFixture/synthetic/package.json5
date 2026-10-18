@@ -1,0 +1,18 @@
+{
+  // EGC-07 (plan EngineGapClosure): the first real fixture consumer of the
+  // mode mechanism (ADR-0051, EGC-05/06). Nested inside the existing
+  // SyntheticMechanicalFixture directory but its own package -- the
+  // directory name doubles as package_id because both hosts derive the
+  // Lua @<name>/ source prefix from the root's directory name, not from
+  // this file. Loaded only for the FullGame spec tier
+  // (GV2TestSupport::GetPackageRootsForTier), never for Core/TextSystem,
+  // so the pre-existing core:-namespaced definitions/schemas one level up
+  // (read directly by unrelated C++ contract tests) stay untouched and
+  // unaffected.
+  package_id: "synthetic",
+  namespace: "synthetic",
+  version: "1.0.0",
+  dependencies: [
+    { package_id: "core", load_after: true },
+  ],
+}

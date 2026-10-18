@@ -61,11 +61,14 @@ bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
             continue;
         }
 
-        const std::vector<std::string> PackageNames = GV2TestSupport::GetPackageNamesForTier(Tier);
+        const std::filesystem::path GameDataRootPath(TCHAR_TO_UTF8(*GameDataDir));
+        const std::filesystem::path ProjectRootPath(TCHAR_TO_UTF8(*FPaths::ProjectDir()));
+        const std::vector<std::filesystem::path> TierPackageRootPaths =
+            GV2TestSupport::GetPackageRootsForTier(Tier, GameDataRootPath, ProjectRootPath);
         TArray<FString> PackageRoots;
-        for (const std::string& PkgName : PackageNames)
+        for (const std::filesystem::path& Root : TierPackageRootPaths)
         {
-            PackageRoots.Add(FPaths::Combine(GameDataDir, UTF8_TO_TCHAR(PkgName.c_str())));
+            PackageRoots.Add(UTF8_TO_TCHAR(Root.generic_string().c_str()));
         }
 
         const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectories(PackageRoots);
