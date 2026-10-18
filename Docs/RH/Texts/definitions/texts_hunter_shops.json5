@@ -42,5 +42,22 @@
       id: "rh:text.shop.rome.butcher.lessons",
       data: { source_message: "Научить торговле" },
     },
+    {
+      id: "rh:text.shop.common.buy",
+      data: { source_message: "Купить" },
+    },
+    {
+      id: "rh:text.shop.common.sell",
+      data: { source_message: "Продать" },
+    },
+    // было «Уйти / Закончить покупки»
+    {
+      id: "rh:text.shop.common.leave",
+      data: { source_message: "Уйти" },
+    },
+    {
+      id: "rh:text.shop.common.price",
+      data: { source_message: "Цена: {price}" },
+    },
   ],
 }

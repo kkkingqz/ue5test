@@ -772,7 +772,8 @@ end
 services.effect_woods_walk = {
     check = function(ctx, p)
         local depth = player.woods_depth + p.direction
-        if depth < 0 or depth > 3 then return reason("woods.edge") end
+        if depth > 3 then return reason("woods.no_deeper") end
+        if depth < 0 then return reason("woods.at_edge") end
     end,
     apply = function(ctx, p)
         local hunter = player
@@ -1037,7 +1038,7 @@ services.catch = {
 | Танец | `lacks_class_trait no_dance`, `catch_alive` | `start_mode dance {fashion = false}` |
 | Танец (красивый) | `lacks_class_trait no_dance`, `catch_alive`, `catch_tattoo` | `start_mode dance {fashion = true}` |
 | Зарезать | `has_item knife`, `catch_alive` | `alive = false` |
-| Обокрасть | `has_item knife`, `catch_dead`, `flag trade_skill_learned` | тату → `give canned_meat 10`, иначе `give meat 10`; `drop` |
+| Обокрасть | `has_item knife`, `catch_dead`, `flag trade_skill_learned` | тату → `give canned_meat 10`, `say camp.robbed_canned`, иначе `give meat 10`, `say camp.robbed_meat` (параметр `amount`); `drop` |
 | Отпустить | `catch_alive` | `drop` |
 | Выбросить труп | `catch_dead` | `drop` |
 | Съесть припасы / мясо | `item_count_at_least <food> 1` | `take_item <food> 1`; `set_hunger 0` |

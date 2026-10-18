@@ -1,0 +1,151 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.interaction.rome.to_menhunter.title",
+      data: { source_message: "Магазин Менхантера" },
+    },
+    {
+      id: "rh:text.interaction.rome.to_butcher.title",
+      data: { source_message: "Лавка мясника" },
+    },
+    {
+      id: "rh:text.interaction.rome.to_market.title",
+      data: { source_message: "Рынок" },
+    },
+    {
+      id: "rh:text.interaction.rome.to_fog.title",
+      data: { source_message: "Отправиться на охоту" },
+    },
+    {
+      id: "rh:text.interaction.rome.to_square.title",
+      data: { source_message: "На площадь" },
+    },
+    {
+      id: "rh:text.interaction.rome.talk_farid.title",
+      data: { source_message: "Поговорить с Фаридом" },
+    },
+    {
+      id: "rh:text.interaction.rome.talk_menhunter.title",
+      data: { source_message: "Поговорить с Менхантером" },
+    },
+    {
+      id: "rh:text.interaction.rome.trade_menhunter.title",
+      data: { source_message: "Торговать" },
+    },
+    // en было «Trade / Show catch to the butcher»
+    {
+      id: "rh:text.interaction.rome.trade_butcher.title",
+      data: { source_message: "Показать добычу мяснику" },
+    },
+    {
+      id: "rh:text.interaction.fog.wander.title",
+      data: { source_message: "Идти по навигационному кристаллу" },
+    },
+    {
+      id: "rh:text.interaction.fog.sleep.title",
+      data: { source_message: "Спать" },
+    },
+    {
+      id: "rh:text.interaction.fog.call_horse.title",
+      data: { source_message: "— Лошаа-аадка!!!" },
+    },
+    {
+      id: "rh:text.interaction.fog.ride_horse.title",
+      data: { source_message: "Сесть на коня-призрака" },
+    },
+    {
+      id: "rh:text.interaction.woods.deeper.title",
+      data: { source_message: "Углубиться в лес, в поисках лучшей добычи" },
+    },
+    {
+      id: "rh:text.interaction.woods.back.title",
+      data: { source_message: "Идти в сторону опушки" },
+    },
+    {
+      id: "rh:text.interaction.woods.hunt.title",
+      data: { source_message: "Попробовать выследить дикарку" },
+    },
+    {
+      id: "rh:text.interaction.woods.lure.title",
+      data: { source_message: "Приманить дикарку афродизиаком" },
+    },
+    {
+      id: "rh:text.interaction.woods.set_traps.title",
+      data: { source_message: "Установить ловушки" },
+    },
+    {
+      id: "rh:text.interaction.woods.check_traps.title",
+      data: { source_message: "Уже утро — пора проверить ловушки" },
+    },
+    {
+      id: "rh:text.interaction.woods.make_camp.title",
+      data: { source_message: "Разбить лагерь" },
+    },
+    {
+      id: "rh:text.interaction.woods.to_fog.title",
+      data: { source_message: "Идти в туманы" },
+    },
+    {
+      id: "rh:text.interaction.camp.inspect.title",
+      data: { source_message: "Осмотреть добычу" },
+    },
+    {
+      id: "rh:text.interaction.camp.subdue.title",
+      data: { source_message: "Показать дикарке кто тут главный" },
+    },
+    {
+      id: "rh:text.interaction.camp.kill.title",
+      data: { source_message: "Зарезать дикарку" },
+    },
+    {
+      id: "rh:text.interaction.camp.release.title",
+      data: { source_message: "Отпустить дикарку на волю" },
+    },
+    {
+      id: "rh:text.interaction.camp.dump_corpse.title",
+      data: { source_message: "Выбросить труп" },
+    },
+    {
+      id: "rh:text.interaction.camp.eat_supplies.title",
+      data: { source_message: "Перекусить" },
+    },
+    {
+      id: "rh:text.interaction.camp.eat_meat.title",
+      data: { source_message: "Поесть мяса" },
+    },
+    {
+      id: "rh:text.interaction.camp.feed_hound.title",
+      data: { source_message: "Покормить ищейку" },
+    },
+    {
+      id: "rh:text.interaction.camp.feed_retriever.title",
+      data: { source_message: "Покормить ретривера" },
+    },
+    {
+      id: "rh:text.interaction.camp.rest.title",
+      data: { source_message: "Отдохнуть" },
+    },
+    {
+      id: "rh:text.interaction.camp.sleep.title",
+      data: { source_message: "Спать" },
+    },
+    {
+      id: "rh:text.interaction.camp.to_woods.title",
+      data: { source_message: "Свернуть лагерь" },
+    },
+    {
+      id: "rh:text.interaction.inventory.drink_tonic.title",
+      data: { source_message: "Выпить тоник" },
+    },
+    {
+      id: "rh:text.interaction.inventory.read_notes.title",
+      data: { source_message: "Записки охотника" },
+    },
+    {
+      id: "rh:text.interaction.inventory.ask_bird.title",
+      data: { source_message: "Спросить птицу-секретаря" },
+    },
+  ],
+}

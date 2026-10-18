@@ -170,5 +170,15 @@
       id: "rh:text.message.shop.sold",
       data: { source_message: "Вы получили {price} {price}|plural(one=золотую монету,few=золотые монеты,many=золотых монет,other=золотых монеты)." },
     },
+    // draft: обокрасть тело без тату
+    {
+      id: "rh:text.message.camp.robbed_meat",
+      data: { source_message: "Вы разделываете тело. Добыто {amount} {amount}|plural(one=порция,few=порции,many=порций,other=порции) мяса." },
+    },
+    // draft: обокрасть тело с тату
+    {
+      id: "rh:text.message.camp.robbed_canned",
+      data: { source_message: "Вы разделываете тело татуированной дикарки и консервируете мясо. Добыто {amount} {amount}|plural(one=банка,few=банки,many=банок,other=банки) консервов." },
+    },
   ],
 }

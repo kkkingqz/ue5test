@@ -151,5 +151,77 @@
       id: "rh:text.notes.rome",
       data: { source_message: "Вечный Рим — единственное место, где можно спокойно отдохнуть и выручить золото за добычу. Живых дикарок лучше всего вести на центральный рынок: там идут аукционы, и Фарид всегда даст честную цену. Мертвых и неказистых неси мяснику с северной улицы — за татуированных он платит особенно щедро, а заодно может поучить торговле. У Менхантера можно купить все нужное для охоты и продать редкие трофеи.<br>Прежде чем шагнуть в Туманы, проверь, хватит ли припасов. И не забудь кристалл!" },
     },
+    {
+      id: "rh:text.dialogue.hunt.encounter.stalking.text",
+      data: { source_message: "Дикарка вас ещё не заметила." },
+    },
+    {
+      id: "rh:text.dialogue.hunt.encounter.chase.text",
+      data: { source_message: "Убегающая дикарка петляет в густых зарослях." },
+    },
+    {
+      id: "rh:text.dialogue.hunt.encounter.fight.text",
+      data: { source_message: "Дикарка стоит прямо перед вами. Она испугана но, похоже, готова защищаться." },
+    },
+    {
+      id: "rh:text.dialogue.hunt.encounter.stalking.look",
+      data: { source_message: "Присмотреться к дикарке" },
+    },
+    {
+      id: "rh:text.dialogue.hunt.encounter.stalking.sneak",
+      data: { source_message: "Подкрасться поближе" },
+    },
+    {
+      id: "rh:text.dialogue.hunt.encounter.stalking.leave",
+      data: { source_message: "Уйти" },
+    },
+    {
+      id: "rh:text.dialogue.hunt.encounter.chase.pursue",
+      data: { source_message: "Преследовать жертву" },
+    },
+    {
+      id: "rh:text.dialogue.hunt.encounter.chase.leave",
+      data: { source_message: "Отказаться от охоты" },
+    },
+    // было «… / Отказаться от охоты»
+    {
+      id: "rh:text.dialogue.hunt.encounter.fight.leave",
+      data: { source_message: "Оставить ее" },
+    },
+    // было «Закрыть / Назад»
+    {
+      id: "rh:text.dialogue.common.close",
+      data: { source_message: "Закрыть" },
+    },
+    {
+      id: "rh:text.dialogue.camp.inspect.main.text",
+      data: { source_message: "Вы переводите взгляд на свою жертву:" },
+    },
+    // было «Оставить / Отступить»
+    {
+      id: "rh:text.dialogue.fog.ghost_horse.main.leave",
+      data: { source_message: "Оставить" },
+    },
+    {
+      id: "rh:text.dialogue.fog.ghost_horse.tamed.text",
+      data: { source_message: "Конь-призрак теперь ваш спутник. Он будет появляться каждый раз, когда вы входите в Туманы." },
+    },
+    // было «Далее / Закрыть»
+    {
+      id: "rh:text.dialogue.owlbear.peaceful.pet.close",
+      data: { source_message: "Далее" },
+    },
+    {
+      id: "rh:text.dialogue.butcher.lessons.main.text",
+      data: { source_message: "— Научить — не научить, а показать, как это сподручнее делать я конечно могу. Только учти, без хорошего ножа тут никак не обойтись! Смотри." },
+    },
+    {
+      id: "rh:text.dialogue.butcher.lessons.lesson.text",
+      data: { source_message: "Вот примерно так мы и работаем." },
+    },
+    {
+      id: "rh:text.dialogue.butcher.lessons.lesson.finish",
+      data: { source_message: "Вы научились обкрадывать мертвых дикарок." },
+    },
   ],
 }

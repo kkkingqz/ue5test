@@ -282,7 +282,7 @@ depends_on:
 | Ключ | Когда | Основание |
 |---|---|---|
 | `mode.busy` | действие инвентаря во время режима | док |
-| `woods.edge` | дальше идти некуда | док |
+| `woods.no_deeper`, `woods.at_edge` | дальше идти некуда; уже на опушке | док |
 | `intro.bad_name` | пустое или длиннее 40 символов имя | док |
 | `market.dead_not_accepted` | Фарид не берёт мёртвую | док |
 | `shop.bad_quantity`, `shop.already_owned`, `shop.out_of_stock`, `shop.not_enough_gold` (`{price}`, `{gold}`), `shop.nothing_to_sell` | общие отказы магазина | док (архитектура) |

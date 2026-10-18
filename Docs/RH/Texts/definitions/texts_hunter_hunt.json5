@@ -51,5 +51,49 @@
       id: "rh:text.hunt.scene.chase_butterfly",
       data: { source_message: "Вы приближаетесь к источнику звуков и аккуратно выглядываете из-за дерева. Впереди видна небольшая, открытая лужайка. Там, бегая по кругу, гоняется за большой цветастой бабочкой дикарка. Похоже, она так увлеклась процессом, что не замечает ничего вокруг." },
     },
+    {
+      id: "rh:text.capture_method.crossbow.title",
+      data: { source_message: "Выстрелить из арбалета" },
+    },
+    {
+      id: "rh:text.capture_method.throwing_knives.title",
+      data: { source_message: "Метательные ножи" },
+    },
+    {
+      id: "rh:text.capture_method.net.title",
+      data: { source_message: "Использовать ловчую сеть" },
+    },
+    {
+      id: "rh:text.capture_method.stone.title",
+      data: { source_message: "Бросить камень" },
+    },
+    {
+      id: "rh:text.capture_method.sleeping_gas.title",
+      data: { source_message: "Бросить усыпляющий газ" },
+    },
+    {
+      id: "rh:text.capture_method.retriever.title",
+      data: { source_message: "Спустить на нее ретривера" },
+    },
+    {
+      id: "rh:text.capture_method.bear_hug.title",
+      data: { source_message: "Медвежий захват" },
+    },
+    {
+      id: "rh:text.capture_method.club.title",
+      data: { source_message: "Оглушить ее дубиной" },
+    },
+    {
+      id: "rh:text.capture_method.knife.title",
+      data: { source_message: "Зарезать ее ножом" },
+    },
+    {
+      id: "rh:text.capture_method.taser.title",
+      data: { source_message: "Парализовать ее электрошоком" },
+    },
+    {
+      id: "rh:text.capture_method.bare_hands.title",
+      data: { source_message: "Скрутить ее голыми руками" },
+    },
   ],
 }
