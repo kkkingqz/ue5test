@@ -1,7 +1,7 @@
 ---
 title: RH Gameplay Architecture
 status: draft
-version: 0.2
+version: 0.3
 updated: 2026-10-18
 depends_on:
   - ../Architecture/AuthoringSurfaceContract.md
@@ -184,6 +184,7 @@ end
 | Проверки | `rh:service.check_<type>` | `roll(ctx, run, params) → bool` | диалог, бой |
 | Источники вариантов | `rh:service.choices_<source>` | `list(ctx, run, params) → choices` | диалог |
 | Источники текста | `rh:service.text_<source>` | `lines(ctx, run, params) → TextSpec[]` | диалог |
+| Источники картинки | `rh:service.image_<source>` | `resource(ctx, run, params) → resource_id` | диалог |
 | Источники предложений | `rh:service.offers_<source>` | `list(ctx, run, params) → offers` | магазин |
 | Формулы цены | `rh:service.price_<formula>` | `quote(ctx, offer)`, `settle(ctx, offer)` | магазин |
 | Проверка ввода | `rh:service.input_<validate>` | `check(value) → reason?` | диалог |
@@ -324,7 +325,7 @@ services.time = {
 | Поле узла | Смысл |
 |---|---|
 | `speaker` | нет — рассказчик; `{ actor }`; `{ subject: true }` |
-| `image` | `{ resource }` или `{ subject_image: <назначение> }` |
+| `image` | варианты `[{ when?, resource? \| subject_image? \| source? }]`, показывается первый подходящий; одиночный объект — вариант без условия |
 | `text` | варианты `[{ when?, text? \| source? }]`, показывается первый подходящий |
 | `description` | дополнительный текст стадии, такие же варианты, отдельный блок |
 | `on_enter` | эффекты при входе в узел |
@@ -341,7 +342,7 @@ services.time = {
 | `branch` | `[{ when?, …переход }]` — первая подходящая ветка |
 | `check`, `on_true`, `on_false` | бросок проверки и две ветки; переходы вкладываются |
 
-Условия и эффекты модуля: `var_is`, `subject_*`; `set_var`, `take_subject`, `discard_subject`, `start_dialogue`, `start_combat`, `start_shop`.
+Условия и эффекты модуля: `var_is`, `var_set`, `subject_*`; `set_var`, `take_subject`, `discard_subject`, `start_dialogue`, `start_combat`, `start_shop`.
 
 ```lua
 -- modes/dialogue.lua

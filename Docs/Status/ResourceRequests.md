@@ -1,7 +1,7 @@
 ---
 title: Resource Requests
 status: informative
-version: 0.2
+version: 0.3
 updated: 2026-10-18
 depends_on:
   - ../RH/HunterGameplay.md
@@ -21,21 +21,22 @@ depends_on:
 | Группа | Картинок | Текстов |
 |---|---|---|
 | Дикарки | 46 | 36 |
-| Персонажи, классы, сцены | 17 | — |
+| Персонажи, классы, сцены | 16 | — |
+| Сцены охоты | 12 | 12 |
 | Локации | 7 обязательных, до 31 с вариантами | 14 |
 | Предметы | 25 | 50 |
 | Классы | — | 12 |
 | Взаимодействия | — | 40 |
 | Охота | — | 20 |
 | Бой с совомедведем | — | 12 |
-| Диалоги | — | 26 + реплики дизайнера |
+| Диалоги и вступление | — | 52 |
 | Магазины и имена NPC | — | 14 |
 | Танец | — | 88 |
 | Сообщения | — | 23 обязательных + 18 предложенных |
 | Причины отказа | — | 23 |
 | Голод и время суток | — | 9 |
 | Общий интерфейс | — | 20 |
-| **Итого** | **88 обязательных** (до 119) | **387 + реплики + 18 предложенных** |
+| **Итого** | **99 обязательных** (до 130) | **425 + 18 предложенных** |
 
 ## 2. Графические ресурсы
 
@@ -64,19 +65,18 @@ depends_on:
 | Охотник-Ассасин | `rh:resource.hunter_class.assassin.portrait` | то же | нужно |
 | Охотник-Варвар | `rh:resource.hunter_class.barbarian.portrait` | то же | нужно |
 | Госпожа | `rh:resource.hunter_class.mistress.portrait` | то же | нужно |
-| Старый охотник | `rh:resource.actor.npc.old_hunter.portrait` | вступление | нужно |
-| Менхантер | `rh:resource.actor.npc.menhunter.portrait` | магазин | нужно |
+| Менхантер | `rh:resource.actor.npc.menhunter.portrait` | магазин, разговор | нужно |
 | Мясник | `rh:resource.actor.npc.butcher.portrait` | лавка, обучение | нужно |
-| Фарид | `rh:resource.actor.npc.farid.portrait` | рынок, знакомство | нужно |
+| Фарид | `rh:resource.actor.npc.farid.portrait` | разговор, магазин | нужно |
 | Совомедведь | `rh:resource.actor.monster.owlbear.portrait` | бой, мирная встреча | нужно |
 
-Портреты классов — своя система портретов «Охотника», а не перенос из источника.
+Портреты классов — своя система портретов «Охотника», а не перенос из источника. Старый охотник к началу игры умер и во вступлении не появляется; его портрет не нужен.
 
 ### 2.3. Картинки сцен
 
 | Сцена | ID | Основание |
 |---|---|---|
-| Вступление: выбор класса и имя | `rh:resource.dialogue.intro.start.background` | нужно |
+| Вступление: выбор класса, имя, предыстория, Вечный Рим | `rh:resource.dialogue.intro.start.background` | нужно; решить, нужны ли отдельные картинки предысторий и Рима |
 | Конь-призрак | `rh:resource.dialogue.fog.ghost_horse.image` | нужно |
 | Бой с совомедведем | `rh:resource.combat.owlbear.background` | нужно |
 | Мирная встреча Госпожи с совомедведем | `rh:resource.dialogue.owlbear.peaceful.image` | нужно |
@@ -85,7 +85,9 @@ depends_on:
 | Конец игры: убит | `rh:resource.dialogue.system.game_over.murdered` | нужно |
 | Победа и экран «Конец» | `rh:resource.dialogue.system.victory.image` | нужно |
 
-Охота, осмотр добычи и танец используют картинки дикарки (§ 2.1); отдельные картинки им не нужны.
+Осмотр добычи, погоня, схватка и танец используют картинки дикарки (§ 2.1).
+
+**Сцены охоты.** У каждой из 12 сцен обнаружения своя картинка `rh:resource.hunt_scene.<сцена>.image`: `drink`, `s1`, `s2`, `sleep`, `apple`, `waterfall`, `hotspring`, `rabbit`, `butterfly`, `splinter`, `s3`, `chase_butterfly` — 12 шт., основание — док ([правила, § 4.5](../RH/HunterGameplay.md#45-охота)). Сцена выбирается случайно и показывается на стадии подкрадывания; с приманкой сцены нет — показывается портрет дикарки.
 
 ### 2.4. Фоны локаций
 
@@ -168,7 +170,7 @@ depends_on:
 
 | Группа | Имена (пункт меню) | Шт. |
 |---|---|---|
-| `rome` | `to_menhunter`, `to_butcher`, `to_market`, `to_fog` (В Туманы), `to_square` (На площадь), `meet_farid`, `trade_farid`, `trade_menhunter`, `trade_butcher` | 9 |
+| `rome` | `to_menhunter`, `to_butcher`, `to_market`, `to_fog` (В Туманы), `to_square` (На площадь), `talk_farid` (Подойти к Фариду), `talk_menhunter` (Поговорить), `trade_menhunter`, `trade_butcher` | 9 |
 | `fog` | `wander` (Блуждать), `sleep` (Спать), `call_horse` («Лошаа-аадка!»), `ride_horse` (Сесть на коня) | 4 |
 | `woods` | `deeper` (Дальше в лес), `back` (Назад к опушке), `hunt` (Выслеживать), `lure` (Использовать приманку), `set_traps`, `check_traps`, `make_camp` (Разбить лагерь), `to_fog` | 8 |
 | `camp` | `inspect`, `subdue` (Показать, кто главный), `dance`, `dance_fashion` (Танец (красивый)), `kill` (Зарезать), `rob` (Обокрасть), `release` (Отпустить), `dump_corpse` (Выбросить труп), `eat_supplies`, `eat_meat`, `eat_canned`, `feed_hound`, `feed_retriever`, `rest` (Отдыхать), `sleep` (Спать), `to_woods` (Вернуться в лес) | 16 |
@@ -182,7 +184,8 @@ depends_on:
 
 | Текст | ID | Шт. | Основание |
 |---|---|---|---|
-| Текст стадий | `rh:text.dialogue.hunt.encounter.stalking.text`, `.chase.text`, `.fight.text` | 3 | док |
+| Текст стадий | `rh:text.dialogue.hunt.encounter.stalking.text` (с приманкой), `.chase.text`, `.fight.text` | 3 | док |
+| Сцены обнаружения | `rh:text.hunt.scene.<сцена>` — 12 сцен (§ 2.3) | 12 | док, заполнено |
 | Варианты | `…stalking.look` (Осмотреть), `…stalking.sneak` (Подкрасться), `…stalking.leave`, `…chase.pursue` (Догонять), `…chase.leave`, `…fight.leave` | 6 | нужно |
 | Способы захвата | `rh:text.capture_method.<способ>.title` для 11 способов: `crossbow`, `throwing_knives`, `net`, `stone`, `sleeping_gas`, `retriever`, `bear_hug`, `club`, `knife`, `taser`, `bare_hands` | 11 | док (поле `title`) |
 | Причины недоступности способа | общие причины условий (§ 3.12) | — | — |
@@ -204,15 +207,20 @@ depends_on:
 
 | Диалог | Тексты | Шт. | Основание |
 |---|---|---|---|
-| `intro.start` | `class.text`; варианты классов — названия классов (§ 3.2); `name.text`; подсказка поля ввода `name.placeholder`; реплики Старого охотника `old_hunter_<N>.text` и `.next` | 3 + 2 на реплику | док / решить число реплик |
+| `intro.start` | `rh:text.intro.choose_hero`; названия классов (§ 3.2); `name.placeholder_hero`, `_heroine`; `rh:text.intro.history.<класс>` × 4; `rh:text.intro.rome1`, `rome2` | 9 | док, заполнено |
+| Общие варианты | `rh:text.dialogue.common.next` (Далее), `.back` (Спросить о другом), `.end_talk` (Закончить разговор) | 3 | нужно |
 | `camp.inspect` | `main.text`, `main.close` | 2 | нужно |
-| `fog.ghost_horse` | `main.text`, вариант приручения `main.tame`, `main.leave` | 3 | решить сценарий |
-| `market.farid_intro` | реплики Фарида и вариант завершения | ≥ 2 | решить сценарий |
+| `fog.ghost_horse` | `main.text`, `main.tame`, `main.leave` | 3 | заполнено, кроме `leave` |
+| `market.farid` | `rh:text.farid.hello_male`, `hello_fem`, вопросы `ask_most_expensive`, `ask_price_factors`, вариант `sell`; ответы `most_expensive`, `price_factors1`, `price_factors2` | 8 | заполнено; ответ о цене обрывается на первом факторе |
+| `rome.menhunter` | `rh:text.menhunter.greeting`, вопросы `ask_gear`, `ask_where_to_sell`; ответы `advice_gear`, `where_to_sell` | 5 | заполнено |
 | `butcher.lessons` | реплики мясника и вариант завершения | ≥ 2 | решить сценарий |
-| `misc.hunter_notes` | нарративный текст записок, `main.close` | ≥ 2 | решить текст |
-| `owlbear.peaceful` | `main.text`, `main.retreat` (Отступить), `main.pet` (Погладить), итог поглаживания `pet.text`, `pet.close` | 5 | док (варианты) |
-| `system.game_over` | `main.text_tired`, `main.text_murdered`, `main.restart` (Начать заново) | 3 | док |
-| `system.victory` | `main.text`, `main.endless` (Бесконечный режим), `main.finish` (Закончить), `the_end.text` (Конец) | 4 | док |
+| `misc.hunter_notes` | `rh:text.notes.rome`, `.fog`, `.woods`, `.camp` | 4 | заполнено |
+| `owlbear.peaceful` | `main.text`, `main.retreat`, `main.pet`, `pet.text`, `pet.close` | 5 | заполнено, кроме `pet.close` |
+| `system.game_over` | `main.text_tired`, `main.text_murdered`, `main.restart`, `rh:text.system.game_over.continue`, `.continue_msg`, `.finish` | 6 | заполнено |
+| `system.victory` | `main.text`, `main.endless`, `main.finish`, «Конец» `rh:text.system.the_end` | 4 | заполнено |
+| Помощь | `rh:text.help.main` | 1 | заполнено; показ — решить вместе с главным меню |
+
+Главное меню и проверка возраста (`rh:text.system.main_menu.*`, `rh:text.system.age_check.*`) — тексты на будущее: меню пока нет.
 
 ### 3.9. Магазины
 
@@ -223,7 +231,7 @@ depends_on:
 | Вкладки Менхантера | `rh:text.shop.rome.menhunter.tab_<id>`: `tools`, `weapons`, `clothes`, `pets`, `consumables`, `sell` | 6 | нужно |
 | Действие лавки | `rh:text.shop.rome.butcher.lessons` (Обучение) | 1 | нужно |
 
-Имя Старого охотника — `rh:text.actor.npc.old_hunter.title`, ещё 1 текст.
+Имя Старого охотника — `rh:text.actor.npc.old_hunter.title`, ещё 1 текст: оно встречается в повествовании и записках.
 
 ### 3.10. Танец
 
@@ -297,6 +305,6 @@ depends_on:
 
 - Смысл текстов fashion 91 и 92 и финала 87 ([правила, § 9](../RH/HunterGameplay.md#9-открытые-вопросы)).
 - Набор фонов: обязательный минимум или варианты по времени суток и глубине (§ 2.4).
-- Сценарии и число реплик диалогов со Старым охотником, Фаридом, мясником, конём и в записках (§ 3.8).
+- Сценарий обучения у мясника; окончание ответа Фарида о цене (§ 3.8).
 - Предложенные сообщения (§ 3.11) и частные причины отказа вместо общих (§ 3.12).
 - Нужна ли картинка записок (§ 2.3).

@@ -1,7 +1,7 @@
 ---
 title: RH Hunter Gameplay
 status: draft
-version: 0.2
+version: 0.3
 updated: 2026-10-18
 depends_on:
   - GameplayArchitecture.md
@@ -43,7 +43,7 @@ decisions:
 | `ghost_horse_tamed` | bool | предмета «Конь-призрак» нет | `ghost` |
 | `traps_set` | bool | | `trap` |
 | `trade_skill_learned` | bool | после диалога обучения | `shop == 3` |
-| `met_farid` | bool | открывает продажу на рынке | `farid` |
+| `met_farid` | bool | Фарид уже знаком: приветствие по имени | `farid` |
 | `endless_mode` | bool | | `finished` |
 | `hound_hunger`, `retriever_hunger` | int ≥ 0 | | `dog_hung`, `ret_hung` |
 | `catch` | ref instance `actor`, nullable | текущая добыча | «Добыча» |
@@ -124,6 +124,7 @@ function Actor:has(item)        return self:count(item) > 0 end
 | `capture_method` | стадия охоты, требования, расход, проверка с параметрами, исход успеха и провала (§ 4.5) |
 | `beast_look` | облик дикарки: цвет, зрелость, условия на черты, картинки (§ 3.6) |
 | `beast_trait_scale` | шкала описания черты: полосы значений → текст (§ 3.8) |
+| `hunt_scene` | сцена обнаружения дикарки: текст подкрадывания и картинка (§ 4.5) |
 
 Остальные данные — общие kinds архитектуры: `interaction`, `location`, `item`, `dialogue`, `combat`, `shop`, `time_phase`, `config`, `scenario`.
 
@@ -187,8 +188,8 @@ function Actor:has(item)        return self:count(item) > 0 end
 | Консервы | `rh:item.food.canned_meat` | — | — | да, портится | еда, снимает 1 усталости |
 | Голова совомедведя | `rh:item.trophy.owlbear_head` | — | — | нет | Менхантер покупает за 50 |
 | Перо совомедведя | `rh:item.trophy.owlbear_feather` | — | — | нет | совомедведь больше не появляется |
-| Навигационный кристалл | `rh:item.misc.nav_crystal` | — | — | нет | вход в Туманы; выдаётся по завершении диалога со Старым охотником |
-| Записки охотника | `rh:item.misc.hunter_notes` | — | — | нет | чтение: нарративный текст |
+| Навигационный кристалл | `rh:item.misc.nav_crystal` | — | — | нет | вход в Туманы; выдаётся в конце вступления |
+| Записки охотника | `rh:item.misc.hunter_notes` | — | — | нет | совет по зоне, где стоит охотник (§ 4.8); выдаются вместе с кристаллом |
 
 Уникальный предмет второй раз не покупается. Менхантер покупает только голову совомедведя. Кошелька в игре нет: золото всегда видно на панели статуса.
 
@@ -828,7 +829,7 @@ end }
 services.effect_start_hunt = { apply = function(ctx, p)
     local hunter = player
     local hunt_rng = stream("rh:random_stream.hunt")
-    local beast
+    local beast, scene
     if p.lure then                                    -- приманка: без усталости, поиска и «заметила»
         hunter:take(LURE, 1)
         services.time.advance(ctx)
@@ -842,8 +843,11 @@ services.effect_start_hunt = { apply = function(ctx, p)
         if beast_notices(values, hunter:stat("stealth"), hunt_rng) then return say(ctx, "hunt.noticed") end
         beast = services.catch.create(ctx, values)
         say(ctx, "hunt.unnoticed")
+        scene = random_scene(hunt_rng)                -- без приманки: сцена обнаружения
     end
-    services.effect_start_dialogue.apply(ctx, { dialogue = "rh:dialogue.hunt.encounter", subject = beast })
+    services.effect_start_dialogue.apply(ctx, {
+        dialogue = "rh:dialogue.hunt.encounter", subject = beast, vars = { scene = scene },
+    })
 end }
 ```
 
@@ -854,8 +858,14 @@ end }
   subject: "argument",
   nodes: {
     stalking: {
-      image: { subject_image: "portrait" },
-      text: [{ text: "rh:text.dialogue.hunt.encounter.stalking.text" }],
+      image: [
+        { when: [{ type: "var_set", var: "scene" }], source: "hunt_scene" },
+        { subject_image: "portrait" },
+      ],
+      text: [
+        { when: [{ type: "var_set", var: "scene" }], source: "hunt_scene" },
+        { text: "rh:text.dialogue.hunt.encounter.stalking.text" },    // с приманкой
+      ],
       description: [{ when: [{ type: "var_is", var: "looked", value: true }], source: "subject_traits" }],
       choices: [
         { id: "look", effects: [{ type: "set_var", var: "looked", value: true }], next: "stalking" },
@@ -897,6 +907,23 @@ end }
   },
 }
 ```
+
+**Сцена обнаружения.** Сцена — Definition `hunt_scene`: текст подкрадывания и своя картинка. Она выбирается случайно из всех сцен при встрече без приманки и на шансы не влияет. С приманкой сцены нет: дикарка сама выходит к пузырьку, стадия показывает общий текст и портрет.
+
+```json5
+{ id: "rh:hunt_scene.drink", text: "rh:text.hunt.scene.drink", image: "rh:resource.hunt_scene.drink.image" }
+```
+
+```lua
+function random_scene(rng)                              -- 12 сцен; бросок из потока охоты
+    local scenes = all_definitions("hunt_scene")        -- GAP-010, порядок Stable ID
+    return scenes[rng(1, #scenes)].id
+end
+services.text_hunt_scene  = { lines = function(ctx, run) return { def.hunt_scene(run.vars.scene).text } end }
+services.image_hunt_scene = { resource = function(ctx, run) return def.hunt_scene(run.vars.scene).image end }
+```
+
+Сцены: `drink`, `s1`, `s2`, `sleep`, `apple`, `waterfall`, `hotspring`, `rabbit`, `butterfly`, `splinter`, `s3`, `chase_butterfly`.
 
 Способы захвата — Definitions `capture_method`; источник `capture_methods` превращает их в варианты стадии. Принятый вариант: стадии как в источнике, каждая попытка тратит усталость, провал любого ближнего приёма ведёт в погоню.
 
@@ -955,15 +982,18 @@ end }
 
 | Диалог | Узлы и особенности | Исходы |
 |---|---|---|
-| `rh:dialogue.intro.start` | выбор класса (4 варианта с эффектом `set_class`) → ввод имени (`input`) → реплики Старого охотника | кристалл, площадь Рима (§ 4.11) |
+| `rh:dialogue.intro.start` | выбор класса → ввод имени → предыстория класса → Вечный Рим, две части повествования | кристалл, записки, площадь Рима (§ 4.11) |
 | `rh:dialogue.camp.inspect` | `subject: catch`; описание `subject_traits` и состояние | — |
 | `rh:dialogue.fog.ghost_horse` | приручение | `ghost_horse_tamed = true` |
-| `rh:dialogue.market.farid_intro` | знакомство | `met_farid = true` |
+| `rh:dialogue.market.farid` | приветствие по полу охотника; вопросы «Самая дорогая дикарка?», «От чего зависит цена?»; «Продать добычу» | `trade` — магазин Фарида; любой исход — `met_farid = true` |
+| `rh:dialogue.rome.menhunter` | приветствие; вопросы «Что взять в дорогу?», «Где продать добычу?» | — |
 | `rh:dialogue.butcher.lessons` | обучение | `trade_skill_learned = true` |
-| `rh:dialogue.misc.hunter_notes` | нарратив | — |
+| `rh:dialogue.misc.hunter_notes` | текст по зоне охотника: Рим, Туманы, лес, лагерь (`zone_in`) | — |
 | `rh:dialogue.owlbear.peaceful` | мирная встреча Госпожи: «Отступить», «Погладить» | перо совомедведя |
-| `rh:dialogue.system.game_over` | текст по причине (`var_is reason`), один вариант «Начать заново» | `restart_game` |
+| `rh:dialogue.system.game_over` | текст по причине (`var_is reason`); «Начать заново», «Продолжить тем же персонажем», «Закончить игру» → узел «Конец» (`terminal`) | `restart`: `restart_game`; `continue`: `revive` |
 | `rh:dialogue.system.victory` | «Бесконечный режим» → завершение; «Закончить» → конечный узел «Конец» (`terminal`) | `endless_mode = true` |
+
+Условия, которые вводят эти диалоги: `is_female` — класс охотника женский; `class_is` — класс охотника; `zone_in` — зона текущей локации (`rome`, `fog`, `woods`, `camp`). В варианты текста они входят как `when`, причина отказа им не нужна.
 
 
 ### 4.6. Добыча
@@ -1084,7 +1114,7 @@ end }
 | Взаимодействие | Условия | Эффекты |
 |---|---|---|
 | Выпить тоник | `item_count_at_least tonic 1` | `take_item tonic 1`; `set_fatigue 0` |
-| Читать записки | `has_item hunter_notes` | диалог `rh:dialogue.misc.hunter_notes` |
+| Читать записки | `has_item hunter_notes` | диалог `rh:dialogue.misc.hunter_notes`: совет по текущей зоне |
 | Птица-секретарь | `has_item secretary_bird` | `secretary_bird` |
 
 Источник меню — панель инвентаря общего интерфейса в любой зоне; в режиме неактивны с причиной `mode.busy`.
@@ -1153,7 +1183,7 @@ end }
 | `rh:shop.rome.butcher` (лавка) | `sell`: `subject: catch`, `price: { formula: "butcher" }` — живая и мёртвая | «Обучение»: `requires flag trade_skill_learned = false`, `start_dialogue rh:dialogue.butcher.lessons` |
 | `rh:shop.rome.farid` (рынок) | `sell`: `subject: catch`, `requires catch_alive` (причина `market.dead_not_accepted`), `price: { formula: "market" }` | — |
 
-Вход в магазины — взаимодействия локаций с эффектом `start_shop`. Рынок открывает магазин Фарида только при `met_farid`; до знакомства на рынке доступен диалог `rh:dialogue.market.farid_intro`.
+Вход в магазины Менхантера и лавки — взаимодействия локаций с эффектом `start_shop`. С Фаридом торговля идёт только через разговор: на рынке одно взаимодействие «Подойти к Фариду» запускает `rh:dialogue.market.farid`, вариант «Продать добычу» (`requires has_catch`) завершает его исходом `trade`, который запускает магазин Фарида — завершение одного режима и старт другого в одной команде ([ADR-0051](../ADR/0051-temporary-modes-and-presentation-routing.md)). В магазине Менхантера, кроме «Торговать», есть «Поговорить» — диалог `rh:dialogue.rome.menhunter`.
 
 
 ### 4.10. Танец (режим `rh:mode.dance`)
@@ -1277,7 +1307,7 @@ end
 
 Все три сцены — диалоги ([модуль диалога](GameplayArchitecture.md#512-диалог-rhmodedialogue)); отдельных режимов нет.
 
-**Старт.** Главного меню нет: при запуске сразу начинается новая игра. Порядок: выбор класса → ввод имени → диалог со Старым охотником → кристалл и площадь Рима.
+**Старт.** Главного меню нет: при запуске сразу начинается новая игра. Порядок: выбор класса → ввод имени → предыстория класса → Вечный Рим (две части) → кристалл, записки и площадь Рима. Старый охотник к началу игры умер; вступление — повествование, а не разговор.
 
 ```lua
 commands["game.start"] = function()                   -- мост старта (GAP-015)
@@ -1309,7 +1339,7 @@ end }
   core_interface: false,
   nodes: {
     class: {
-      text: [{ text: "rh:text.dialogue.intro.start.class.text" }],
+      text: [{ text: "rh:text.intro.choose_hero" }],
       choices: [
         { id: "trapper",   effects: [{ type: "set_class", class: "rh:hunter_class.trapper" }],   next: "name" },
         { id: "assassin",  effects: [{ type: "set_class", class: "rh:hunter_class.assassin" }],  next: "name" },
@@ -1318,18 +1348,28 @@ end }
       ],
     },
     name: {
-      text: [{ text: "rh:text.dialogue.intro.start.name.text" }],
-      input: { kind: "text", validate: "name", effect: "set_name", next: "old_hunter_1" },
+      text: [
+        { when: [{ type: "is_female" }], text: "rh:text.dialogue.intro.start.name.placeholder_heroine" },
+        { text: "rh:text.dialogue.intro.start.name.placeholder_hero" },
+      ],
+      input: { kind: "text", validate: "name", effect: "set_name", next: "history" },
     },
-    old_hunter_1: {
-      speaker: { actor: "rh:actor.npc.old_hunter" },
-      text: [{ text: "rh:text.dialogue.intro.start.old_hunter_1.text" }],
-      choices: [{ id: "next", finish: "done" }],      // реплики Старого охотника — по тексту дизайнера
+    history: {
+      text: [
+        { when: [{ type: "class_is", class: "rh:hunter_class.trapper" }],   text: "rh:text.intro.history.trapper" },
+        { when: [{ type: "class_is", class: "rh:hunter_class.assassin" }],  text: "rh:text.intro.history.assassin" },
+        { when: [{ type: "class_is", class: "rh:hunter_class.barbarian" }], text: "rh:text.intro.history.barbarian" },
+        { text: "rh:text.intro.history.mistress" },
+      ],
+      choices: [{ id: "next", next: "rome_1" }],
     },
+    rome_1: { text: [{ text: "rh:text.intro.rome1" }], choices: [{ id: "next", next: "rome_2" }] },
+    rome_2: { text: [{ text: "rh:text.intro.rome2" }], choices: [{ id: "next", finish: "done" }] },
   },
   outcomes: {
     done: [
       { type: "give_item", item: "rh:item.misc.nav_crystal" },
+      { type: "give_item", item: "rh:item.misc.hunter_notes" },
       { type: "travel", location: "rh:location.rome.square" },
     ],
   },
@@ -1338,7 +1378,23 @@ end }
 
 Игрок без локации до конца вступления допустим, только если это разрешает движок; иначе игрок создаётся сразу на площади Рима, а экран локации закрыт диалогом до конца вступления.
 
-**Конец игры.** Обработчик после команды (§ 4.1) при смерти завершает активный режим и запускает `rh:dialogue.system.game_over` с переменной `reason`. Экран: текст по причине и один вариант «Начать заново» с эффектом `restart_game` — перезапуск игры из Lua ([GAP-015](../Status/EngineGaps.md#gap-015-старт-и-перезапуск-новой-игры-из-authoring)). Новая игра обязана получить новое зерно случайности, иначе повторит броски прошлой. «Продолжить этим персонажем» из источника не переносится.
+**Конец игры.** Обработчик после команды (§ 4.1) при смерти завершает активный режим и запускает `rh:dialogue.system.game_over` с переменной `reason`. Экран: текст по причине и три варианта.
+
+- «Начать заново» — эффект `restart_game`, перезапуск игры из Lua ([GAP-015](../Status/EngineGaps.md#gap-015-старт-и-перезапуск-новой-игры-из-authoring)). Новая игра обязана получить новое зерно случайности, иначе повторит броски прошлой.
+- «Продолжить тем же персонажем» — эффект `revive`: охотник просыпается в Вечном Риме (текст `rh:text.system.game_over.continue_msg`).
+- «Закончить игру» — конечный узел «Конец» без вариантов, как у победы.
+
+```lua
+services.effect_revive = { apply = function(ctx)
+    local hunter = player
+    if hunter.catch ~= nil then services.catch.drop(ctx) end     -- добыча потеряна
+    hunter.fatigue, hunter.hunger = 0, 0
+    hunter.fog_steps = 0
+    hunter:move_to(location("rome.square"))                     -- золото, предметы и характеристики сохраняются
+end }
+```
+
+Смерть от ретривера уже забрала ретривера; смерть в бою с совомедведем ничего не забирает, кроме добычи.
 
 **Победа.** Обработчик после команды запускает `rh:dialogue.system.victory`, когда активного режима нет. «Бесконечный режим» — эффект `set_flag endless_mode = true` и завершение; «Закончить» — переход в конечный узел «Конец» без вариантов.
 
@@ -1349,7 +1405,7 @@ end }
 | Поток | Что бросает |
 |---|---|
 | `rh:random_stream.generation` | генерация дикарки, выбор облика |
-| `rh:random_stream.hunt` | поиск дикарки и проверка «заметила первой» — до начала сцены охоты |
+| `rh:random_stream.hunt` | поиск дикарки, проверка «заметила первой» и выбор сцены обнаружения — до начала сцены охоты |
 | `rh:random_stream.wilds` | появление совомедведя, выход из Туманов, ловушки, побег добычи |
 | run-поток сцены охоты | подкрасться, погоня, потеря в погоне, захват |
 | run-поток боя | бегство и схватка с совомедведем |
@@ -1383,7 +1439,7 @@ end }
 
 | Сцена | Экран |
 |---|---|
-| Охота, вступление, осмотр добычи, приручение коня, знакомство с Фаридом, обучение, записки, мирная встреча с совомедведем, конец игры, победа | экран диалога |
+| Охота, вступление, осмотр добычи, приручение коня, разговоры с Фаридом и Менхантером, обучение, записки, мирная встреча с совомедведем, конец игры, победа | экран диалога |
 | Совомедведь, танец | сцена с участниками |
 | Менхантер, лавка, Фарид | магазин |
 
@@ -1471,10 +1527,10 @@ GameData/rh/
 
 - Specs чистых ядер: генерация на каждой глубине (границы диапазонов); цены (максимум 650, таблица лавки, оценки 24 и 0); выбор облика — точность и случайность при равенстве; каждая ветвь `dance_move`, `dance_soft`, `dance_hard` по порогам источника, включая уход в минус и жёсткое 5 при `beast_engagement ≤ 0`; доступность в `dance_actions` и `fashion_actions`; финалы 71, 72, 87, 81, 82.
 - Покрытие данных с перечислителем из модели: базовый облик для каждой пары «цвет × зрелость» (enum `hair` × диапазон `maturity`); шкала каждой черты покрывает весь диапазон поля из `STATS`.
-- Specs механик: смерть при `fatigue = 8`, но не при 7; `fatigue_gain` при голоде 6, 7, 8; потеря ищейки при 8; смерть от ретривера при 9; совомедведь не появляется с пером; добыча не убегает в оковах и у Госпожи, но на охоте Госпожа замечается как все; встреча без поимки не оставляет экземпляра; бонус танца даётся один раз на дикарку; fashion не снимает тату; ботинки и плащ меняют `stat("stealth")`, но не базу; «Начать заново» начинает новую игру с выбора класса; кристалл появляется только после диалога со Старым охотником; сохранение отклоняется в режиме.
+- Specs механик: смерть при `fatigue = 8`, но не при 7; `fatigue_gain` при голоде 6, 7, 8; потеря ищейки при 8; смерть от ретривера при 9; совомедведь не появляется с пером; добыча не убегает в оковах и у Госпожи, но на охоте Госпожа замечается как все; встреча без поимки не оставляет экземпляра; бонус танца даётся один раз на дикарку; fashion не снимает тату; ботинки и плащ меняют `stat("stealth")`, но не базу; «Начать заново» начинает новую игру с выбора класса; кристалл и записки появляются только в конце вступления; «Продолжить тем же персонажем» теряет добычу и оставляет золото; сцена охоты не меняет шансов (одинаковые броски при разных сценах); сохранение отклоняется в режиме.
 - Specs модулей на синтетических Definitions, а не на контенте «Охотника»: диалог — варианты текста и описания по условиям, скрытый и неактивный вариант, вложенные переходы, переменные, динамические варианты, ввод, конечный узел; бой — альтернатива, затраты применяются только при завершении, урон и поражение по здоровью, поведение противника; торговля — источник ассортимента, модификаторы цены, `quote` и `settle`, продажа персонажа, запас, действие магазина.
-- Эталонные прогоны: выбор класса → имя → Старый охотник → Туманы → охота → лагерь → танец → знакомство с Фаридом и продажа; смерть от усталости → «Начать заново»; приручение коня через 10 шагов в Туманах; победа → бесконечный режим; победа → «Конец».
-- Перечислители: Definitions `capture_method`, `beast_look`, `beast_trait_scale`, `time_phase`, `interaction` — обход repository; все команды `rh` проходят через обработчик после команды — это гарантирует механизм движка ([GAP-019](../Status/EngineGaps.md#gap-019-обработчик-после-команды-и-область-команды)).
+- Эталонные прогоны: выбор класса → имя → предыстория → Вечный Рим → Туманы → охота → лагерь → танец → разговор с Фаридом и продажа; смерть от усталости → «Начать заново»; смерть → «Продолжить тем же персонажем»; приручение коня через 10 шагов в Туманах; победа → бесконечный режим; победа → «Конец».
+- Перечислители: Definitions `capture_method`, `hunt_scene`, `beast_look`, `beast_trait_scale`, `time_phase`, `interaction` — обход repository; все команды `rh` проходят через обработчик после команды — это гарантирует механизм движка ([GAP-019](../Status/EngineGaps.md#gap-019-обработчик-после-команды-и-область-команды)).
 
 ## 9. Открытые вопросы
 
