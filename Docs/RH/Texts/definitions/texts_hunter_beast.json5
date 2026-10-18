@@ -1,0 +1,159 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    // draft: en
+    {
+      id: "rh:text.beast.trait.looks",
+      data: { source_message: "Внешность" },
+    },
+    // draft: en
+    {
+      id: "rh:text.beast.trait.height",
+      data: { source_message: "Рост" },
+    },
+    // draft: en
+    {
+      id: "rh:text.beast.trait.hair",
+      data: { source_message: "Волосы" },
+    },
+    // draft: en
+    {
+      id: "rh:text.beast.trait.figure",
+      data: { source_message: "Фигура" },
+    },
+    // draft: en
+    {
+      id: "rh:text.beast.trait.agility",
+      data: { source_message: "Ловкость" },
+    },
+    // draft: en
+    {
+      id: "rh:text.beast.trait.wits",
+      data: { source_message: "Взгляд" },
+    },
+    // draft: en
+    {
+      id: "rh:text.beast.trait.maturity",
+      data: { source_message: "Возраст" },
+    },
+    {
+      id: "rh:text.beast.looks.attractive",
+      data: { source_message: "Привлекательная" },
+    },
+    {
+      id: "rh:text.beast.looks.pretty",
+      data: { source_message: "Красивая" },
+    },
+    {
+      id: "rh:text.beast.looks.beautiful",
+      data: { source_message: "Прекрасная" },
+    },
+    {
+      id: "rh:text.beast.looks.dazzling",
+      data: { source_message: "Ослепительно прекрасная" },
+    },
+    {
+      id: "rh:text.beast.height.petite",
+      data: { source_message: "миниатюрная" },
+    },
+    // draft: средняя полоса
+    {
+      id: "rh:text.beast.height.average",
+      data: { source_message: "среднего роста" },
+    },
+    {
+      id: "rh:text.beast.height.tall",
+      data: { source_message: "высокая" },
+    },
+    {
+      id: "rh:text.beast.hair.blond",
+      data: { source_message: "блондинка" },
+    },
+    {
+      id: "rh:text.beast.hair.brunette",
+      data: { source_message: "брюнетка" },
+    },
+    {
+      id: "rh:text.beast.hair.red",
+      data: { source_message: "рыжая" },
+    },
+    {
+      id: "rh:text.beast.figure.plump",
+      data: { source_message: "пухлая" },
+    },
+    {
+      id: "rh:text.beast.figure.slender_legs",
+      data: { source_message: "стройные ноги" },
+    },
+    {
+      id: "rh:text.beast.figure.slender_firm",
+      data: { source_message: "стройные ноги и крепкая" },
+    },
+    {
+      id: "rh:text.beast.figure.perfect_body",
+      data: { source_message: "совершенное тело" },
+    },
+    {
+      id: "rh:text.beast.agility.awkward",
+      data: { source_message: "Двигается слегка неловко." },
+    },
+    // draft: средняя полоса
+    {
+      id: "rh:text.beast.agility.steady",
+      data: { source_message: "Двигается уверенно." },
+    },
+    {
+      id: "rh:text.beast.agility.lively",
+      data: { source_message: "Живая и подвижная." },
+    },
+    {
+      id: "rh:text.beast.agility.graceful",
+      data: { source_message: "Ее движения завораживают изяществом и плавностью." },
+    },
+    {
+      id: "rh:text.beast.wits.cow_stare",
+      data: { source_message: "Дикарка смотрит на вас бессмысленным коровьим взглядом." },
+    },
+    {
+      id: "rh:text.beast.wits.wary",
+      data: { source_message: "Дикарка глядит на вас с опаской." },
+    },
+    {
+      id: "rh:text.beast.wits.foxy",
+      data: { source_message: "У дикарки хитрый, как у лисенка, взгляд." },
+    },
+    {
+      id: "rh:text.beast.wits.proud",
+      data: { source_message: "У дикарки гордый, пронзительный взор." },
+    },
+    {
+      id: "rh:text.beast.maturity.young_woman",
+      data: { source_message: "молодая женщина" },
+    },
+    {
+      id: "rh:text.beast.maturity.woman",
+      data: { source_message: "женщина" },
+    },
+    {
+      id: "rh:text.beast.maturity.mature_woman",
+      data: { source_message: "зрелая женщина" },
+    },
+    {
+      id: "rh:text.beast.maturity.shapely_woman",
+      data: { source_message: "взрослая и весьма фигуристая женщина" },
+    },
+    {
+      id: "rh:text.beast.state.dead",
+      data: { source_message: "Дикарка мертва" },
+    },
+    {
+      id: "rh:text.beast.state.tattoo",
+      data: { source_message: "Татуировка" },
+    },
+    {
+      id: "rh:text.beast.state.subdued",
+      data: { source_message: "Укрощена" },
+    },
+  ],
+}

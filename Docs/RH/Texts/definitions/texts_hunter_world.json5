@@ -1,0 +1,371 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.location.rome.square.title",
+      data: { source_message: "Вечный Рим" },
+    },
+    {
+      id: "rh:text.location.rome.menhunter.title",
+      data: { source_message: "Магазин Менхантера" },
+    },
+    {
+      id: "rh:text.location.rome.butcher.title",
+      data: { source_message: "Лавка мясника" },
+    },
+    {
+      id: "rh:text.location.rome.market.title",
+      data: { source_message: "Рынок" },
+    },
+    {
+      id: "rh:text.location.fog.mists.title",
+      data: { source_message: "Туманы" },
+    },
+    {
+      id: "rh:text.location.woods.camp.title",
+      data: { source_message: "Лагерь" },
+    },
+    // название леса на глубине; заменяет заголовок локации леса
+    {
+      id: "rh:text.woods.depth_0",
+      data: { source_message: "Опушка леса" },
+    },
+    {
+      id: "rh:text.woods.depth_1",
+      data: { source_message: "Густой лес" },
+    },
+    {
+      id: "rh:text.woods.depth_2",
+      data: { source_message: "Лесная глушь" },
+    },
+    // en: было «Windfall / Deep Thicket»
+    {
+      id: "rh:text.woods.depth_3",
+      data: { source_message: "Бурелом" },
+    },
+    {
+      id: "rh:text.time_of_day.morning",
+      data: { source_message: "утро" },
+    },
+    {
+      id: "rh:text.time_of_day.day",
+      data: { source_message: "день" },
+    },
+    {
+      id: "rh:text.time_of_day.evening",
+      data: { source_message: "вечер" },
+    },
+    {
+      id: "rh:text.time_of_day.night",
+      data: { source_message: "ночь" },
+    },
+    // показ вместо времени суток в Туманах
+    {
+      id: "rh:text.time_of_day.fog",
+      data: { source_message: "в туманах царит безвременье" },
+    },
+    // ru дополнен до предложения, как en
+    {
+      id: "rh:text.hunger.fed",
+      data: { source_message: "Вы сыты." },
+    },
+    {
+      id: "rh:text.hunger.hungry",
+      data: { source_message: "Вы проголодались." },
+    },
+    {
+      id: "rh:text.hunger.very_hungry",
+      data: { source_message: "Вы очень голодны." },
+    },
+    {
+      id: "rh:text.hunger.famished",
+      data: { source_message: "Вы истощены." },
+    },
+    {
+      id: "rh:text.item.tool.blanket.title",
+      data: { source_message: "Одеяло" },
+    },
+    {
+      id: "rh:text.item.tool.shackles.title",
+      data: { source_message: "Оковы" },
+    },
+    {
+      id: "rh:text.item.tool.traps.title",
+      data: { source_message: "Ловушки" },
+    },
+    {
+      id: "rh:text.item.weapon.knife.title",
+      data: { source_message: "Нож" },
+    },
+    {
+      id: "rh:text.item.weapon.club.title",
+      data: { source_message: "Дубинка" },
+    },
+    {
+      id: "rh:text.item.weapon.crossbow.title",
+      data: { source_message: "Арбалет" },
+    },
+    {
+      id: "rh:text.item.weapon.sword.title",
+      data: { source_message: "Меч" },
+    },
+    {
+      id: "rh:text.item.weapon.taser.title",
+      data: { source_message: "Шокер" },
+    },
+    {
+      id: "rh:text.item.clothes.soft_boots.title",
+      data: { source_message: "Мягкие ботинки" },
+    },
+    {
+      id: "rh:text.item.clothes.chainmail.title",
+      data: { source_message: "Кольчуга" },
+    },
+    {
+      id: "rh:text.item.clothes.elven_cloak.title",
+      data: { source_message: "Эльфийский плащ" },
+    },
+    {
+      id: "rh:text.item.pet.secretary_bird.title",
+      data: { source_message: "Птица-секретарь" },
+    },
+    {
+      id: "rh:text.item.pet.hound.title",
+      data: { source_message: "Ищейка" },
+    },
+    {
+      id: "rh:text.item.pet.retriever.title",
+      data: { source_message: "Ретривер" },
+    },
+    {
+      id: "rh:text.item.food.supplies.title",
+      data: { source_message: "Припасы" },
+    },
+    {
+      id: "rh:text.item.potion.tonic.title",
+      data: { source_message: "Тоник" },
+    },
+    {
+      id: "rh:text.item.potion.smoke_bomb.title",
+      data: { source_message: "Дымовые шашки" },
+    },
+    {
+      id: "rh:text.item.potion.lure.title",
+      data: { source_message: "Приманка" },
+    },
+    {
+      id: "rh:text.item.potion.sleeping_gas.title",
+      data: { source_message: "Усыпляющий газ" },
+    },
+    {
+      id: "rh:text.item.food.meat.title",
+      data: { source_message: "Мясо" },
+    },
+    // en было «Canning goods»
+    {
+      id: "rh:text.item.food.canned_meat.title",
+      data: { source_message: "Консервы" },
+    },
+    {
+      id: "rh:text.item.trophy.owlbear_head.title",
+      data: { source_message: "Голова совомедведя" },
+    },
+    {
+      id: "rh:text.item.trophy.owlbear_feather.title",
+      data: { source_message: "Перо совомедведя" },
+    },
+    {
+      id: "rh:text.item.misc.hunter_notes.title",
+      data: { source_message: "Записки охотника" },
+    },
+    // подпись панели добычи
+    {
+      id: "rh:text.core_interface.catch",
+      data: { source_message: "Добыча" },
+    },
+    // конь — флаг, не предмет; подпись в инвентаре
+    {
+      id: "rh:text.core_interface.ghost_horse",
+      data: { source_message: "Конь-призрак" },
+    },
+    {
+      id: "rh:text.look.fog",
+      data: { source_message: "Вас окружает туман, настолько густой что вы с трудом различаете собственные руки. Вокруг нет ничего кроме проклятого тумана и совершенно неизвестно, сколько еще вам придется тут блуждать." },
+    },
+    {
+      id: "rh:text.look.enter_fog_from_rome",
+      data: { source_message: "Вы стоите на самой окраине Вечного Рима, где стеной стоят волшебные Туманы. Если сделать туда шаг, выйти можно будет только добравшись до другого мира. Стоит проверить достаточно ли вы взяли припасов!" },
+    },
+    {
+      id: "rh:text.look.enter_fog_from_woods",
+      data: { source_message: "Вы стоите на опушке леса, где клубится небольшое облако волшебного Тумана. Если сделать туда шаг, выйти можно будет только добравшись до Вечного Рима." },
+    },
+    {
+      id: "rh:text.look.woods.deep0",
+      data: { source_message: "Вас окружает редкий лиственный лес. Отсюда совсем недалеко до Туманов через которые вы пришли в этот мир." },
+    },
+    {
+      id: "rh:text.look.woods.deep1",
+      data: { source_message: "Лес тут гуще чем на опушке, но пройти по нему не составляет труда. У ручья вы находите старый след, оставленный огромной когтистой лапой. Да, это явно не дикарка!" },
+    },
+    {
+      id: "rh:text.look.woods.deep2",
+      data: { source_message: "Вас окружает непролазный, темный лес. Даже в полдень сюда с трудом пробивается свет солнца. На земле видна цепочка следов, оставленных огромными когтистыми лапами. Похоже недавно тут прошел крупный и опасный зверь. Надо быть осторожнее." },
+    },
+    {
+      id: "rh:text.look.woods.deep3",
+      data: { source_message: "В поисках добычи вы забрались в самую дремучую чащу. Через бурелом приходится продираться с большими усилиями. С некоторого расстояния до вас доносится рев крупного хищника." },
+    },
+    {
+      id: "rh:text.look.camp.empty",
+      data: { source_message: "Вы поставили палатку на полянке возле тихого пруда и развели рядом костерок. Лес вокруг выглядит достаточно мирным." },
+    },
+    {
+      id: "rh:text.look.camp.alive_no_chains",
+      data: { source_message: "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня сидит дикарка со связанными за спиной руками и с тоской смотрит в лес." },
+    },
+    {
+      id: "rh:text.look.camp.alive_chains",
+      data: { source_message: "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня сидит закованая в цепи дикарка и тихонечко плачет." },
+    },
+    {
+      id: "rh:text.look.camp.dead",
+      data: { source_message: "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня лежит тело дикарки." },
+    },
+    {
+      id: "rh:text.item.misc.nav_crystal.title",
+      data: { source_message: "Навигационный кристалл" },
+    },
+    {
+      id: "rh:text.item.tool.blanket.description",
+      data: { source_message: "Легкое, но очень теплое походное одеяло, сделанное из шерсти тонкорунных силарийских пятирогов. Согреет даже самой холодной ночью. Будет очень полезно, если вам придется ночевать в лесу — ночи могут оказаться холодными и промозглыми." },
+    },
+    {
+      id: "rh:text.item.tool.shackles.description",
+      data: { source_message: "Прочные железные оковы. Стальной ошейник, наручники и оковы для ног, соединённые вместе цепями. В таких у захваченного раба нет шансов на побег. Эти дикарки вечно норовят сбежать. Ну, ничего, в железе то особо не побегаешь." },
+    },
+    {
+      id: "rh:text.item.tool.traps.description",
+      data: { source_message: "Особое приспособление, как раз для вашего случая. Эти ловушки рассчитаны на дикарок. Поставил такую и можно уже не бегать самому по лесам. Достаточно каждое утро проверять, кто попался!" },
+    },
+    {
+      id: "rh:text.item.weapon.knife.description",
+      data: { source_message: "Острый охотничий нож. Таким можно не только добить дичь, но и освежевать ее чтобы приготовить обед. Нужная вещь!" },
+    },
+    {
+      id: "rh:text.item.weapon.club.description",
+      data: { source_message: "Небольшая дубинка, обитая на конце войлоком. Отлично подойдет чтобы оглушить жертву. Надо только подойти поближе. [Используйте когда подойдете к дикарке вплотную]" },
+    },
+    {
+      id: "rh:text.item.weapon.crossbow.description",
+      data: { source_message: "Добрый охотничий арбалет. Можно сразить дикарку наповал со ста шагов! Это так удобно. Жаль, правда, что после этого она будет годна разве что на мясо. [Используйте когда увидите дикарку]" },
+    },
+    {
+      id: "rh:text.item.weapon.sword.description",
+      data: { source_message: "Когда бродишь по чужим мирам, тебя вечно пытаются сожрать гигантские монстры. От таких ножом не отобьешься. А вот тяжелый двуручный меч — подойдет. [Используйте если встретитесь с опасным монстром в лесу]" },
+    },
+    {
+      id: "rh:text.item.weapon.taser.description",
+      data: { source_message: "Невероятная игрушка из других миров. Продукт высоких технологий. Похож на маленькую черную дубинку. Но стоит легонько ткнуть ей человека, что бы того парализовало на несколько минут. Отлично подойдет, что бы взять дикарку живьем. Только бы подкрасться поближе... [Используйте когда подберетесь к дикарке вплотную]" },
+    },
+    {
+      id: "rh:text.item.clothes.soft_boots.description",
+      data: { source_message: "Прочные но очень мягкие мокасины, идеальные для тихого передвижения по лесу. В такой обуви куда легче незаметно подкрасться к дикарке. (+2 к скрытности при надевании)" },
+    },
+    // техническая пометка «fight = 10» заменена
+    {
+      id: "rh:text.item.clothes.chainmail.description",
+      data: { source_message: "Легкая и гибкая, но невероятно прочная кольчуга. Работа цвергов из какого-то отдаленного мира. Спасет и от удара меча и от когтей лесного зверя. Надо только понимать, что для победы нужна не только броня, но и оружие. (С мечом гарантирует победу над совомедведем)" },
+    },
+    {
+      id: "rh:text.item.clothes.elven_cloak.description",
+      data: { source_message: "Волшебные плащи эльфов — большая редкость, но они совершенно незаменимы для охотника. В этом плаще ты так сливаешься с лесом, что можно без проблем подойти на расстояние вытянутой руки даже к самой осторожной дичи. (+5 к скрытности при надевании)" },
+    },
+    {
+      id: "rh:text.item.pet.secretary_bird.description",
+      data: { source_message: "На самом-то деле это совсем не птица, а мелкий бес-счетовод. Фактически, это живой пернатый справочник. Кормить его не надо — сам что-нибудь поймает. Правда, пользы от такой птички охотнику не слишком много. Но бесенок может просчитать приблизительную стоимость вашей добычи на рынке рабов и у мясника. [Используйте когда захватите дикарку]" },
+    },
+    {
+      id: "rh:text.item.pet.hound.description",
+      data: { source_message: "Небольшая охотничья собака, натасканная на запах дикарки. С такой отличной ищейкой выследить дикарку не будет проблемой! Только надо не забывать кормить своего питомца хотя бы раз в день. (Делает поиск добычи автоматическим)" },
+    },
+    {
+      id: "rh:text.item.pet.retriever.description",
+      data: { source_message: "Гигантский паукобогомол из сурового мира демонов. Умеет преследовать добычу с огромной скоростью, хватать ее клешнями и обездвиживать ядом. Специально натаскан на дикарок. У дикарок теперь нет шансов! Только бы не забыть его вовремя кормить... (Захватывает добычу автоматически при использовании)" },
+    },
+    {
+      id: "rh:text.item.food.supplies.description",
+      data: { source_message: "Дорожный паек. Ешьте в лагере или в Туманах, чтобы утолить голод. Также ими можно кормить питомцев." },
+    },
+    // было «Окрыляет! / Очень бодрит!» и «energy = 0»
+    {
+      id: "rh:text.item.potion.tonic.description",
+      data: { source_message: "Очень бодрит! Мгновенно снимает всю усталость." },
+    },
+    {
+      id: "rh:text.item.potion.smoke_bomb.description",
+      data: { source_message: "Если охотник вдруг становится жертвой, для него нет ничего лучше чем пустить дым в глаза врагу. И смыться! [Используйте если встретитесь с опасным монстром в лесу]" },
+    },
+    {
+      id: "rh:text.item.potion.sleeping_gas.description",
+      data: { source_message: "Дорогая но эффективная газовая бомба. Отлично подойдет, чтобы парализовать дикарку не подкрадываясь к ней вплотную. [Используйте когда выследите дикарку]" },
+    },
+    {
+      id: "rh:text.item.trophy.owlbear_head.description",
+      data: { source_message: "Это голова жуткого монстра, лично убитого вами. Отличный трофей! Можно продать Менхантеру за 50 золотых." },
+    },
+    {
+      id: "rh:text.item.trophy.owlbear_feather.description",
+      data: { source_message: "Это перо жуткого монстра, который питает нездоровую страсть к женщинам. Забавно, но с тех пор как вы его заполучили, ни один другой зверь ни разу не пытался на вас напасть. (Полностью блокирует появление совомедведя)" },
+    },
+    {
+      id: "rh:text.item.misc.nav_crystal.description",
+      data: { source_message: "Такие кристаллы каким-то образом настраиваются на определенные миры, лежащие за Туманами и могут провести вас туда. Согласно записям, этот кристалл должен открывать дорогу в Дикий Лес. Используйте, чтобы идти через Туманы." },
+    },
+    // добавлен Рим
+    {
+      id: "rh:text.item.misc.hunter_notes.description",
+      data: { source_message: "Записи, доставшиеся вам от Старого Охотника. Прочтите, чтобы получить подсказку по той области, в которой сейчас находитесь (Рим / Туманы / Лес / Лагерь)." },
+    },
+    {
+      id: "rh:text.location.woods.forest.title",
+      data: { source_message: "Дикий Лес" },
+    },
+    {
+      id: "rh:text.look.rome.square",
+      data: { source_message: "Вы стоите в центре Вечного Рима. Вокруг белые башни, улицы полны шума и людей. Отсюда можно пойти в магазин Менхантера, к мяснику, на рынок рабов или отправиться в Туманы." },
+    },
+    {
+      id: "rh:text.look.rome.menhunter",
+      data: { source_message: "За прилавком стоит хозяин магазина, тертый детина по кличке Менхантер. Отличный мужик. Он всегда готов помочь посетителю с выбором товара, ведь ремесло искателя приключений и работорговца он знает не понаслышке!" },
+    },
+    {
+      id: "rh:text.look.rome.butcher",
+      data: { source_message: "Мясник занимается разделкой молодой девушки, только что выпотрошенной его помощником." },
+    },
+    {
+      id: "rh:text.look.rome.market",
+      data: { source_message: "Вы стоите посреди шумной рыночной площади. Впереди, на помосте, окруженном покупателями и зеваками, усатый караванщик демонстрирует живой товар. В толпе вы замечаете знакомого торговца — Фарида." },
+    },
+    {
+      id: "rh:text.hunger.exhausted",
+      data: { source_message: "Вы истощены. Усталость растёт быстрее." },
+    },
+    // draft
+    {
+      id: "rh:text.item.food.meat.description",
+      data: { source_message: "Свежее мясо из леса. Съешьте в лагере или в Туманах, чтобы утолить голод, или отдайте питомцам. По дороге в Рим портится." },
+    },
+    // draft
+    {
+      id: "rh:text.item.food.canned_meat.description",
+      data: { source_message: "Мясо, законсервированное по рецепту мясника. Утоляет голод и даже немного снимает усталость. Увы, дорогу в Рим тоже не переживает." },
+    },
+    // draft
+    {
+      id: "rh:text.item.potion.lure.description",
+      data: { source_message: "Пузырек афродизиака, перед запахом которого не устоит ни одна дикарка. Откройте его в лесу и спрячьтесь — она сама выйдет к вам и ничего не заметит. [Используйте в лесу вместо выслеживания]" },
+    },
+  ],
+}

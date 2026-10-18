@@ -1,0 +1,75 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.hunter_class.trapper.title",
+      data: { source_message: "Ловчий" },
+    },
+    {
+      id: "rh:text.hunter_class.assassin.title",
+      data: { source_message: "Ассасин" },
+    },
+    {
+      id: "rh:text.hunter_class.barbarian.title",
+      data: { source_message: "Варвар" },
+    },
+    {
+      id: "rh:text.hunter_class.mistress.title",
+      data: { source_message: "Госпожа" },
+    },
+    {
+      id: "rh:text.hunter_class.trapper.difficulty",
+      data: { source_message: "Низкая" },
+    },
+    {
+      id: "rh:text.hunter_class.assassin.difficulty",
+      data: { source_message: "Средняя" },
+    },
+    {
+      id: "rh:text.hunter_class.barbarian.difficulty",
+      data: { source_message: "Высокая" },
+    },
+    {
+      id: "rh:text.hunter_class.mistress.difficulty",
+      data: { source_message: "Очень легкая" },
+    },
+    // **жирный** заменен тегом темы <style=emphasis>
+    {
+      id: "rh:text.hunter_class.trapper.description",
+      data: { source_message: "Мастер преследования добычи. Умеет тихо передвигаться по лесу, выслеживая осторожную дичь. Ближний бой не самая сильная сторона. <style=emphasis>Специальная атака</>: Ловчие сети." },
+    },
+    {
+      id: "rh:text.hunter_class.assassin.description",
+      data: { source_message: "Отлично умеет подбираться незамеченным, приспособлен к долгим погоням. В ближнем бою слаб. <style=emphasis>Специальная атака</>: Метательные ножи." },
+    },
+    {
+      id: "rh:text.hunter_class.barbarian.description",
+      data: { source_message: "Ломится по лесам как слон, не умеет подкрадываться. Зато упорно преследует и в ближнем бою ему нет равных. <style=emphasis>Специальная атака</>: Медвежий захват." },
+    },
+    {
+      id: "rh:text.hunter_class.mistress.description",
+      data: { source_message: "Единственный женский персонаж. Не может заниматься танцами с дикарками, но связывает их так, что они никогда не убегут. Лес менее враждебен к женщинам. <style=emphasis>Специальные способности</>: Доминирование." },
+    },
+    {
+      id: "rh:text.actor.npc.old_hunter.title",
+      data: { source_message: "Старый Охотник" },
+    },
+    {
+      id: "rh:text.actor.npc.menhunter.title",
+      data: { source_message: "Менхантер" },
+    },
+    {
+      id: "rh:text.actor.npc.butcher.title",
+      data: { source_message: "Буч" },
+    },
+    {
+      id: "rh:text.actor.npc.farid.title",
+      data: { source_message: "Фарид" },
+    },
+    {
+      id: "rh:text.actor.monster.owlbear.title",
+      data: { source_message: "Совомедведь" },
+    },
+  ],
+}

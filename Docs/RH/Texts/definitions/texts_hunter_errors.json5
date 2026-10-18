@@ -1,0 +1,101 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.error.mode.busy",
+      data: { source_message: "Сейчас это сделать нельзя." },
+    },
+    {
+      id: "rh:text.error.intro.bad_name",
+      data: { source_message: "Введите корректное имя (1–40 символов)." },
+    },
+    {
+      id: "rh:text.error.market.dead_not_accepted",
+      data: { source_message: "— За мертвую дикарку тут не выручишь и гнутого медяка. Мой тебе совет — зайди к мяснику, что на северной улице. Он-то найдет этому телу применение, хе-хе!" },
+    },
+    {
+      id: "rh:text.error.shop.bad_quantity",
+      data: { source_message: "Неверное количество." },
+    },
+    {
+      id: "rh:text.error.shop.already_owned",
+      data: { source_message: "У вас уже есть этот предмет." },
+    },
+    {
+      id: "rh:text.error.shop.out_of_stock",
+      data: { source_message: "Нет в наличии." },
+    },
+    {
+      id: "rh:text.error.shop.not_enough_gold",
+      data: { source_message: "К сожалению, у Вас не хватает денег. (Цена: {price}, у вас: {gold})" },
+    },
+    {
+      id: "rh:text.error.shop.nothing_to_sell",
+      data: { source_message: "Вам нечего продать." },
+    },
+    {
+      id: "rh:text.error.condition.has_item",
+      data: { source_message: "Нужен предмет: {item}" },
+    },
+    {
+      id: "rh:text.error.condition.item_count_at_least",
+      data: { source_message: "Недостаточно: {item}" },
+    },
+    {
+      id: "rh:text.error.condition.class_trait",
+      data: { source_message: "Нужна способность класса." },
+    },
+    {
+      id: "rh:text.error.condition.lacks_class_trait",
+      data: { source_message: "Вашему классу недоступно." },
+    },
+    {
+      id: "rh:text.error.condition.woods_depth_in",
+      data: { source_message: "Не на этой глубине леса." },
+    },
+    {
+      id: "rh:text.error.condition.time_of_day_in",
+      data: { source_message: "Не в это время суток." },
+    },
+    {
+      id: "rh:text.error.condition.flag",
+      data: { source_message: "Условие не выполнено." },
+    },
+    {
+      id: "rh:text.error.condition.no_catch",
+      data: { source_message: "У вас уже есть добыча." },
+    },
+    {
+      id: "rh:text.error.condition.has_catch",
+      data: { source_message: "У вас нет добычи." },
+    },
+    {
+      id: "rh:text.error.condition.catch_alive",
+      data: { source_message: "Добыча мертва." },
+    },
+    {
+      id: "rh:text.error.condition.catch_dead",
+      data: { source_message: "Добыча ещё жива." },
+    },
+    {
+      id: "rh:text.error.condition.catch_not_subdued",
+      data: { source_message: "Уже укрощена." },
+    },
+    // глубже 3 нельзя; было «… / Вы уже на опушке»
+    {
+      id: "rh:text.error.woods.no_deeper",
+      data: { source_message: "Дальше идти некуда." },
+    },
+    // ближе 0 нельзя
+    {
+      id: "rh:text.error.woods.at_edge",
+      data: { source_message: "Вы уже на опушке." },
+    },
+    // draft
+    {
+      id: "rh:text.error.condition.catch_tattoo",
+      data: { source_message: "У добычи нет татуировки." },
+    },
+  ],
+}

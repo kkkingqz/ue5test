@@ -1,0 +1,1620 @@
+msgid ""
+msgstr ""
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# ---- texts_hunter_characters ----
+
+msgctxt "rh:text.hunter_class.trapper.title"
+msgid "Ловчий"
+msgstr "Trapper"
+
+msgctxt "rh:text.hunter_class.assassin.title"
+msgid "Ассасин"
+msgstr "Assassin"
+
+msgctxt "rh:text.hunter_class.barbarian.title"
+msgid "Варвар"
+msgstr "Barbarian"
+
+msgctxt "rh:text.hunter_class.mistress.title"
+msgid "Госпожа"
+msgstr "Mistress"
+
+msgctxt "rh:text.hunter_class.trapper.difficulty"
+msgid "Низкая"
+msgstr "Low"
+
+msgctxt "rh:text.hunter_class.assassin.difficulty"
+msgid "Средняя"
+msgstr "Medium"
+
+msgctxt "rh:text.hunter_class.barbarian.difficulty"
+msgid "Высокая"
+msgstr "High"
+
+msgctxt "rh:text.hunter_class.mistress.difficulty"
+msgid "Очень легкая"
+msgstr "Very Easy"
+
+#. **жирный** заменен тегом темы <style=emphasis>
+msgctxt "rh:text.hunter_class.trapper.description"
+msgid "Мастер преследования добычи. Умеет тихо передвигаться по лесу, выслеживая осторожную дичь. Ближний бой не самая сильная сторона. <style=emphasis>Специальная атака</>: Ловчие сети."
+msgstr "Master of tracking prey. Moves silently through the forest, stalking cautious game. Melee is not his strongest suit. <style=emphasis>Special attack</>: Hunting nets."
+
+msgctxt "rh:text.hunter_class.assassin.description"
+msgid "Отлично умеет подбираться незамеченным, приспособлен к долгим погоням. В ближнем бою слаб. <style=emphasis>Специальная атака</>: Метательные ножи."
+msgstr "Excellent at approaching unnoticed, suited for long pursuits. Weak in melee — prefers to strike from afar. <style=emphasis>Special attack</>: Throwing knives."
+
+msgctxt "rh:text.hunter_class.barbarian.description"
+msgid "Ломится по лесам как слон, не умеет подкрадываться. Зато упорно преследует и в ближнем бою ему нет равных. <style=emphasis>Специальная атака</>: Медвежий захват."
+msgstr "Crashes through forests like an elephant, cannot sneak. But can relentlessly pursue fleeing prey and is unmatched in melee. <style=emphasis>Special attack</>: Bear hug."
+
+msgctxt "rh:text.hunter_class.mistress.description"
+msgid "Единственный женский персонаж. Не может заниматься танцами с дикарками, но связывает их так, что они никогда не убегут. Лес менее враждебен к женщинам. <style=emphasis>Специальные способности</>: Доминирование."
+msgstr "The only female character. Cannot dance with captured wilds, but binds them so skillfully they never escape. The Wild Forest is less hostile to women. <style=emphasis>Special ability</>: Domination."
+
+msgctxt "rh:text.actor.npc.old_hunter.title"
+msgid "Старый Охотник"
+msgstr "Old Hunter"
+
+msgctxt "rh:text.actor.npc.menhunter.title"
+msgid "Менхантер"
+msgstr "Menhunter"
+
+msgctxt "rh:text.actor.npc.butcher.title"
+msgid "Буч"
+msgstr "Butch"
+
+msgctxt "rh:text.actor.npc.farid.title"
+msgid "Фарид"
+msgstr "Farid"
+
+msgctxt "rh:text.actor.monster.owlbear.title"
+msgid "Совомедведь"
+msgstr "Owlbear"
+
+# ---- texts_hunter_beast ----
+
+#. draft: en
+msgctxt "rh:text.beast.trait.looks"
+msgid "Внешность"
+msgstr "Looks"
+
+#. draft: en
+msgctxt "rh:text.beast.trait.height"
+msgid "Рост"
+msgstr "Height"
+
+#. draft: en
+msgctxt "rh:text.beast.trait.hair"
+msgid "Волосы"
+msgstr "Hair"
+
+#. draft: en
+msgctxt "rh:text.beast.trait.figure"
+msgid "Фигура"
+msgstr "Figure"
+
+#. draft: en
+msgctxt "rh:text.beast.trait.agility"
+msgid "Ловкость"
+msgstr "Agility"
+
+#. draft: en
+msgctxt "rh:text.beast.trait.wits"
+msgid "Взгляд"
+msgstr "Gaze"
+
+#. draft: en
+msgctxt "rh:text.beast.trait.maturity"
+msgid "Возраст"
+msgstr "Age"
+
+msgctxt "rh:text.beast.looks.attractive"
+msgid "Привлекательная"
+msgstr "Attractive"
+
+msgctxt "rh:text.beast.looks.pretty"
+msgid "Красивая"
+msgstr "Pretty"
+
+msgctxt "rh:text.beast.looks.beautiful"
+msgid "Прекрасная"
+msgstr "Beautiful"
+
+msgctxt "rh:text.beast.looks.dazzling"
+msgid "Ослепительно прекрасная"
+msgstr "Dazzlingly beautiful"
+
+msgctxt "rh:text.beast.height.petite"
+msgid "миниатюрная"
+msgstr "petite"
+
+#. draft: средняя полоса
+msgctxt "rh:text.beast.height.average"
+msgid "среднего роста"
+msgstr "of average height"
+
+msgctxt "rh:text.beast.height.tall"
+msgid "высокая"
+msgstr "tall"
+
+msgctxt "rh:text.beast.hair.blond"
+msgid "блондинка"
+msgstr "blonde"
+
+msgctxt "rh:text.beast.hair.brunette"
+msgid "брюнетка"
+msgstr "brunette"
+
+msgctxt "rh:text.beast.hair.red"
+msgid "рыжая"
+msgstr "redhead"
+
+msgctxt "rh:text.beast.figure.plump"
+msgid "пухлая"
+msgstr "plump"
+
+msgctxt "rh:text.beast.figure.slender_legs"
+msgid "стройные ноги"
+msgstr "slender legs"
+
+msgctxt "rh:text.beast.figure.slender_firm"
+msgid "стройные ноги и крепкая"
+msgstr "slender legs and firm"
+
+msgctxt "rh:text.beast.figure.perfect_body"
+msgid "совершенное тело"
+msgstr "perfect body"
+
+msgctxt "rh:text.beast.agility.awkward"
+msgid "Двигается слегка неловко."
+msgstr "Moves a bit awkwardly."
+
+#. draft: средняя полоса
+msgctxt "rh:text.beast.agility.steady"
+msgid "Двигается уверенно."
+msgstr "Moves confidently."
+
+msgctxt "rh:text.beast.agility.lively"
+msgid "Живая и подвижная."
+msgstr "Lively and agile."
+
+msgctxt "rh:text.beast.agility.graceful"
+msgid "Ее движения завораживают изяществом и плавностью."
+msgstr "Her movements fascinate with grace and fluidity."
+
+msgctxt "rh:text.beast.wits.cow_stare"
+msgid "Дикарка смотрит на вас бессмысленным коровьим взглядом."
+msgstr "The wild beast stares at you with a vacant cow-like gaze."
+
+msgctxt "rh:text.beast.wits.wary"
+msgid "Дикарка глядит на вас с опаской."
+msgstr "The wild beast looks at you warily."
+
+msgctxt "rh:text.beast.wits.foxy"
+msgid "У дикарки хитрый, как у лисенка, взгляд."
+msgstr "The wild beast has a sly fox-like gaze."
+
+msgctxt "rh:text.beast.wits.proud"
+msgid "У дикарки гордый, пронзительный взор."
+msgstr "The wild beast has a proud, piercing gaze."
+
+msgctxt "rh:text.beast.maturity.young_woman"
+msgid "молодая женщина"
+msgstr "young woman"
+
+msgctxt "rh:text.beast.maturity.woman"
+msgid "женщина"
+msgstr "woman"
+
+msgctxt "rh:text.beast.maturity.mature_woman"
+msgid "зрелая женщина"
+msgstr "mature woman"
+
+msgctxt "rh:text.beast.maturity.shapely_woman"
+msgid "взрослая и весьма фигуристая женщина"
+msgstr "adult and very shapely woman"
+
+msgctxt "rh:text.beast.state.dead"
+msgid "Дикарка мертва"
+msgstr "Dead"
+
+msgctxt "rh:text.beast.state.tattoo"
+msgid "Татуировка"
+msgstr "Tattoo"
+
+msgctxt "rh:text.beast.state.subdued"
+msgid "Укрощена"
+msgstr "Subdued"
+
+# ---- texts_hunter_world ----
+
+msgctxt "rh:text.location.rome.square.title"
+msgid "Вечный Рим"
+msgstr "Eternal Rome"
+
+msgctxt "rh:text.location.rome.menhunter.title"
+msgid "Магазин Менхантера"
+msgstr "Menhunter's Shop"
+
+msgctxt "rh:text.location.rome.butcher.title"
+msgid "Лавка мясника"
+msgstr "Butcher's Shop"
+
+msgctxt "rh:text.location.rome.market.title"
+msgid "Рынок"
+msgstr "Market"
+
+msgctxt "rh:text.location.fog.mists.title"
+msgid "Туманы"
+msgstr "The Mists"
+
+msgctxt "rh:text.location.woods.camp.title"
+msgid "Лагерь"
+msgstr "Camp"
+
+#. название леса на глубине; заменяет заголовок локации леса
+msgctxt "rh:text.woods.depth_0"
+msgid "Опушка леса"
+msgstr "Forest Edge"
+
+msgctxt "rh:text.woods.depth_1"
+msgid "Густой лес"
+msgstr "Dense Forest"
+
+msgctxt "rh:text.woods.depth_2"
+msgid "Лесная глушь"
+msgstr "Forest Wilderness"
+
+#. en: было «Windfall / Deep Thicket»
+msgctxt "rh:text.woods.depth_3"
+msgid "Бурелом"
+msgstr "Windfall"
+
+msgctxt "rh:text.time_of_day.morning"
+msgid "утро"
+msgstr "morning"
+
+msgctxt "rh:text.time_of_day.day"
+msgid "день"
+msgstr "day"
+
+msgctxt "rh:text.time_of_day.evening"
+msgid "вечер"
+msgstr "evening"
+
+msgctxt "rh:text.time_of_day.night"
+msgid "ночь"
+msgstr "night"
+
+#. показ вместо времени суток в Туманах
+msgctxt "rh:text.time_of_day.fog"
+msgid "в туманах царит безвременье"
+msgstr "timelessness reigns in the mists"
+
+#. ru дополнен до предложения, как en
+msgctxt "rh:text.hunger.fed"
+msgid "Вы сыты."
+msgstr "You are well fed."
+
+msgctxt "rh:text.hunger.hungry"
+msgid "Вы проголодались."
+msgstr "You are getting hungry."
+
+msgctxt "rh:text.hunger.very_hungry"
+msgid "Вы очень голодны."
+msgstr "You are very hungry."
+
+msgctxt "rh:text.hunger.famished"
+msgid "Вы истощены."
+msgstr "You are exhausted from hunger."
+
+msgctxt "rh:text.item.tool.blanket.title"
+msgid "Одеяло"
+msgstr "Blanket"
+
+msgctxt "rh:text.item.tool.shackles.title"
+msgid "Оковы"
+msgstr "Shackles"
+
+msgctxt "rh:text.item.tool.traps.title"
+msgid "Ловушки"
+msgstr "Traps"
+
+msgctxt "rh:text.item.weapon.knife.title"
+msgid "Нож"
+msgstr "Knife"
+
+msgctxt "rh:text.item.weapon.club.title"
+msgid "Дубинка"
+msgstr "Club"
+
+msgctxt "rh:text.item.weapon.crossbow.title"
+msgid "Арбалет"
+msgstr "Crossbow"
+
+msgctxt "rh:text.item.weapon.sword.title"
+msgid "Меч"
+msgstr "Sword"
+
+msgctxt "rh:text.item.weapon.taser.title"
+msgid "Шокер"
+msgstr "Taser"
+
+msgctxt "rh:text.item.clothes.soft_boots.title"
+msgid "Мягкие ботинки"
+msgstr "Soft Boots"
+
+msgctxt "rh:text.item.clothes.chainmail.title"
+msgid "Кольчуга"
+msgstr "Chainmail"
+
+msgctxt "rh:text.item.clothes.elven_cloak.title"
+msgid "Эльфийский плащ"
+msgstr "Elven Cloak"
+
+msgctxt "rh:text.item.pet.secretary_bird.title"
+msgid "Птица-секретарь"
+msgstr "Secretary Bird"
+
+msgctxt "rh:text.item.pet.hound.title"
+msgid "Ищейка"
+msgstr "Hound"
+
+msgctxt "rh:text.item.pet.retriever.title"
+msgid "Ретривер"
+msgstr "Retriever"
+
+msgctxt "rh:text.item.food.supplies.title"
+msgid "Припасы"
+msgstr "Supplies"
+
+msgctxt "rh:text.item.potion.tonic.title"
+msgid "Тоник"
+msgstr "Tonic"
+
+msgctxt "rh:text.item.potion.smoke_bomb.title"
+msgid "Дымовые шашки"
+msgstr "Smoke Bombs"
+
+msgctxt "rh:text.item.potion.lure.title"
+msgid "Приманка"
+msgstr "Bait"
+
+msgctxt "rh:text.item.potion.sleeping_gas.title"
+msgid "Усыпляющий газ"
+msgstr "Sleeping Gas"
+
+msgctxt "rh:text.item.food.meat.title"
+msgid "Мясо"
+msgstr "Meat"
+
+#. en было «Canning goods»
+msgctxt "rh:text.item.food.canned_meat.title"
+msgid "Консервы"
+msgstr "Canned Food"
+
+msgctxt "rh:text.item.trophy.owlbear_head.title"
+msgid "Голова совомедведя"
+msgstr "Owlbear Head"
+
+msgctxt "rh:text.item.trophy.owlbear_feather.title"
+msgid "Перо совомедведя"
+msgstr "Owlbear Feather"
+
+msgctxt "rh:text.item.misc.hunter_notes.title"
+msgid "Записки охотника"
+msgstr "Hunter's Notes"
+
+#. подпись панели добычи
+msgctxt "rh:text.core_interface.catch"
+msgid "Добыча"
+msgstr "Catch"
+
+#. конь — флаг, не предмет; подпись в инвентаре
+msgctxt "rh:text.core_interface.ghost_horse"
+msgid "Конь-призрак"
+msgstr "Ghost Horse"
+
+msgctxt "rh:text.look.fog"
+msgid "Вас окружает туман, настолько густой что вы с трудом различаете собственные руки. Вокруг нет ничего кроме проклятого тумана и совершенно неизвестно, сколько еще вам придется тут блуждать."
+msgstr "You are surrounded by fog so thick that you can barely make out your own hands. Around you there is nothing but the cursed fog and it is completely unknown how much longer you will have to wander here."
+
+msgctxt "rh:text.look.enter_fog_from_rome"
+msgid "Вы стоите на самой окраине Вечного Рима, где стеной стоят волшебные Туманы. Если сделать туда шаг, выйти можно будет только добравшись до другого мира. Стоит проверить достаточно ли вы взяли припасов!"
+msgstr "You stand at the very edge of Eternal Rome where the magical Mists stand like a wall. If you take a step there, you will only be able to leave by reaching another world. It is worth checking whether you have taken enough supplies!"
+
+msgctxt "rh:text.look.enter_fog_from_woods"
+msgid "Вы стоите на опушке леса, где клубится небольшое облако волшебного Тумана. Если сделать туда шаг, выйти можно будет только добравшись до Вечного Рима."
+msgstr "You stand at the edge of the forest where a small cloud of magical Mist swirls. If you take a step there, you will only be able to leave by reaching Eternal Rome."
+
+msgctxt "rh:text.look.woods.deep0"
+msgid "Вас окружает редкий лиственный лес. Отсюда совсем недалеко до Туманов через которые вы пришли в этот мир."
+msgstr "You are surrounded by sparse deciduous forest. From here it is not far at all to the Mists through which you came into this world."
+
+msgctxt "rh:text.look.woods.deep1"
+msgid "Лес тут гуще чем на опушке, но пройти по нему не составляет труда. У ручья вы находите старый след, оставленный огромной когтистой лапой. Да, это явно не дикарка!"
+msgstr "The forest here is denser than at the edge, but it is not hard to walk through. By the stream you find an old track left by a huge clawed paw. Yes, that is clearly not a wild beast!"
+
+msgctxt "rh:text.look.woods.deep2"
+msgid "Вас окружает непролазный, темный лес. Даже в полдень сюда с трудом пробивается свет солнца. На земле видна цепочка следов, оставленных огромными когтистыми лапами. Похоже недавно тут прошел крупный и опасный зверь. Надо быть осторожнее."
+msgstr "You are surrounded by impenetrable dark forest. Even at noon the sunlight barely reaches here. On the ground a chain of tracks left by huge clawed paws is visible. It seems a large and dangerous beast passed here recently. You must be careful."
+
+msgctxt "rh:text.look.woods.deep3"
+msgid "В поисках добычи вы забрались в самую дремучую чащу. Через бурелом приходится продираться с большими усилиями. С некоторого расстояния до вас доносится рев крупного хищника."
+msgstr "In search of prey you have gone into the densest thicket. You have to force your way through the windfall with great effort. From some distance the roar of a large predator reaches you."
+
+msgctxt "rh:text.look.camp.empty"
+msgid "Вы поставили палатку на полянке возле тихого пруда и развели рядом костерок. Лес вокруг выглядит достаточно мирным."
+msgstr "You pitched the tent in a clearing by a quiet pond and lit a campfire nearby. The forest around looks peaceful enough."
+
+msgctxt "rh:text.look.camp.alive_no_chains"
+msgid "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня сидит дикарка со связанными за спиной руками и с тоской смотрит в лес."
+msgstr "You pitched the tent on the bank of a clear stream and lit a campfire nearby. By the fire sits a wild beast with her hands bound behind her back, looking longingly into the forest."
+
+msgctxt "rh:text.look.camp.alive_chains"
+msgid "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня сидит закованая в цепи дикарка и тихонечко плачет."
+msgstr "You pitched the tent on the bank of a clear stream and lit a campfire nearby. By the fire sits a wild beast in chains, quietly weeping."
+
+msgctxt "rh:text.look.camp.dead"
+msgid "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня лежит тело дикарки."
+msgstr "You pitched the tent on the bank of a clear stream and lit a campfire nearby. By the fire lies the body of a wild beast."
+
+msgctxt "rh:text.item.misc.nav_crystal.title"
+msgid "Навигационный кристалл"
+msgstr "Navigation Crystal"
+
+msgctxt "rh:text.item.tool.blanket.description"
+msgid "Легкое, но очень теплое походное одеяло, сделанное из шерсти тонкорунных силарийских пятирогов. Согреет даже самой холодной ночью. Будет очень полезно, если вам придется ночевать в лесу — ночи могут оказаться холодными и промозглыми."
+msgstr "A light but very warm camping blanket made of the wool of fine-fleeced Silarian five-horns. Will keep you warm even on the coldest night. Useful if you have to spend the night in the forest — nights can be cold and damp."
+
+msgctxt "rh:text.item.tool.shackles.description"
+msgid "Прочные железные оковы. Стальной ошейник, наручники и оковы для ног, соединённые вместе цепями. В таких у захваченного раба нет шансов на побег. Эти дикарки вечно норовят сбежать. Ну, ничего, в железе то особо не побегаешь."
+msgstr "Sturdy iron shackles. A steel collar, wrist and ankle cuffs connected by chains. In these a captured slave has no chance of escape. These wild beasts always try to run away — in iron they will not get far."
+
+msgctxt "rh:text.item.tool.traps.description"
+msgid "Особое приспособление, как раз для вашего случая. Эти ловушки рассчитаны на дикарок. Поставил такую и можно уже не бегать самому по лесам. Достаточно каждое утро проверять, кто попался!"
+msgstr "A special device made just for your case. These traps are designed for primitive beasts. Set one and you no longer need to run through the woods yourself — just check every morning who got caught."
+
+msgctxt "rh:text.item.weapon.knife.description"
+msgid "Острый охотничий нож. Таким можно не только добить дичь, но и освежевать ее чтобы приготовить обед. Нужная вещь!"
+msgstr "A sharp hunting knife. With it you can not only finish off game but also skin it to cook a meal. A necessary thing!"
+
+msgctxt "rh:text.item.weapon.club.description"
+msgid "Небольшая дубинка, обитая на конце войлоком. Отлично подойдет чтобы оглушить жертву. Надо только подойти поближе. [Используйте когда подойдете к дикарке вплотную]"
+msgstr "A small club padded with felt at the end. Perfect for stunning a victim. You only need to get close. [Use when you get right up to the wild beast]"
+
+msgctxt "rh:text.item.weapon.crossbow.description"
+msgid "Добрый охотничий арбалет. Можно сразить дикарку наповал со ста шагов! Это так удобно. Жаль, правда, что после этого она будет годна разве что на мясо. [Используйте когда увидите дикарку]"
+msgstr "A good hunting crossbow. You can drop a wild beast dead from a hundred paces! So convenient. A pity that after that she will only be fit for meat. [Use when you see the wild beast]"
+
+msgctxt "rh:text.item.weapon.sword.description"
+msgid "Когда бродишь по чужим мирам, тебя вечно пытаются сожрать гигантские монстры. От таких ножом не отобьешься. А вот тяжелый двуручный меч — подойдет. [Используйте если встретитесь с опасным монстром в лесу]"
+msgstr "When you wander alien worlds, giant monsters are always trying to eat you. A knife will not help against them. But a heavy two-handed sword will. [Use if you meet a dangerous monster in the forest]"
+
+msgctxt "rh:text.item.weapon.taser.description"
+msgid "Невероятная игрушка из других миров. Продукт высоких технологий. Похож на маленькую черную дубинку. Но стоит легонько ткнуть ей человека, что бы того парализовало на несколько минут. Отлично подойдет, что бы взять дикарку живьем. Только бы подкрасться поближе... [Используйте когда подберетесь к дикарке вплотную]"
+msgstr "An incredible toy from other worlds. A product of high technology. Looks like a small black club. But a light touch paralyses a person for several minutes. Perfect for taking a wild beast alive. You only need to sneak close... [Use when you get right up to the wild beast]"
+
+msgctxt "rh:text.item.clothes.soft_boots.description"
+msgid "Прочные но очень мягкие мокасины, идеальные для тихого передвижения по лесу. В такой обуви куда легче незаметно подкрасться к дикарке. (+2 к скрытности при надевании)"
+msgstr "Sturdy yet very soft moccasins, ideal for quiet movement through the forest. In such footwear it is much easier to sneak up on a wild beast unnoticed. (+2 sneak when worn)"
+
+#. техническая пометка «fight = 10» заменена
+msgctxt "rh:text.item.clothes.chainmail.description"
+msgid "Легкая и гибкая, но невероятно прочная кольчуга. Работа цвергов из какого-то отдаленного мира. Спасет и от удара меча и от когтей лесного зверя. Надо только понимать, что для победы нужна не только броня, но и оружие. (С мечом гарантирует победу над совомедведем)"
+msgstr "Light and flexible yet incredibly strong chainmail. Work of dwarves from some distant world. Will save you from a sword blow and from the claws of a forest beast. Remember that for victory you need not only armour but also a weapon. (With a sword, guarantees victory over the owlbear)"
+
+msgctxt "rh:text.item.clothes.elven_cloak.description"
+msgid "Волшебные плащи эльфов — большая редкость, но они совершенно незаменимы для охотника. В этом плаще ты так сливаешься с лесом, что можно без проблем подойти на расстояние вытянутой руки даже к самой осторожной дичи. (+5 к скрытности при надевании)"
+msgstr "Magical elven cloaks are a great rarity, but they are indispensable for a hunter. In this cloak you blend with the forest so completely that you can approach even the most cautious prey within arm's reach. (+5 sneak when worn)"
+
+msgctxt "rh:text.item.pet.secretary_bird.description"
+msgid "На самом-то деле это совсем не птица, а мелкий бес-счетовод. Фактически, это живой пернатый справочник. Кормить его не надо — сам что-нибудь поймает. Правда, пользы от такой птички охотнику не слишком много. Но бесенок может просчитать приблизительную стоимость вашей добычи на рынке рабов и у мясника. [Используйте когда захватите дикарку]"
+msgstr "Actually this is not a bird at all, but a minor accounting demon. A living feathered reference book. No need to feed it — it will catch something itself. Of little use to a hunter, but the little devil can calculate the approximate value of your catch on the slave market and at the butcher's. [Use when you have a catch]"
+
+msgctxt "rh:text.item.pet.hound.description"
+msgid "Небольшая охотничья собака, натасканная на запах дикарки. С такой отличной ищейкой выследить дикарку не будет проблемой! Только надо не забывать кормить своего питомца хотя бы раз в день. (Делает поиск добычи автоматическим)"
+msgstr "A small hunting dog trained on the scent of beast. With such an excellent hound tracking a wild beast will be no problem! Just remember to feed your pet at least once a day. (Makes finding prey automatic)"
+
+msgctxt "rh:text.item.pet.retriever.description"
+msgid "Гигантский паукобогомол из сурового мира демонов. Умеет преследовать добычу с огромной скоростью, хватать ее клешнями и обездвиживать ядом. Специально натаскан на дикарок. У дикарок теперь нет шансов! Только бы не забыть его вовремя кормить... (Захватывает добычу автоматически при использовании)"
+msgstr "A giant spider-mantis from the harsh world of demons. Can pursue prey at great speed, seize it with claws and immobilise it with venom. Specially trained on beasts. Wild beasts stand no chance! Just do not forget to feed it in time... (Captures prey automatically when used)"
+
+msgctxt "rh:text.item.food.supplies.description"
+msgid "Дорожный паек. Ешьте в лагере или в Туманах, чтобы утолить голод. Также ими можно кормить питомцев."
+msgstr "Road rations. Eat them at camp or while travelling through the Mists to reset hunger. Also used to feed pets."
+
+#. было «Окрыляет! / Очень бодрит!» и «energy = 0»
+msgctxt "rh:text.item.potion.tonic.description"
+msgid "Очень бодрит! Мгновенно снимает всю усталость."
+msgstr "Very invigorating! Instantly removes all fatigue."
+
+msgctxt "rh:text.item.potion.smoke_bomb.description"
+msgid "Если охотник вдруг становится жертвой, для него нет ничего лучше чем пустить дым в глаза врагу. И смыться! [Используйте если встретитесь с опасным монстром в лесу]"
+msgstr "If a hunter suddenly becomes the prey, nothing is better than throwing smoke in the enemy's eyes and vanishing! [Use if you meet a dangerous monster in the forest]"
+
+msgctxt "rh:text.item.potion.sleeping_gas.description"
+msgid "Дорогая но эффективная газовая бомба. Отлично подойдет, чтобы парализовать дикарку не подкрадываясь к ней вплотную. [Используйте когда выследите дикарку]"
+msgstr "An expensive but effective gas bomb. Perfect for paralysing a wild beast without having to sneak right up to her. [Use when you have tracked a wild beast]"
+
+msgctxt "rh:text.item.trophy.owlbear_head.description"
+msgid "Это голова жуткого монстра, лично убитого вами. Отличный трофей! Можно продать Менхантеру за 50 золотых."
+msgstr "This is the head of a terrible monster you personally killed. An excellent trophy! Can be sold to Menhunter for 50 gold."
+
+msgctxt "rh:text.item.trophy.owlbear_feather.description"
+msgid "Это перо жуткого монстра, который питает нездоровую страсть к женщинам. Забавно, но с тех пор как вы его заполучили, ни один другой зверь ни разу не пытался на вас напасть. (Полностью блокирует появление совомедведя)"
+msgstr "This is a feather of a terrible monster that has an unhealthy passion for women. Amusingly, ever since you obtained it no other beast has ever tried to attack you. (Permanently blocks owlbear encounters)"
+
+msgctxt "rh:text.item.misc.nav_crystal.description"
+msgid "Такие кристаллы каким-то образом настраиваются на определенные миры, лежащие за Туманами и могут провести вас туда. Согласно записям, этот кристалл должен открывать дорогу в Дикий Лес. Используйте, чтобы идти через Туманы."
+msgstr "Such crystals somehow attune themselves to certain worlds beyond the Mists and can guide you there. According to the notes this crystal should open the road to the Wild Forest. Use it to walk through the Mists."
+
+#. добавлен Рим
+msgctxt "rh:text.item.misc.hunter_notes.description"
+msgid "Записи, доставшиеся вам от Старого Охотника. Прочтите, чтобы получить подсказку по той области, в которой сейчас находитесь (Рим / Туманы / Лес / Лагерь)."
+msgstr "Notes inherited from the Old Hunter. Read them to get a tip for the area you are currently in (Rome / Mists / Woods / Camp)."
+
+msgctxt "rh:text.location.woods.forest.title"
+msgid "Дикий Лес"
+msgstr "Wild Forest"
+
+msgctxt "rh:text.look.rome.square"
+msgid "Вы стоите в центре Вечного Рима. Вокруг белые башни, улицы полны шума и людей. Отсюда можно пойти в магазин Менхантера, к мяснику, на рынок рабов или отправиться в Туманы."
+msgstr "You stand in the centre of Eternal Rome. White towers rise around you, the streets are full of noise and people. From here you can go to Menhunter's shop, the butcher's, the slave market, or set out into the Mists."
+
+msgctxt "rh:text.look.rome.menhunter"
+msgid "За прилавком стоит хозяин магазина, тертый детина по кличке Менхантер. Отличный мужик. Он всегда готов помочь посетителю с выбором товара, ведь ремесло искателя приключений и работорговца он знает не понаслышке!"
+msgstr "Behind the counter stands the shop owner, a weathered fellow nicknamed Menhunter. An excellent chap. He is always ready to help a visitor choose goods, for he knows the craft of adventurer and slave-trader first-hand!"
+
+msgctxt "rh:text.look.rome.butcher"
+msgid "Мясник занимается разделкой молодой девушки, только что выпотрошенной его помощником."
+msgstr "The butcher is busy dressing a young beast just eviscerated by his assistant."
+
+msgctxt "rh:text.look.rome.market"
+msgid "Вы стоите посреди шумной рыночной площади. Впереди, на помосте, окруженном покупателями и зеваками, усатый караванщик демонстрирует живой товар. В толпе вы замечаете знакомого торговца — Фарида."
+msgstr "You stand in the middle of a noisy market square. Ahead, on a platform surrounded by buyers and onlookers, a moustached caravan driver is displaying live goods. In the crowd you notice a familiar trader — Farid."
+
+msgctxt "rh:text.hunger.exhausted"
+msgid "Вы истощены. Усталость растёт быстрее."
+msgstr "You are exhausted from hunger. Fatigue grows faster."
+
+#. draft
+msgctxt "rh:text.item.food.meat.description"
+msgid "Свежее мясо из леса. Съешьте в лагере или в Туманах, чтобы утолить голод, или отдайте питомцам. По дороге в Рим портится."
+msgstr "Fresh meat from the forest. Eat it at camp or in the Mists to satisfy your hunger, or feed it to your pets. It spoils on the way to Rome."
+
+#. draft
+msgctxt "rh:text.item.food.canned_meat.description"
+msgid "Мясо, законсервированное по рецепту мясника. Утоляет голод и даже немного снимает усталость. Увы, дорогу в Рим тоже не переживает."
+msgstr "Meat preserved by the butcher's recipe. Satisfies hunger and even takes the edge off fatigue a little. Alas, it does not survive the road to Rome either."
+
+#. draft
+msgctxt "rh:text.item.potion.lure.description"
+msgid "Пузырек афродизиака, перед запахом которого не устоит ни одна дикарка. Откройте его в лесу и спрячьтесь — она сама выйдет к вам и ничего не заметит. [Используйте в лесу вместо выслеживания]"
+msgstr "A vial of aphrodisiac whose scent no wild beast can resist. Open it in the forest and hide — she will come to you herself, without noticing you. [Use in the forest instead of tracking]"
+
+# ---- texts_hunter_combat ----
+
+msgctxt "rh:text.combat.owlbear.intro"
+msgid "ВНЕЗАПНО перед вами появляется лесное чудовище!"
+msgstr "SUDDENLY a forest monster appears before you!"
+
+msgctxt "rh:text.combat.owlbear.flee"
+msgid "Убегать"
+msgstr "Flee"
+
+msgctxt "rh:text.combat.owlbear.fight"
+msgid "Сражаться"
+msgstr "Fight"
+
+msgctxt "rh:text.combat.owlbear.drop_catch"
+msgid "Бросить монстру дикарку и убежать"
+msgstr "Throw the catch to the monster and run"
+
+msgctxt "rh:text.combat.owlbear.sic_hound"
+msgid "Натравить ищейку и убежать"
+msgstr "Set the hound on it and run"
+
+msgctxt "rh:text.combat.owlbear.sic_retriever"
+msgid "Натравить ретривера"
+msgstr "Set the retriever on it"
+
+msgctxt "rh:text.combat.owlbear.smoke_bomb"
+msgid "Создать дымовую завесу"
+msgstr "Create a smoke screen"
+
+msgctxt "rh:text.combat.owlbear.outcome_won"
+msgid "Вы отважно вступаете в схватку с совомедведем. К счастью, тяжелый двуручный меч — достаточно мощное оружие. Мощным ударом вы сносите уродливую башку зверя с плеч."
+msgstr "You bravely engage the owlbear. Luckily a heavy two-handed sword is powerful enough. With a mighty blow you strike the beast's ugly head from its shoulders."
+
+msgctxt "rh:text.combat.owlbear.outcome_fled"
+msgid "Вы бросаетесь прочь. Прямо за вашей спиной слышится дикий рев и смрадное дыхание твари. Но удача сегодня на вашей стороне. Спустя некоторое время монстр отстает и прекращает преследование."
+msgstr "You dash away. Right behind your back you hear a wild roar and the foul breath of the creature. But luck is on your side today. After a while the monster falls behind and stops the pursuit."
+
+#. вариант 1 из «добычу / ищейку / ретривера»
+msgctxt "rh:text.combat.owlbear.outcome_escaped_catch"
+msgid "Вы скрываетесь от монстра, оставив ему свою добычу."
+msgstr "You escape the monster, leaving it your catch."
+
+msgctxt "rh:text.combat.owlbear.outcome_escaped_hound"
+msgid "Вы скрываетесь от монстра, оставив ему свою ищейку."
+msgstr "You escape the monster, leaving it your hound."
+
+msgctxt "rh:text.combat.owlbear.outcome_escaped_retriever"
+msgid "Вы скрываетесь от монстра, оставив ему своего ретривера."
+msgstr "You escape the monster, leaving it your retriever."
+
+#. вариант 1 из двух: смерть при бегстве
+msgctxt "rh:text.combat.owlbear.outcome_died_flee"
+msgid "Совомедведь догнал и разорвал вас."
+msgstr "The owlbear caught up and tore you apart."
+
+#. вариант 2 из двух: смерть в схватке
+msgctxt "rh:text.combat.owlbear.outcome_died_fight"
+msgid "Одним ударом своей могучей пернатой лапы монстр сбивает вас наземь и вгрызается клювом в ваше горло. Боль невыносима."
+msgstr "One blow of its mighty feathered paw knocks you down and it sinks its beak into your throat. The pain is unbearable."
+
+msgctxt "rh:text.combat.owlbear.outcome_escaped_smoke"
+msgid "Вы кидаете перед собой дымовую шашку и тут же все вокруг заволакивает густым облаком дыма. Воспользовавшись этим прикрытием вы убегаете."
+msgstr "You throw a smoke bomb in front of you and at once everything is enveloped in a dense cloud of smoke. Using this cover you escape."
+
+# ---- texts_hunter_dialogues ----
+
+#. вариант для мужских классов
+msgctxt "rh:text.dialogue.intro.start.name.placeholder_hero"
+msgid "Как зовут вашего героя?"
+msgstr "What is your hero's name?"
+
+#. вариант для Госпожи
+msgctxt "rh:text.dialogue.intro.start.name.placeholder_heroine"
+msgid "Как зовут вашу героиню?"
+msgstr "What is your heroine's name?"
+
+msgctxt "rh:text.dialogue.fog.ghost_horse.main.text"
+msgid "Из Туманов вышел конь, сам словно сотканный из мерцающей дымки. Похоже, это один из призраков тех существ, что навеки потерялись в этих унылых равнинах... Жуть! Но конь вроде бы дружелюбный."
+msgstr "A horse emerges from the Mists, as if woven from shimmering haze. It seems to be one of the ghosts of those creatures forever lost in these dreary plains... Creepy! But the horse appears friendly."
+
+msgctxt "rh:text.dialogue.fog.ghost_horse.main.tame"
+msgid "— Лошаа-аадка!!!"
+msgstr "— Hooorse!!!"
+
+msgctxt "rh:text.dialogue.owlbear.peaceful.main.text"
+msgid "Прямо перед вами стоит кошмарная тварь, напоминающая невероятную помесь медведя и совы. У монстра огромные острые когти и жуткий хищный клюв. Однако он, похоже, вполне дружелюбен. Совомедведь садится на задницу и начинает принюхиваться к вам, умильно лупая своими огромными глазищами."
+msgstr "Right in front of you stands a nightmarish creature resembling an incredible mix of bear and owl. The monster has huge sharp claws and a terrifying predatory beak. However, it seems quite friendly. The owlbear sits on its rear and starts sniffing you, blinking its huge eyes affectionately."
+
+msgctxt "rh:text.dialogue.owlbear.peaceful.main.retreat"
+msgid "Отступить в лес"
+msgstr "Retreat into the forest"
+
+msgctxt "rh:text.dialogue.owlbear.peaceful.main.pet"
+msgid "Погладить зверушку"
+msgstr "Pet the creature"
+
+#. ru короче en: середина пропущена
+msgctxt "rh:text.dialogue.owlbear.peaceful.pet.text"
+msgid "Вы осторожно подходите к сидящему перед вами зверю и протягиваете руку. Монстр доверчиво подставляет вам голову, и вы начинаете чесать его за ухом. ... В руках у вас остается удивительно большое и красивое перо, выпавшее из загривка странного зверя."
+msgstr "You carefully approach the beast sitting before you and stretch out your hand. The monster trustingly offers its head, and you start scratching behind its ear. At first carefully, then harder and harder, finally with both hands. The creature freezes in pleasure and purrs like a giant cat. ... Finally you tire and stop scratching the relaxed beast. In your hands remains an amazingly large and beautiful feather that fell from the strange animal's mane."
+
+msgctxt "rh:text.dialogue.system.game_over.main.text_tired"
+msgid "Вы упали без сил."
+msgstr "You collapsed from exhaustion."
+
+msgctxt "rh:text.dialogue.system.game_over.main.text_murdered"
+msgid "Вас убили."
+msgstr "You were killed."
+
+msgctxt "rh:text.dialogue.system.game_over.main.restart"
+msgid "Начать заново"
+msgstr "Start over"
+
+msgctxt "rh:text.dialogue.system.victory.main.text"
+msgid "Теперь у вас достаточно денег, чтобы начать собственный бизнес. Похоже, эта мечта осуществится."
+msgstr "Now you have enough money to start your own business. It seems this dream will come true."
+
+msgctxt "rh:text.dialogue.system.victory.main.endless"
+msgid "Продолжить в Бесконечном Режиме"
+msgstr "Continue in Endless Mode"
+
+msgctxt "rh:text.dialogue.system.victory.main.finish"
+msgid "Закончить Игру"
+msgstr "Finish the Game"
+
+msgctxt "rh:text.farid.hello_fem"
+msgid "Увидев вас, Фарид широко улыбается и раскрывает объятья.<br>— {name}, свет моих очей! Твой лик освещает эту площадь ярче тысячи солнц! Чем Фарид может услужить тебе, о Незабвенная?"
+msgstr "Seeing you, Farid smiles broadly and opens his arms.<br>— {name}, light of my eyes! Your face illuminates this square brighter than a thousand suns! How may Farid serve you, O Unforgettable One?"
+
+msgctxt "rh:text.farid.hello_male"
+msgid "Увидев вас, Фарид широко улыбается и протягивает руку.<br>— {name}, друг мой. Рад видеть тебя в добром здравии! Решил заняться торговлей или присматриваешь что-то для себя?"
+msgstr "Seeing you, Farid smiles broadly and extends his hand.<br>— {name}, my friend. Glad to see you in good health! Decided to go into trade or looking for something for yourself?"
+
+msgctxt "rh:text.farid.most_expensive"
+msgid "— Оооо! Штучный и экзотический товар порой может стоить дороже чем звезды на небе! Но ты, наверное, имеешь в виду обычных красоток? Самая дорогая не обученная дикарка которую тут продавали до тебя, ушла с аукциона ровно за 600 золотых. Неплохая прибавка к пенсии, на мой взгляд!"
+msgstr "— Ooooh! Unique and exotic goods can sometimes cost more than the stars in the sky! But you probably mean ordinary beauties? The most expensive untrained beast sold here before you went at auction for exactly 600 gold. Not a bad addition to a pension, in my opinion!"
+
+msgctxt "rh:text.farid.price_factors1"
+msgid "— Ну...<br>Если девушка здоровая и без изъянов, всегда найдется тот, кто заплатит золотом."
+msgstr "— Well..<br>If a beast is healthy and without defects, there will always be someone who will pay gold."
+
+msgctxt "rh:text.farid.price_factors2"
+msgid "В первую очередь смотрят на красоту мордашки."
+msgstr "First of all they look at the beauty of the face."
+
+#. диалог rh:dialogue.rome.menhunter
+msgctxt "rh:text.menhunter.greeting"
+msgid "За прилавком стоит хозяин магазина, тертый детина по кличке Менхантер. Отличный мужик. Он всегда готов помочь посетителю с выбором товара, ведь ремесло искателя приключений и торговца он знает не понаслышке!"
+msgstr "Behind the counter stands the shop owner, a weathered fellow nicknamed Menhunter. An excellent chap. He is always ready to help a visitor choose goods, for he knows the craft of adventurer and trader first-hand!"
+
+msgctxt "rh:text.menhunter.advice_gear"
+msgid "— Пару советов могу дать. Палатка у тебя уже есть, но к ней стоит добавить одеяло — в голой палатке особо не выспишься. Так же всегда нужен нож, это универсальный инструмент. Ну и про еду в дорогу забывать никак нельзя. Обязательно бери с запасом. Никогда не знаешь, сколько придется блуждать по туманам. Много было ребят, что умерли там от голода и усталости не рассчитав запас провизии."
+msgstr "— I can give a couple of tips. You already have a tent, but it is worth adding a blanket — you will not sleep well in a bare tent. A knife is also always needed, it is a universal tool. And do not forget food for the road. Always take a reserve. You never know how long you will have to wander the mists. Many lads died there of hunger and fatigue because they miscalculated their provisions."
+
+msgctxt "rh:text.menhunter.where_to_sell"
+msgid "— Тут ответ простой. Иди на центральный рынок. Там постоянно идут аукционы живого товара. Аукцион хорош тем, что ты всегда получишь за свою добычу честную цену, а то и слегка побольше!<br>Правда продать на рынке можно только живую дикарку. Но если притащишь из туманов мертвую дикарку, или просто слишком неказистую, то можешь продать ее мяснику с северной улицы. За тела татуированых дикарок он дает весьма хорошую цену!<br>А если вдруг добудешь в путешествии какие-то редкие трофеи, то смело приноси их сюда. Я трофеями тоже торгую."
+msgstr "— The answer is simple. Go to the central market. Auctions of live goods are constantly held there. An auction is good because you will always get a fair price for your catch, or even a bit more!<br>True, you can only sell a living beast on the market. But if you drag a dead beast out of the mists, or simply a too plain one, you can sell her to the butcher on the northern street. For the bodies of tattooed beasts he pays a very good price!<br>And if you happen to obtain some rare trophies on your travels, bring them here boldly. I trade in trophies too."
+
+#. текст записок по зоне: fog, woods, camp
+msgctxt "rh:text.notes.fog"
+msgid "Туман такой густой, что вы с трудом различаете записи:<br>Чертовы туманы похоже пьют из меня силу. Бродя по ним, устаешь неимоверно. Выход один — вовремя есть и достаточно спать. Сны, правда, тут снятся жуткие.<br>Туманы совершенно непредсказуемы. Случалось, что я добирался до другого мира буквально за пару часов, но порой приходится бродить несколько дней, пока не наткнешься на просвет.<br>Самое главное: всегда доверять указаниям кристалла!!! Хотя дорога в туманах каждый раз другая, кристалл всегда точно знает, куда надо идти.<br>PS: Ненавижу эти трижды проклятые туманы!"
+msgstr "The fog is so thick that you can barely make out the notes:<br>Damn mists seem to drink the strength out of me. Wandering them tires one tremendously. The only way out is to eat on time and sleep enough. The dreams, true, are terrible here.<br>The mists are completely unpredictable. It happened that I reached another world in literally a couple of hours, but sometimes one has to wander for several days until one stumbles on a clearing.<br>The most important thing: always trust the crystal's directions!!! Although the road in the mists is different every time, the crystal always knows exactly where to go.<br>PS: I hate these thrice-cursed mists!"
+
+msgctxt "rh:text.notes.woods"
+msgid "Выход из этих лесов только один — обратно в туманы. Я всегда находил их там же, когда возвращался на опушку. Охотиться можно в любой части леса, но я заметил, что чем глубже в чаще живет дикарка, тем больше шансов, что она окажется более ловкой, умной и выносливой. За таких намного больше денег дают на аукционе рабов. Только вот беда — поймать то их тоже сложнее.<br>На охоте многое зависит от везения, но есть возможность улучшить свои шансы: хорошее снаряжение — залог успеха.<br>NB: Не стоит ходить в чащобу без острого меча и крепкой кольчуги. Там что-то поопаснее дикарок водится, я знаю!"
+msgstr "The only way out of these forests is back into the mists. I always found them in the same place when I returned to the edge. One can hunt in any part of the forest, but I noticed that the deeper in the thicket a wild beast lives, the greater the chance she will turn out more agile, clever and enduring. For such ones far more money is given at the slave auction. Only the trouble is — catching them is also harder.<br>In hunting much depends on luck, but there is a way to improve one's chances: good equipment is the key to success.<br>NB: One should not go into the thicket without a sharp sword and sturdy chainmail. Something more dangerous than wild beasts lives there, I know!"
+
+msgctxt "rh:text.notes.camp"
+msgid "В лагере непременно нужен костер. Когда захочешь поесть просто достань из рюкзака припасы и разогрей. Но в лесу я больше люблю есть мясо. <br>Если сильно устанешь, можно просто отдохнуть, но все же днем лучше заниматься охотой. Хороший ночной сон бодрит лучше, чем целый день безделья в лагере.<br>Когда поймаешь дикарку, обязательно разбей лагерь и займись ей... [дальше идет глава «Что делать с добычей?»]."
+msgstr "In camp a fire is indispensable. When you want to eat simply take supplies from the backpack and warm them. But in the forest I prefer to eat meat. <br>If you get very tired you can simply rest, but still it is better to hunt during the day. A good night's sleep invigorates better than a whole day of idleness in camp.<br>When you catch a wild beast, be sure to pitch camp and deal with her... [further goes the chapter \"What to do with the catch\"]."
+
+msgctxt "rh:text.dialogue.common.next"
+msgid "Далее"
+msgstr "Next"
+
+#. draft
+msgctxt "rh:text.dialogue.common.back"
+msgid "Спросить о другом"
+msgstr "Ask about something else"
+
+#. draft
+msgctxt "rh:text.dialogue.common.end_talk"
+msgid "Закончить разговор"
+msgstr "End the conversation"
+
+#. draft
+msgctxt "rh:text.farid.ask_most_expensive"
+msgid "— Какую самую дорогую дикарку здесь продавали?"
+msgstr "— What is the most expensive wild beast ever sold here?"
+
+#. draft
+msgctxt "rh:text.farid.ask_price_factors"
+msgid "— От чего зависит цена дикарки?"
+msgstr "— What does a wild beast's price depend on?"
+
+#. draft
+msgctxt "rh:text.farid.sell"
+msgid "— Хочу продать добычу."
+msgstr "— I want to sell my catch."
+
+#. draft
+msgctxt "rh:text.menhunter.ask_gear"
+msgid "— Что посоветуешь взять в дорогу?"
+msgstr "— What would you advise me to take on the road?"
+
+#. draft
+msgctxt "rh:text.menhunter.ask_where_to_sell"
+msgid "— Где можно продать добычу?"
+msgstr "— Where can I sell my catch?"
+
+#. draft
+msgctxt "rh:text.notes.rome"
+msgid "Вечный Рим — единственное место, где можно спокойно отдохнуть и выручить золото за добычу. Живых дикарок лучше всего вести на центральный рынок: там идут аукционы, и Фарид всегда даст честную цену. Мертвых и неказистых неси мяснику с северной улицы — за татуированных он платит особенно щедро, а заодно может поучить торговле. У Менхантера можно купить все нужное для охоты и продать редкие трофеи.<br>Прежде чем шагнуть в Туманы, проверь, хватит ли припасов. И не забудь кристалл!"
+msgstr "Eternal Rome is the only place where you can rest in peace and get gold for your catch. Living wild beasts are best taken to the central market: auctions are held there, and Farid always gives a fair price. Take dead and plain ones to the butcher on the northern street — he pays especially well for tattooed ones, and he can also teach you a thing or two about trade. At Menhunter's you can buy everything a hunt needs and sell rare trophies.<br>Before stepping into the Mists, check that you have enough supplies. And do not forget the crystal!"
+
+msgctxt "rh:text.dialogue.hunt.encounter.stalking.text"
+msgid "Дикарка вас ещё не заметила."
+msgstr "The wild beast has not noticed you yet."
+
+msgctxt "rh:text.dialogue.hunt.encounter.chase.text"
+msgid "Убегающая дикарка петляет в густых зарослях."
+msgstr "The wild beast is fleeing through the dense thickets."
+
+msgctxt "rh:text.dialogue.hunt.encounter.fight.text"
+msgid "Дикарка стоит прямо перед вами. Она испугана но, похоже, готова защищаться."
+msgstr "The wild beast stands right in front of you. She is frightened but seems ready to defend herself."
+
+msgctxt "rh:text.dialogue.hunt.encounter.stalking.look"
+msgid "Присмотреться к дикарке"
+msgstr "Take a closer look at the wild beast"
+
+msgctxt "rh:text.dialogue.hunt.encounter.stalking.sneak"
+msgid "Подкрасться поближе"
+msgstr "Sneak closer"
+
+msgctxt "rh:text.dialogue.hunt.encounter.stalking.leave"
+msgid "Уйти"
+msgstr "Leave"
+
+msgctxt "rh:text.dialogue.hunt.encounter.chase.pursue"
+msgid "Преследовать жертву"
+msgstr "Pursue the prey"
+
+msgctxt "rh:text.dialogue.hunt.encounter.chase.leave"
+msgid "Отказаться от охоты"
+msgstr "Give up the chase"
+
+#. было «… / Отказаться от охоты»
+msgctxt "rh:text.dialogue.hunt.encounter.fight.leave"
+msgid "Оставить ее"
+msgstr "Leave her alone"
+
+#. было «Закрыть / Назад»
+msgctxt "rh:text.dialogue.common.close"
+msgid "Закрыть"
+msgstr "Close"
+
+msgctxt "rh:text.dialogue.camp.inspect.main.text"
+msgid "Вы переводите взгляд на свою жертву:"
+msgstr "You turn your gaze to your victim:"
+
+#. было «Оставить / Отступить»
+msgctxt "rh:text.dialogue.fog.ghost_horse.main.leave"
+msgid "Оставить"
+msgstr "Leave it"
+
+msgctxt "rh:text.dialogue.fog.ghost_horse.tamed.text"
+msgid "Конь-призрак теперь ваш спутник. Он будет появляться каждый раз, когда вы входите в Туманы."
+msgstr "The ghost horse is now your companion. It will appear each time you enter the Mists."
+
+#. было «Далее / Закрыть»
+msgctxt "rh:text.dialogue.owlbear.peaceful.pet.close"
+msgid "Далее"
+msgstr "Continue"
+
+msgctxt "rh:text.dialogue.butcher.lessons.main.text"
+msgid "— Научить — не научить, а показать, как это сподручнее делать я конечно могу. Только учти, без хорошего ножа тут никак не обойтись! Смотри."
+msgstr "— I can show you how it is more convenient to do, of course. Just remember, without a good knife there is no way! Look."
+
+msgctxt "rh:text.dialogue.butcher.lessons.lesson.text"
+msgid "Вот примерно так мы и работаем."
+msgstr "That is roughly how we work."
+
+msgctxt "rh:text.dialogue.butcher.lessons.lesson.finish"
+msgid "Вы научились обкрадывать мертвых дикарок."
+msgstr "You have learned how to rob dead wild beasts."
+
+#. draft: по формуле цены рынка
+msgctxt "rh:text.farid.price_factors3"
+msgid "Потом фигура: покупатели любят стройные ножки и крепкое тело. Ловкость и ум тоже в цене — смышленая девушка быстрее учится. Зрелых ценят выше, чем молоденьких. А татуировка, друг мой, удваивает цену: нетронутая дикарка — большая редкость!"
+msgstr "Then the figure: buyers love slender legs and a firm body. Agility and a sharp mind count too — a clever girl learns faster. Mature ones are valued more than young girls. And a tattoo, my friend, doubles the price: an untouched beast is a rare treasure!"
+
+# ---- texts_hunter_shops ----
+
+msgctxt "rh:text.shop.rome.menhunter.title"
+msgid "Магазин Менхантера"
+msgstr "Menhunter's Shop"
+
+msgctxt "rh:text.shop.rome.butcher.title"
+msgid "Лавка мясника"
+msgstr "Butcher's Shop"
+
+msgctxt "rh:text.shop.rome.farid.title"
+msgid "Рынок"
+msgstr "Market"
+
+msgctxt "rh:text.shop.rome.menhunter.tab_tools"
+msgid "Снаряжение"
+msgstr "Equipment"
+
+msgctxt "rh:text.shop.rome.menhunter.tab_weapons"
+msgid "Оружие"
+msgstr "Weapons"
+
+msgctxt "rh:text.shop.rome.menhunter.tab_clothes"
+msgid "Одежда"
+msgstr "Clothes"
+
+msgctxt "rh:text.shop.rome.menhunter.tab_pets"
+msgid "Питомцы"
+msgstr "Pets"
+
+msgctxt "rh:text.shop.rome.menhunter.tab_consumables"
+msgid "Расходники"
+msgstr "Consumables"
+
+msgctxt "rh:text.shop.rome.menhunter.tab_sell"
+msgid "Продать трофеи"
+msgstr "Sell trophies"
+
+msgctxt "rh:text.shop.rome.butcher.lessons"
+msgid "Научить торговле"
+msgstr "Teach me how to trade"
+
+msgctxt "rh:text.shop.common.buy"
+msgid "Купить"
+msgstr "Buy"
+
+msgctxt "rh:text.shop.common.sell"
+msgid "Продать"
+msgstr "Sell"
+
+#. было «Уйти / Закончить покупки»
+msgctxt "rh:text.shop.common.leave"
+msgid "Уйти"
+msgstr "Leave"
+
+msgctxt "rh:text.shop.common.price"
+msgid "Цена: {price}"
+msgstr "Price: {price}"
+
+# ---- texts_hunter_messages ----
+
+msgctxt "rh:text.message.pets.hound_lost"
+msgid "Ваша ищейка пропала. Похоже, она решила поискать хозяина, который будет кормить ее почаще."
+msgstr "Your hound has disappeared. It seems it decided to look for a master who will feed it more often."
+
+msgctxt "rh:text.message.fog.horse_heard"
+msgid "Из туманов доносится конское ржание и цокот копыт. Похоже, вы тут не одни!"
+msgstr "From the mists comes the neighing of a horse and the clatter of hooves. It seems you are not alone here!"
+
+msgctxt "rh:text.message.fog.lost"
+msgid "Вы блуждаете в тумане несколько часов. Просветов не видно."
+msgstr "You wander in the fog for several hours. No clearings in sight."
+
+msgctxt "rh:text.message.fog.reached_rome"
+msgid "Наконец-то впереди виден просвет!!!"
+msgstr "At last a clearing ahead!!!"
+
+msgctxt "rh:text.message.fog.reached_woods"
+msgid "Наконец-то впереди виден просвет!!!"
+msgstr "At last a clearing ahead!!!"
+
+msgctxt "rh:text.message.fog.slept"
+msgid "Когда вы проснулись, вокруг все осталось прежним. В туманах трудно понять, сколько прошло времени, но, по крайней мере, вы выспались."
+msgstr "When you woke up, everything around remained the same. In the mists it is hard to tell how much time has passed, but at least you got some sleep."
+
+msgctxt "rh:text.message.fog.horse_ridden"
+msgid "Вы седлаете коня-призрака, и тот вихрем устремляется в самую толщу туманов. Хотя вам с трудом удается направить его в нужную сторону, уже через час впереди виден просвет."
+msgstr "You mount the ghost horse and it rushes like a whirlwind into the thick of the mists. Although you can barely steer it in the right direction, within an hour a clearing is visible ahead."
+
+msgctxt "rh:text.message.traps.set"
+msgid "Вы устанавливаете ловушки."
+msgstr "You set the traps."
+
+msgctxt "rh:text.message.traps.caught"
+msgid "В одну из ваших ловушек попалась неосторожная дикарка!"
+msgstr "An unwary wild beast has been caught in one of your traps!"
+
+#. параметр name — имя охотника
+msgctxt "rh:text.message.traps.empty"
+msgid "Никто не попался в ваши ловушки, {name}."
+msgstr "No one got caught in your traps, {name}."
+
+msgctxt "rh:text.message.hunt.lured"
+msgid "Вы открываете пузырек и ставите его посреди поляны, а сами прячетесь в кустах. Ждать приходится долго, но охотники — терпеливый народ. Наконец из леса появляется девушка. Она, словно зачарованная, идет прямо к оставленному вами пузырьку."
+msgstr "You open the vial and place it in the middle of the clearing, then hide in the bushes. The wait is long, but hunters are a patient folk. Finally a wild beast emerges from the forest. She walks straight toward the vial you left, as if enchanted."
+
+msgctxt "rh:text.message.hunt.nobody"
+msgid "Вы бродили по лесам несколько часов, но поиски оказались напрасными."
+msgstr "You wandered the woods for several hours, but the search proved fruitless."
+
+msgctxt "rh:text.message.hunt.noticed"
+msgid "Впереди вам почудилось какое-то движение. Если это и была дикарка, то она явно заметила вас раньше, чем вы ее."
+msgstr "Ahead you thought you saw some movement. If it was a wild beast, she clearly noticed you before you noticed her."
+
+msgctxt "rh:text.message.hunt.unnoticed"
+msgid "Впереди вам почудилось какое-то движение. Похоже, это дикарка, и она вас еще не заметила!"
+msgstr "Ahead you thought you saw some movement. It seems to be a wild beast and she has not noticed you yet!"
+
+msgctxt "rh:text.message.hunt.branch_snapped"
+msgid "Вы начали осторожно подкрадываться к дикарке сзади, но вас выдал предательский хруст ветки под ногами. Дикарка стремглав бросается в лес. Вы можете попробовать ее догнать!"
+msgstr "You began carefully sneaking up on the wild beast from behind, but a treacherous snap of a branch underfoot gave you away. She dashes into the forest. You can try to catch her!"
+
+msgctxt "rh:text.message.hunt.close"
+msgid "Вы осторожно подкрадываетесь к своей жертве. Когда расстояние между вами сокращается до предела, дикарка испуганно оглядывается."
+msgstr "You carefully sneak up on your prey. When the distance between you shrinks to the limit, the wild beast looks around in fright."
+
+msgctxt "rh:text.message.hunt.cant_catch_up"
+msgid "Убегающая дикарка петляет в густых зарослях. Такое впечатление, что ей неведома усталость. В бесплодной погоне проходит несколько часов. Вы устаете все больше и больше, но никак не можете догнать беглянку."
+msgstr "The fleeing wild beast weaves through the dense thickets. It seems she knows no fatigue. Several hours of fruitless pursuit pass. You grow more and more tired, but cannot catch the runaway."
+
+msgctxt "rh:text.message.hunt.caught_up"
+msgid "Вы бросаетесь вслед за улепетывающей дикаркой и постепенно настигаете ее."
+msgstr "You rush after the fleeing wild beast and gradually overtake her."
+
+msgctxt "rh:text.message.hunt.capture_failed"
+msgid "Дикарка ловко уклоняется от удара и бросается в лес в попытке убежать от вас."
+msgstr "The wild beast nimbly dodges the blow and dashes into the forest, trying to escape from you."
+
+#. draft: неудачный захват при подкрадывании
+msgctxt "rh:text.message.hunt.escaped"
+msgid "Дикарка увернулась и скрылась в чаще. Догнать ее уже не получится."
+msgstr "The wild beast dodges and vanishes into the thicket. There is no catching her now."
+
+#. побег добычи при ходьбе по лесу
+msgctxt "rh:text.message.catch.escaped_walk"
+msgid "Дикарке как-то удалось ослабить веревку, которой вы ее связали. Улучив момент, когда вы отвернулись, она шустро бросается в сторону и скрывается в лесу."
+msgstr "The wild beast somehow managed to loosen the rope you tied her with. Seizing the moment when you turned away, she nimbly dashes aside and vanishes into the forest."
+
+msgctxt "rh:text.message.hunt.captured_alive"
+msgid "После короткой, но ожесточенной схватки вам удается повалить дикарку на землю и заломать ей руки за спину. Теперь она ваша!"
+msgstr "After a short but fierce struggle you manage to throw the wild beast to the ground and twist her arms behind her back. Now she is yours!"
+
+msgctxt "rh:text.message.hunt.captured_dead"
+msgid "Вы наносите сильный удар. Истекая кровью, она падает на землю. Теперь это ваша добыча!"
+msgstr "You deliver a strong blow. Bleeding, she falls to the ground. Now this is your catch!"
+
+#. побег добычи при отдыхе и ночном сне
+msgctxt "rh:text.message.catch.escaped"
+msgid "Пока вы спали, дикарке удалось избавиться от веревок и убежать."
+msgstr "While you slept, the wild beast managed to free herself from the ropes and escape."
+
+msgctxt "rh:text.message.camp.slept_well"
+msgid "Завернувшись в теплое шерстяное одеяло, вы проспали всю ночь сном праведника. Усталости как не бывало."
+msgstr "Wrapped in a warm woolen blanket, you slept the whole night the sleep of the righteous. Fatigue is gone."
+
+msgctxt "rh:text.message.camp.froze"
+msgid "Ночью вы изрядно замерзли и почти не выспались. Да, надо будет непременно купить одеяло!"
+msgstr "At night you got thoroughly chilled and barely slept. Yes, you will definitely need to buy a blanket!"
+
+msgctxt "rh:text.message.camp.rested"
+msgid "Отдых постепенно восстанавливает ваши силы."
+msgstr "Rest gradually restores your strength."
+
+msgctxt "rh:text.message.camp.ate"
+msgid "Вы поели. Голод утолен."
+msgstr "You eat. Hunger is gone."
+
+msgctxt "rh:text.message.camp.fed_pet"
+msgid "Вы покормили питомца."
+msgstr "You feed your pet."
+
+msgctxt "rh:text.message.camp.subdued"
+msgid "Показав дикарке свою власть, вы почувствовали прилив бодрости и уверенности в себе. Ваши шансы в дальнейшей охоте явно повышаются!"
+msgstr "Having shown the wild beast your power, you feel a surge of vigor and self-confidence. Your chances in further hunting clearly increase!"
+
+msgctxt "rh:text.message.camp.killed"
+msgid "Решительным движением вы перерезаете дикарке глотку."
+msgstr "With a decisive movement you cut the wild beast's throat."
+
+#. вариант без оков
+msgctxt "rh:text.message.camp.released"
+msgid "Вы подходите к дикарке и развязываете ее. Бедная девушка дрожит от страха и тихонько плачет. Аккуратно поставив ее на ноги, вы поворачиваете девушку лицом к лесу."
+msgstr "You approach the wild beast and untie her. The poor girl trembles with fear and quietly weeps. Carefully setting her on her feet, you turn her to face the forest."
+
+#. вариант с оковами
+msgctxt "rh:text.message.camp.released_shackles"
+msgid "Вы подходите к дикарке и снимаете кандалы. Бедная девушка дрожит от страха и тихонько плачет. Аккуратно поставив ее на ноги, вы поворачиваете девушку лицом к лесу."
+msgstr "You approach the wild beast and remove the shackles. The poor girl trembles with fear and quietly weeps. Carefully setting her on her feet, you turn her to face the forest."
+
+msgctxt "rh:text.message.camp.corpse_dumped"
+msgid "Вы выбрасываете тело дикарки в лесу. Настоящее пиршество для падальщиков!"
+msgstr "You throw the wild beast's body into the forest. A real feast for scavengers!"
+
+msgctxt "rh:text.message.tonic.drunk"
+msgid "Очень бодрит!"
+msgstr "Very invigorating!"
+
+msgctxt "rh:text.message.bird.describe"
+msgid "На самом-то деле это совсем не птица, а мелкий бес-счетовод. Фактически это живой пернатый справочник. Кормить его не надо — сам что-нибудь поймает. Правда, пользы от такой птички охотнику не слишком много. Но бесенок может просчитать приблизительную стоимость вашей добычи на рынке и у мясника."
+msgstr "Actually this is not a bird at all, but a minor accounting demon. In fact, it is a living feathered reference book. No need to feed it — it will catch something itself. True, such a bird is of little use to a hunter. But the little devil can calculate the approximate value of your catch at the market and at the butcher's."
+
+#. параметры market, shop — числа; окончание по числу через plural
+msgctxt "rh:text.message.bird.estimate_alive"
+msgid "Птица-секретарь нахохливается и внимательно смотрит на пойманную дикарку одним глазом. Скрипучим голосом птица заявляет: стоимость данного экземпляра на рынке составит не меньше {market} {market}|plural(one=золотую монету,few=золотые монеты,many=золотых монет,other=золотых монеты). Мясник даст за нее {shop} {shop}|plural(one=золотую монету,few=золотые монеты,many=золотых монет,other=золотых монеты)."
+msgstr "The secretary bird ruffles up and carefully looks at the captured wild beast with one eye. In a creaky voice the bird declares: The value of this specimen at the market will be no less than {market} {market}|plural(one=gold coin,other=gold coins). The butcher will give {shop} {shop}|plural(one=gold coin,other=gold coins) for her."
+
+msgctxt "rh:text.message.bird.estimate_dead"
+msgid "Птица-секретарь нахохливается и внимательно смотрит на пойманную дикарку одним глазом. Скрипучим голосом птица заявляет: мясник даст за нее {shop} {shop}|plural(one=золотую монету,few=золотые монеты,many=золотых монет,other=золотых монеты)."
+msgstr "The secretary bird ruffles up and carefully looks at the captured wild beast with one eye. In a creaky voice the bird declares: The butcher will give {shop} {shop}|plural(one=gold coin,other=gold coins) for her."
+
+msgctxt "rh:text.message.shop.bought"
+msgid "Спасибо за покупку!"
+msgstr "Thank you for the purchase!"
+
+#. параметр price — число
+msgctxt "rh:text.message.shop.sold"
+msgid "Вы получили {price} {price}|plural(one=золотую монету,few=золотые монеты,many=золотых монет,other=золотых монеты)."
+msgstr "You received {price} {price}|plural(one=gold coin,other=gold coins)."
+
+#. draft: обокрасть тело без тату
+msgctxt "rh:text.message.camp.robbed_meat"
+msgid "Вы разделываете тело. Добыто {amount} {amount}|plural(one=порция,few=порции,many=порций,other=порции) мяса."
+msgstr "You butcher the body. You get {amount} {amount}|plural(one=portion,other=portions) of meat."
+
+#. draft: обокрасть тело с тату
+msgctxt "rh:text.message.camp.robbed_canned"
+msgid "Вы разделываете тело татуированной дикарки и консервируете мясо. Добыто {amount} {amount}|plural(one=банка,few=банки,many=банок,other=банки) консервов."
+msgstr "You butcher the tattooed body and preserve the meat. You get {amount} {amount}|plural(one=can,other=cans) of canned food."
+
+# ---- texts_hunter_system ----
+
+#. на будущее: главного меню пока нет
+msgctxt "rh:text.system.age_check.disagree"
+msgid "Немедленно выйти"
+msgstr "Exit immediately"
+
+msgctxt "rh:text.system.main_menu.start"
+msgid "Начать игру"
+msgstr "Start Game"
+
+msgctxt "rh:text.system.main_menu.help"
+msgid "Помощь"
+msgstr "Help"
+
+msgctxt "rh:text.system.main_menu.credits"
+msgid "Инфо"
+msgstr "Info / Credits"
+
+#. переписано под текущие правила
+msgctxt "rh:text.help.main"
+msgid "Управление в игре осуществляется мышью. Выбирайте нужное действие в меню локации; недоступные действия показаны неактивными, а подсказка объясняет почему. Предметы инвентаря, которые можно использовать, — тоник, птицу-секретаря и записки охотника — тоже можно нажать мышью. Записки охотника дают совет по тому месту, где вы сейчас находитесь.<br><br>Золото, усталость, голод и добыча всегда видны на панели состояния, а итог последнего действия выводится в окно последнего события.<br><br>Сохраниться можно на экране локации. Во время охоты, танца, торговли или боя сохранение недоступно.<br><br>Совет: чтобы усилить вашего персонажа, покупайте снаряжение в магазине Менхантера. Кроме того, охотник становится опытнее, когда впервые танцует с пойманной татуированной дикаркой (учтите, что обычный танец снимает с нее татуировку и снижает ее цену на рынке).<br><br>Игра будет пройдена, когда ваш персонаж будет иметь на руках не меньше 1000 золотых монет, хотя вы можете продолжить игру и после этого уже безо всякой цели."
+msgstr "The game is controlled with the mouse. Choose an action in the location menu; unavailable actions are shown greyed out, and a tip explains why. Usable items in the inventory — the tonic, the secretary bird and the Hunter's Notes — can be clicked too. The Hunter's Notes give advice about the area you are currently in.<br><br>Gold, fatigue, hunger and your catch are always visible on the status panel, and the result of your last action appears in the last event window.<br><br>You can save the game on the location screen. During a hunt, a dance, trading or a fight saving is not available.<br><br>Tip: to strengthen your character, buy equipment in Menhunter's shop. In addition, the hunter becomes more experienced the first time he dances with a captured tattooed wild beast (note that an ordinary dance removes her tattoo and lowers her price on the market).<br><br>The game will be completed when your character has at least 1000 gold coins, although you may continue playing after that with no particular goal."
+
+msgctxt "rh:text.system.game_over.continue_msg"
+msgid "Вы просыпаетесь в канаве у обочины. На теле ни царапинки. Вокруг раздается привычный шум улочек Вечного Рима."
+msgstr "You wake up in a ditch by the roadside. Not a scratch on your body. Around you the familiar noise of the streets of Eternal Rome is heard."
+
+msgctxt "rh:text.system.game_over.finish"
+msgid "Закончить игру"
+msgstr "Finish the game"
+
+msgctxt "rh:text.system.game_over.continue"
+msgid "Продолжить игру тем же персонажем"
+msgstr "Continue with the same character"
+
+#. конечный узел после «Закончить игру» и победы
+msgctxt "rh:text.system.the_end"
+msgid "Конец"
+msgstr "The End"
+
+# ---- texts_hunter_intro ----
+
+msgctxt "rh:text.intro.choose_hero"
+msgid "Выберите героя"
+msgstr "Choose a hero"
+
+msgctxt "rh:text.intro.history.trapper"
+msgid "Вы родились в мире, которым правили мечи и магия. Благородные рыцари бились там на турнирах, а после пировали в неприступных замках. Могущественные волшебники покоряли заклинаниями драконов, летавших в голубых небесах. А мирные жители год за годом возделывали свои поля.<br><br>Ваш отец был распорядителем охоты в лесу графа и сызмальства приручал вас к своему ремеслу. Когда вам стукнуло шестнадцать лет, будущее было уже ясным и предсказуемым. Вы должны были жениться на дочери булочника и стать егерем, а после смерти отца принять на себя должность распорядителя охоты. Но однажды, знакомый как свои пять пальцев лес преподнес вам сюрприз.<br><br>На дне оврага, куда упала подстреленная вами косуля, вы заметили огромное облако невероятно густого тумана. Вы вошли в этот туман, чтобы забрать свою добычу, но выхода найти так и не смогли. Многие часы, а может быть даже и дни вы блуждали среди туманов и никак не могли узнать родные места. И вот, наконец, впереди забрезжил дневной свет..."
+msgstr "You were born in a world ruled by swords and magic. Noble knights fought in tournaments and then feasted in impregnable castles. Powerful wizards subdued dragons flying in the blue skies with spells. And peaceful folk year after year tilled their fields.<br><br>Your father was the hunt master in the count's forest and from early childhood trained you in his craft. When you turned sixteen the future was already clear and predictable. You were to marry the baker's daughter and become a gamekeeper, and after your father's death take over the position of hunt master. But one day the forest you knew like the back of your hand sprang a surprise on you.<br><br>At the bottom of a ravine where the roe deer you had shot had fallen, you noticed a huge cloud of incredibly dense fog. You entered that fog to retrieve your quarry, but could not find the way out. For many hours, perhaps even days, you wandered among the mists and could not recognize familiar places. And then at last daylight glimmered ahead..."
+
+msgctxt "rh:text.intro.history.assassin"
+msgid "Вы родились в городе Анк Морпорке, стоящем посреди мирового диска, покоящегося на спинах трех слонов. Слоны в свою очередь стоят на спине гигантской черепахи... ну, в общем, все мы учили в школе гАстрономию, верно?<br><br>Анк Морпорк жестокий город. И вы вполне хлебнули этой жестокости. Расти вам пришлось на грязных улицах, потому что родители умерли во время эпидемии. Вы сбивались в уличные банды вместе с другими беспризорниками и грабили по ночам случайных прохожих. Тех ребят, которым удалось стать на улицах взрослыми и не повстречаться со Смертью, всегда с удовольствием принимали разные почтенные гильдии. Например, гильдия Попрошаек, или гильдия Воров и конечно самая-самая классная гильдия Наемных Убийц. Вам повезло больше всего — вы стали учиться на Ассасина.<br><br>После обучения вам предстоял экзамен. Самая настоящая полевая работа. И цель ваши учителя подобрали не простую — волшебника. Следующей же ночью, вы смазали ядом свой верный кинжал и пробрались через окно в его лабораторию. Когда вы проходили мимо стола с реактивами, ваш специальный черный плащ (тм) смахнул на пол какой-то подозрительный пузырек. Пузырек раскололся, и из него потекли потоки невероятно густого тумана. Вы не могли увидеть даже собственную руку. Но хуже того, никак не удавалось нащупать ни стол, ни дверь, ни даже стену. Многие часы, а может быть даже и дни вы блуждали среди туманов и никак не могли узнать, где очутились. И вот, наконец, впереди забрезжил дневной свет..."
+msgstr "You were born in the city of Ankh-Morpork, standing in the middle of the Discworld resting on the backs of three elephants. The elephants in turn stand on the back of a giant turtle... well, we all studied gAstronomy at school, right?<br><br>Ankh-Morpork is a cruel city. And you had your full share of that cruelty. You had to grow up on the dirty streets because your parents died in an epidemic. You formed street gangs with other waifs and robbed random passers-by at night. Those lads who managed to grow up on the streets and not meet Death were always gladly accepted by various respectable guilds. For example the Beggars' Guild, or the Thieves' Guild, and of course the very best Assassins' Guild. You were the luckiest — you began training as an Assassin.<br><br>After training you faced an examination. Real field work. And the target your teachers chose was no simple one — a wizard. The very next night you smeared your trusty dagger with poison and climbed through the window into his laboratory. As you passed the table with reagents, your special black cloak (tm) swept some suspicious vial onto the floor. The vial shattered and streams of incredibly dense fog poured from it. You could not even see your own hand. Worse, you could not feel the table, the door or even the wall. For many hours, perhaps even days, you wandered among the mists and could not tell where you were. And then at last daylight glimmered ahead..."
+
+msgctxt "rh:text.intro.history.barbarian"
+msgid "Вы родились в суровом мире, среди снегов и скал. Ваше племя строило крепкие драккары и лучшие воины отправлялись на них за море, грабить мягкотелых жителей южных стран. Когда вы подросли, отец впервые взял вас вместе с собой в рейд.<br><br>Ветер был попутным и драккар быстро пересек море. Вы сжигали монастыри, грабили, насиловали и убивали. Последней остановкой на пути должна была стать старая церковь, стоящая неподалеку от берега. Глупые южане всегда ставили дорогие золотые чаши на свои алтари, и кто бы удержался от того что бы их забрать?<br><br>По пути к церкви ваша дружина наткнулась на облако удивительно плотного тумана. Войдя в него, вы почти сразу потеряли своих друзей и никак не могли найти выход. Многие часы, а может быть даже и дни вы блуждали среди туманов и звали своего отца и друзей, но никто не откликался. И вот, наконец, впереди забрезжил дневной свет..."
+msgstr "You were born in a harsh world among snows and rocks. Your tribe built sturdy longships and the best warriors sailed them overseas to raid the soft southern lands. When you grew older your father first took you with him on a raid.<br><br>The wind was fair and the longship quickly crossed the sea. You burned monasteries, robbed, raped and killed. The last stop on the way was to be an old church standing not far from the shore. Stupid southerners always put expensive golden cups on their altars, and who could resist taking them?<br><br>On the way to the church your band ran into a cloud of surprisingly dense fog. Entering it you almost at once lost your friends and could not find the way out. For many hours, perhaps even days, you wandered among the mists calling for your father and comrades, but no one answered. And then at last daylight glimmered ahead..."
+
+msgctxt "rh:text.intro.history.mistress"
+msgid "Вы родились в семье богатого аристократа, в мире, где власть и деньги были превыше благородства и чести. Детство ваше прошло безоблачно. У вашего отца было много слуг и крепостных крестьян. Вам с детства нравилось унижать и наказывать их, демонстрируя свою власть. Вы так же развлекались охотой, фехтованием и танцами.<br><br>На ваш восемнадцатый день рожденья вы получили в подарок от отца собственное поместье со множеством слуг. Тепло попрощавшись с родными вы сели в карету запряженную четверкой вороных и направились обживать свой новый дом.<br><br>По дороге карета заехала в облако необычайно густого тумана и вскоре остановилась. Кипя от злости, вы взяли свою любимую плеть и вышли наружу, чтобы наказать нерадивого кучера за задержку. Но кучера на козлах не было. Тогда вы отправились искать этого проходимца в тумане, но заблудились и не смогли даже вернуться к собственной карете. Многие часы, а может быть даже и дни вы блуждали среди туманов и никак не могли узнать родные места. И вот, наконец, впереди забрезжил дневной свет..."
+msgstr "You were born into the family of a rich aristocrat in a world where power and money stood above nobility and honour. Your childhood passed cloudlessly. Your father had many servants and serfs. From childhood you liked to humiliate and punish them, demonstrating your power. You also amused yourself with hunting, fencing and dancing.<br><br>On your eighteenth birthday you received from your father your own estate with many servants. Warmly saying goodbye to your relatives you sat in a carriage drawn by four black horses and set off to settle into your new home.<br><br>On the way the carriage entered a cloud of unusually dense fog and soon stopped. Boiling with rage you took your favourite whip and went outside to punish the careless coachman for the delay. But the coachman was not on the box. Then you went looking for that scoundrel in the fog, but got lost and could not even return to your own carriage. For many hours, perhaps even days, you wandered among the mists and could not recognize familiar places. And then at last daylight glimmered ahead..."
+
+msgctxt "rh:text.intro.rome1"
+msgid "На стыке бесконечного множества вселенных стоит странный и загадочный город — Вечный Рим. Со всех сторон город окружен Туманами. Тот кто вступает в Туманы Вечного Рима, обречен скитаться там пока не умрет или не наткнется на выход в другой мир. Вступивший же в Туманы со стороны другого мира, обязательно придет в Вечный Рим. Все дороги ведут в Рим. И ваша дорога тоже.<br><br>Оказавшись в Городе Туманов вы попытались найти путь обратно в свой мир. Но кого бы вы ни спрашивали, с кем бы ни встречались, никто не мог подсказать вам дороги. Со временем вы стали обживаться в этом диковинном мире. Роскошь Вечного Рима и величие его белых башен пленили вас. Но, как и в любом другом городе, хорошо живет лишь тот, у кого в кошельке есть звонкие монеты. А ваше золото подходило к концу.<br><br>Вы начали уже подумывать о карьере гладиатора, когда случай свел вас со Старым Охотником. Это был веселый и говорливый старикан, дни и ночи напролет сидевший в кабаке «Бедро девственницы» и травивший свои байки. Хотя никто не принимал деда всерьез, вы всегда слушали его с удовольствием и постепенно стали добрыми друзьями. Но дружбе вашей не суждено было продлиться долго: Старый Охотник умер."
+msgstr "At the junction of an infinite multitude of universes stands a strange and mysterious city — Eternal Rome. On all sides the city is surrounded by the Mists. Anyone who enters the Mists of Eternal Rome is doomed to wander there until he dies or stumbles upon an exit to another world. Anyone who enters the Mists from another world will inevitably arrive in Eternal Rome. All roads lead to Rome. And your road too.<br><br>Finding yourself in the City of Mists you tried to find the way back to your own world. But no matter whom you asked or whom you met, no one could show you the road. In time you began to settle into this strange world. The luxury of Eternal Rome and the grandeur of its white towers captivated you. But as in any other city, only he lives well who has jingling coins in his purse. And your gold was running out.<br><br>You were already thinking of a career as a gladiator when chance brought you together with the Old Hunter. He was a cheerful and talkative old man who sat day and night in the tavern \"Virgin's Thigh\" telling his yarns. Although no one took the old man seriously, you always listened to him with pleasure and gradually became good friends. But your friendship was not destined to last long: the Old Hunter died."
+
+#. кристалл и записки выдаются в конце вступления
+msgctxt "rh:text.intro.rome2"
+msgid "Скучный как вяленая вобла адвокат, огласил его завещание прямо в кабаке, ведь кроме местных завсегдатаев у Старика не было ни друзей, ни близких. Вам досталась самая ценная часть наследства — навигационный кристалл и записи.<br><br>Такие кристаллы каким-то образом настраиваются на определенные миры, лежащие за Туманами и могут провести вас туда. Согласно записям, этот кристалл должен открывать дорогу в Дикий Лес.<br><br>Старый охотник много рассказывал об этом необычном мире. Когда то там жила могучая цивилизация людей, очень похожих на нас с вами. Но много-много лет назад что-то уничтожило этих людей. Их города были поглощены бескрайними лесами. Эти леса полны диковинных обитателей, но самые странные и интересные из них именуются в записях Старого Охотника дикарками..."
+msgstr "A lawyer as dull as dried vobla read his will right in the tavern, for besides the local regulars the Old Man had neither friends nor relatives. You received the most valuable part of the inheritance — a navigation crystal and the notes.<br><br>Such crystals somehow attune themselves to certain worlds lying beyond the Mists and can guide you there. According to the notes this crystal should open the road to the Wild Forest.<br><br>The Old Hunter told a great deal about this unusual world. Once a mighty civilization of people very much like us lived there. But many, many years ago something destroyed those people. Their cities were swallowed by endless forests. These forests are full of strange inhabitants, but the strangest and most interesting of them are called in the Old Hunter's notes \"wild beasts\"..."
+
+# ---- texts_hunter_hunt ----
+
+#. сцена выбирается случайно; своя картинка
+msgctxt "rh:text.hunt.scene.drink"
+msgid "Вы выглядываете из-за кустов и видите небольшое озерцо. На его берегу, спиной к вам стоит на четвереньках дикарка. Она лакает воду, словно дикий зверь."
+msgstr "You peer from behind the bushes and see a small lake. On its shore, with her back to you, a beast stands on all fours. She laps water like a wild animal."
+
+msgctxt "rh:text.hunt.scene.s1"
+msgid "Вы осторожно приближаетесь к источнику шума и выглядываете из-за дерева. Впереди видна небольшая поляна, покрытая сочной, мягкой травой. Прямо посреди поляны лежит на спине дикарка. У вас есть хорошая возможность показать ей, что в лесу надо вести себя осторожнее."
+msgstr "You carefully approach the source of the noise and peer from behind a tree. Ahead is a small clearing covered with lush soft grass. Right in the middle of the clearing a wild beast lies on her back. You have a good chance to show her that one must be more careful in the forest."
+
+msgctxt "rh:text.hunt.scene.s2"
+msgid "Выглянув из-за кустов, вы замечаете дикарку, которая сидит под деревом. Ее ноги широко разведены в стороны. Похоже, она совсем забыла об осторожности."
+msgstr "Peering from behind the bushes you notice a wild beast under a tree. Her legs are widely spread. It seems she has completely forgotten about caution."
+
+msgctxt "rh:text.hunt.scene.sleep"
+msgid "Вы осторожно приближаетесь к источнику шума и выглядываете из-за дерева. В нескольких метрах перед вами на мягкой постели изо мха спит, свернувшись калачиком, дикарка. Отличный шанс для атаки!"
+msgstr "You carefully approach the source of the noise and peer from behind a tree. A few metres ahead of you on a soft bed of moss a wild beast sleeps curled up. An excellent chance for an attack!"
+
+msgctxt "rh:text.hunt.scene.apple"
+msgid "Выглянув из-за кустов вы замечаете дикарку, которая стоит боком к вам, у плодового дерева. Похоже, она хочет достать яблоко с ветки, но ей не удается туда допрыгнуть. Глупышка так увлеклась процессом, что совсем вас не замечает."
+msgstr "Peering from behind the bushes you notice a wild beast standing sideways to you by a fruit tree. It seems she wants to reach an apple on a branch but cannot jump high enough. The little fool is so absorbed in the process that she does not notice you at all."
+
+msgctxt "rh:text.hunt.scene.waterfall"
+msgid "Впереди слышен шум водопада и женский голос, напевающий что-то без слов. Вы подкрадываетесь и осторожно выглядываете из-за покрытого мхом валуна. Прямо под струями водопада стоит дикарка. У вас есть шанс доказать ей, что она подобрала не лучший момент для освежающего душа."
+msgstr "Ahead you hear the noise of a waterfall and a woman's voice humming something without words. You sneak up and carefully peer from behind a moss-covered boulder. Right under the streams of the waterfall stands a wild beast. You have a chance to prove to her that she chose a poor moment for a refreshing shower."
+
+msgctxt "rh:text.hunt.scene.hotspring"
+msgid "Впереди слышно странное бульканье. Подойдя поближе, вы понимаете, что наткнулись на горячий источник. Однако, вы не были первым кто его нашел. В круглом озерце, исходящем горячим паром, нежится дикарка. Ее тело расслаблено, а глаза закрыты. Отличный момент для внезапного нападения!"
+msgstr "Ahead you hear strange bubbling. Coming closer you realise you have found a hot spring. However you were not the first to find it. In a round pool rising with hot steam a wild beast is relaxing. Her body is relaxed, her eyes closed. An excellent moment for a surprise attack!"
+
+msgctxt "rh:text.hunt.scene.rabbit"
+msgid "Вы осторожно выглядываете из кустов. Неподалеку впереди под деревом расположилась дикарка. У нее на руках сидит большой пушистый кролик. Дикарка ласкает кролика и сюсюкает с ним. Похоже, она так увлеклась, что не замечает ничего вокруг."
+msgstr "You carefully peer from the bushes. Not far ahead under a tree a wild beast has settled. A large fluffy rabbit sits in her arms. The beast caresses the rabbit and coos at it. It seems she is so absorbed that she notices nothing around her."
+
+msgctxt "rh:text.hunt.scene.butterfly"
+msgid "Вы осторожно выглядываете из-за дерева. Впереди на небольшой, залитой солнцем полянке стоит на четвереньках дикарка. Похоже, она разглядывает огромную тропическую бабочку, усевшуюся на землю."
+msgstr "You carefully peer from behind a tree. Ahead on a small sunlit clearing a wild beast stands on all fours. It seems she is examining a huge tropical butterfly that has settled on the ground."
+
+msgctxt "rh:text.hunt.scene.splinter"
+msgid "Вы осторожно выглядываете из кустов. У корней огромного дерева сидит дикарка. Похоже, девушка пытается зубами достать занозу, засевшую у нее в ступне."
+msgstr "You carefully peer from the bushes. At the roots of a huge tree sits a wild beast. It seems the beast is trying to pull a splinter from her foot with her teeth."
+
+msgctxt "rh:text.hunt.scene.s3"
+msgid "Вы осторожно выглядываете из кустов. Неподалеку от вас, прислонившись спиной к толстому дереву стоит дикарка."
+msgstr "You carefully peer from the bushes. Not far from you, leaning her back against a thick tree, stands a wild beast."
+
+msgctxt "rh:text.hunt.scene.chase_butterfly"
+msgid "Вы приближаетесь к источнику звуков и аккуратно выглядываете из-за дерева. Впереди видна небольшая, открытая лужайка. Там, бегая по кругу, гоняется за большой цветастой бабочкой дикарка. Похоже, она так увлеклась процессом, что не замечает ничего вокруг."
+msgstr "You approach the source of the sounds and carefully peer from behind a tree. Ahead is a small open glade. There, running in circles, a wild beast is chasing a large colourful butterfly. It seems she is so absorbed in the process that she notices nothing around her."
+
+msgctxt "rh:text.capture_method.crossbow.title"
+msgid "Выстрелить из арбалета"
+msgstr "Shoot with the crossbow"
+
+msgctxt "rh:text.capture_method.throwing_knives.title"
+msgid "Метательные ножи"
+msgstr "Throw knives"
+
+msgctxt "rh:text.capture_method.net.title"
+msgid "Использовать ловчую сеть"
+msgstr "Use the hunting net"
+
+msgctxt "rh:text.capture_method.stone.title"
+msgid "Бросить камень"
+msgstr "Throw a stone"
+
+msgctxt "rh:text.capture_method.sleeping_gas.title"
+msgid "Бросить усыпляющий газ"
+msgstr "Throw sleeping gas"
+
+msgctxt "rh:text.capture_method.retriever.title"
+msgid "Спустить на нее ретривера"
+msgstr "Set the retriever on her"
+
+msgctxt "rh:text.capture_method.bear_hug.title"
+msgid "Медвежий захват"
+msgstr "Bear hug"
+
+msgctxt "rh:text.capture_method.club.title"
+msgid "Оглушить ее дубиной"
+msgstr "Stun her with the club"
+
+msgctxt "rh:text.capture_method.knife.title"
+msgid "Зарезать ее ножом"
+msgstr "Stab her with the knife"
+
+msgctxt "rh:text.capture_method.taser.title"
+msgid "Парализовать ее электрошоком"
+msgstr "Paralyse her with the taser"
+
+msgctxt "rh:text.capture_method.bare_hands.title"
+msgid "Скрутить ее голыми руками"
+msgstr "Grapple her with bare hands"
+
+# ---- texts_hunter_interactions ----
+
+msgctxt "rh:text.interaction.rome.to_menhunter.title"
+msgid "Магазин Менхантера"
+msgstr "Menhunter's Shop"
+
+msgctxt "rh:text.interaction.rome.to_butcher.title"
+msgid "Лавка мясника"
+msgstr "Butcher's Shop"
+
+msgctxt "rh:text.interaction.rome.to_market.title"
+msgid "Рынок"
+msgstr "Market"
+
+msgctxt "rh:text.interaction.rome.to_fog.title"
+msgid "Отправиться на охоту"
+msgstr "Set out on the hunt"
+
+msgctxt "rh:text.interaction.rome.to_square.title"
+msgid "На площадь"
+msgstr "To the square"
+
+msgctxt "rh:text.interaction.rome.talk_farid.title"
+msgid "Поговорить с Фаридом"
+msgstr "Talk to Farid"
+
+msgctxt "rh:text.interaction.rome.talk_menhunter.title"
+msgid "Поговорить с Менхантером"
+msgstr "Talk to Menhunter"
+
+msgctxt "rh:text.interaction.rome.trade_menhunter.title"
+msgid "Торговать"
+msgstr "Trade"
+
+#. en было «Trade / Show catch to the butcher»
+msgctxt "rh:text.interaction.rome.trade_butcher.title"
+msgid "Показать добычу мяснику"
+msgstr "Show the catch to the butcher"
+
+msgctxt "rh:text.interaction.fog.wander.title"
+msgid "Идти по навигационному кристаллу"
+msgstr "Follow the navigation crystal"
+
+msgctxt "rh:text.interaction.fog.sleep.title"
+msgid "Спать"
+msgstr "Sleep"
+
+msgctxt "rh:text.interaction.fog.call_horse.title"
+msgid "— Лошаа-аадка!!!"
+msgstr "— Hooorse!!!"
+
+msgctxt "rh:text.interaction.fog.ride_horse.title"
+msgid "Сесть на коня-призрака"
+msgstr "Mount the ghost horse"
+
+msgctxt "rh:text.interaction.woods.deeper.title"
+msgid "Углубиться в лес, в поисках лучшей добычи"
+msgstr "Go deeper into the forest in search of better prey"
+
+msgctxt "rh:text.interaction.woods.back.title"
+msgid "Идти в сторону опушки"
+msgstr "Go toward the forest edge"
+
+msgctxt "rh:text.interaction.woods.hunt.title"
+msgid "Попробовать выследить дикарку"
+msgstr "Try to track a wild beast"
+
+msgctxt "rh:text.interaction.woods.lure.title"
+msgid "Приманить дикарку афродизиаком"
+msgstr "Lure a wild beast with aphrodisiac"
+
+msgctxt "rh:text.interaction.woods.set_traps.title"
+msgid "Установить ловушки"
+msgstr "Set traps"
+
+msgctxt "rh:text.interaction.woods.check_traps.title"
+msgid "Уже утро — пора проверить ловушки"
+msgstr "It is morning — time to check the traps"
+
+msgctxt "rh:text.interaction.woods.make_camp.title"
+msgid "Разбить лагерь"
+msgstr "Make camp"
+
+msgctxt "rh:text.interaction.woods.to_fog.title"
+msgid "Идти в туманы"
+msgstr "Go into the Mists"
+
+msgctxt "rh:text.interaction.camp.inspect.title"
+msgid "Осмотреть добычу"
+msgstr "Examine the catch"
+
+msgctxt "rh:text.interaction.camp.subdue.title"
+msgid "Показать дикарке кто тут главный"
+msgstr "Show the wild beast who is boss"
+
+msgctxt "rh:text.interaction.camp.kill.title"
+msgid "Зарезать дикарку"
+msgstr "Cut the wild beast's throat"
+
+msgctxt "rh:text.interaction.camp.release.title"
+msgid "Отпустить дикарку на волю"
+msgstr "Release the wild beast"
+
+msgctxt "rh:text.interaction.camp.dump_corpse.title"
+msgid "Выбросить труп"
+msgstr "Dump the corpse"
+
+msgctxt "rh:text.interaction.food.eat_supplies.title"
+msgid "Перекусить"
+msgstr "Have a snack (supplies)"
+
+msgctxt "rh:text.interaction.food.eat_meat.title"
+msgid "Поесть мяса"
+msgstr "Eat meat"
+
+msgctxt "rh:text.interaction.food.feed_hound.title"
+msgid "Покормить ищейку"
+msgstr "Feed the hound"
+
+msgctxt "rh:text.interaction.food.feed_retriever.title"
+msgid "Покормить ретривера"
+msgstr "Feed the retriever"
+
+msgctxt "rh:text.interaction.camp.rest.title"
+msgid "Отдохнуть"
+msgstr "Rest"
+
+msgctxt "rh:text.interaction.camp.sleep.title"
+msgid "Спать"
+msgstr "Sleep"
+
+msgctxt "rh:text.interaction.camp.to_woods.title"
+msgid "Свернуть лагерь"
+msgstr "Break camp"
+
+msgctxt "rh:text.interaction.inventory.drink_tonic.title"
+msgid "Выпить тоник"
+msgstr "Drink tonic"
+
+msgctxt "rh:text.interaction.inventory.read_notes.title"
+msgid "Записки охотника"
+msgstr "Hunter's Notes"
+
+msgctxt "rh:text.interaction.inventory.ask_bird.title"
+msgid "Спросить птицу-секретаря"
+msgstr "Ask the secretary bird"
+
+#. draft
+msgctxt "rh:text.interaction.camp.dance.title"
+msgid "Танцевать с дикаркой"
+msgstr "Dance with the wild beast"
+
+#. draft
+msgctxt "rh:text.interaction.camp.dance_fashion.title"
+msgid "Красивый танец"
+msgstr "A beautiful dance"
+
+#. draft
+msgctxt "rh:text.interaction.camp.rob.title"
+msgid "Разделать тело"
+msgstr "Butcher the body"
+
+#. draft
+msgctxt "rh:text.interaction.food.eat_canned.title"
+msgid "Поесть консервов"
+msgstr "Eat canned food"
+
+# ---- texts_hunter_errors ----
+
+msgctxt "rh:text.error.mode.busy"
+msgid "Сейчас это сделать нельзя."
+msgstr "You cannot do that right now."
+
+msgctxt "rh:text.error.intro.bad_name"
+msgid "Введите корректное имя (1–40 символов)."
+msgstr "Please enter a valid name (1–40 characters)."
+
+msgctxt "rh:text.error.market.dead_not_accepted"
+msgid "— За мертвую дикарку тут не выручишь и гнутого медяка. Мой тебе совет — зайди к мяснику, что на северной улице. Он-то найдет этому телу применение, хе-хе!"
+msgstr "— You will not get a bent copper for a dead beast here. My advice — go to the butcher on the northern street. He will find a use for this body, heh-heh!"
+
+msgctxt "rh:text.error.shop.bad_quantity"
+msgid "Неверное количество."
+msgstr "Invalid quantity."
+
+msgctxt "rh:text.error.shop.already_owned"
+msgid "У вас уже есть этот предмет."
+msgstr "You already own this item."
+
+msgctxt "rh:text.error.shop.out_of_stock"
+msgid "Нет в наличии."
+msgstr "Out of stock."
+
+msgctxt "rh:text.error.shop.not_enough_gold"
+msgid "К сожалению, у Вас не хватает денег. (Цена: {price}, у вас: {gold})"
+msgstr "Unfortunately you do not have enough money. (Price: {price}, you have: {gold})"
+
+msgctxt "rh:text.error.shop.nothing_to_sell"
+msgid "Вам нечего продать."
+msgstr "You have nothing to sell."
+
+msgctxt "rh:text.error.condition.has_item"
+msgid "Нужен предмет: {item}"
+msgstr "Requires item: {item}"
+
+msgctxt "rh:text.error.condition.item_count_at_least"
+msgid "Недостаточно: {item}"
+msgstr "Not enough {item}."
+
+msgctxt "rh:text.error.condition.class_trait"
+msgid "Нужна способность класса."
+msgstr "Requires class ability."
+
+msgctxt "rh:text.error.condition.lacks_class_trait"
+msgid "Вашему классу недоступно."
+msgstr "Not available to your class."
+
+msgctxt "rh:text.error.condition.woods_depth_in"
+msgid "Не на этой глубине леса."
+msgstr "Not at this forest depth."
+
+msgctxt "rh:text.error.condition.time_of_day_in"
+msgid "Не в это время суток."
+msgstr "Not at this time of day."
+
+msgctxt "rh:text.error.condition.flag"
+msgid "Условие не выполнено."
+msgstr "Condition not met."
+
+msgctxt "rh:text.error.condition.no_catch"
+msgid "У вас уже есть добыча."
+msgstr "You already have a catch."
+
+msgctxt "rh:text.error.condition.has_catch"
+msgid "У вас нет добычи."
+msgstr "You have no catch."
+
+msgctxt "rh:text.error.condition.catch_alive"
+msgid "Добыча мертва."
+msgstr "The catch is dead."
+
+msgctxt "rh:text.error.condition.catch_dead"
+msgid "Добыча ещё жива."
+msgstr "The catch is still alive."
+
+msgctxt "rh:text.error.condition.catch_not_subdued"
+msgid "Уже укрощена."
+msgstr "Already subdued."
+
+#. глубже 3 нельзя; было «… / Вы уже на опушке»
+msgctxt "rh:text.error.woods.no_deeper"
+msgid "Дальше идти некуда."
+msgstr "You cannot go any deeper."
+
+#. ближе 0 нельзя
+msgctxt "rh:text.error.woods.at_edge"
+msgid "Вы уже на опушке."
+msgstr "You are already at the forest edge."
+
+#. draft
+msgctxt "rh:text.error.condition.catch_tattoo"
+msgid "У добычи нет татуировки."
+msgstr "The catch has no tattoo."
+
+# ---- texts_hunter_core_interface ----
+
+msgctxt "rh:text.core_interface.name"
+msgid "Имя"
+msgstr "Name"
+
+msgctxt "rh:text.core_interface.class"
+msgid "Класс"
+msgstr "Class"
+
+msgctxt "rh:text.core_interface.gold"
+msgid "Золото"
+msgstr "Gold"
+
+msgctxt "rh:text.core_interface.time"
+msgid "Время суток"
+msgstr "Time of day"
+
+msgctxt "rh:text.core_interface.depth"
+msgid "Глубина леса"
+msgstr "Forest depth"
+
+msgctxt "rh:text.core_interface.fatigue"
+msgid "Усталость"
+msgstr "Fatigue"
+
+msgctxt "rh:text.core_interface.hunger"
+msgid "Голод"
+msgstr "Hunger"
+
+msgctxt "rh:text.core_interface.alive"
+msgid "Жива"
+msgstr "Alive"
+
+msgctxt "rh:text.core_interface.dead"
+msgid "Мертва"
+msgstr "Dead"
+
+msgctxt "rh:text.core_interface.subdued"
+msgid "Укрощена"
+msgstr "Subdued"
+
+msgctxt "rh:text.core_interface.no_catch"
+msgid "Нет добычи"
+msgstr "No catch"
+
+msgctxt "rh:text.core_interface.inventory"
+msgid "Инвентарь"
+msgstr "Inventory"
+
+msgctxt "rh:text.core_interface.inventory_empty"
+msgid "Инвентарь пуст"
+msgstr "Inventory is empty"
+
+msgctxt "rh:text.core_interface.last_event"
+msgid "Последнее событие"
+msgstr "Last event"

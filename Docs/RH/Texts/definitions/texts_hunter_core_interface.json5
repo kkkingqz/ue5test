@@ -1,0 +1,62 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.core_interface.name",
+      data: { source_message: "Имя" },
+    },
+    {
+      id: "rh:text.core_interface.class",
+      data: { source_message: "Класс" },
+    },
+    {
+      id: "rh:text.core_interface.gold",
+      data: { source_message: "Золото" },
+    },
+    {
+      id: "rh:text.core_interface.time",
+      data: { source_message: "Время суток" },
+    },
+    {
+      id: "rh:text.core_interface.depth",
+      data: { source_message: "Глубина леса" },
+    },
+    {
+      id: "rh:text.core_interface.fatigue",
+      data: { source_message: "Усталость" },
+    },
+    {
+      id: "rh:text.core_interface.hunger",
+      data: { source_message: "Голод" },
+    },
+    {
+      id: "rh:text.core_interface.alive",
+      data: { source_message: "Жива" },
+    },
+    {
+      id: "rh:text.core_interface.dead",
+      data: { source_message: "Мертва" },
+    },
+    {
+      id: "rh:text.core_interface.subdued",
+      data: { source_message: "Укрощена" },
+    },
+    {
+      id: "rh:text.core_interface.no_catch",
+      data: { source_message: "Нет добычи" },
+    },
+    {
+      id: "rh:text.core_interface.inventory",
+      data: { source_message: "Инвентарь" },
+    },
+    {
+      id: "rh:text.core_interface.inventory_empty",
+      data: { source_message: "Инвентарь пуст" },
+    },
+    {
+      id: "rh:text.core_interface.last_event",
+      data: { source_message: "Последнее событие" },
+    },
+  ],
+}

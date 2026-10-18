@@ -1,0 +1,63 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.shop.rome.menhunter.title",
+      data: { source_message: "Магазин Менхантера" },
+    },
+    {
+      id: "rh:text.shop.rome.butcher.title",
+      data: { source_message: "Лавка мясника" },
+    },
+    {
+      id: "rh:text.shop.rome.farid.title",
+      data: { source_message: "Рынок" },
+    },
+    {
+      id: "rh:text.shop.rome.menhunter.tab_tools",
+      data: { source_message: "Снаряжение" },
+    },
+    {
+      id: "rh:text.shop.rome.menhunter.tab_weapons",
+      data: { source_message: "Оружие" },
+    },
+    {
+      id: "rh:text.shop.rome.menhunter.tab_clothes",
+      data: { source_message: "Одежда" },
+    },
+    {
+      id: "rh:text.shop.rome.menhunter.tab_pets",
+      data: { source_message: "Питомцы" },
+    },
+    {
+      id: "rh:text.shop.rome.menhunter.tab_consumables",
+      data: { source_message: "Расходники" },
+    },
+    {
+      id: "rh:text.shop.rome.menhunter.tab_sell",
+      data: { source_message: "Продать трофеи" },
+    },
+    {
+      id: "rh:text.shop.rome.butcher.lessons",
+      data: { source_message: "Научить торговле" },
+    },
+    {
+      id: "rh:text.shop.common.buy",
+      data: { source_message: "Купить" },
+    },
+    {
+      id: "rh:text.shop.common.sell",
+      data: { source_message: "Продать" },
+    },
+    // было «Уйти / Закончить покупки»
+    {
+      id: "rh:text.shop.common.leave",
+      data: { source_message: "Уйти" },
+    },
+    {
+      id: "rh:text.shop.common.price",
+      data: { source_message: "Цена: {price}" },
+    },
+  ],
+}

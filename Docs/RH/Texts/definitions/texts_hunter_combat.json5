@@ -1,0 +1,69 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.combat.owlbear.intro",
+      data: { source_message: "ВНЕЗАПНО перед вами появляется лесное чудовище!" },
+    },
+    {
+      id: "rh:text.combat.owlbear.flee",
+      data: { source_message: "Убегать" },
+    },
+    {
+      id: "rh:text.combat.owlbear.fight",
+      data: { source_message: "Сражаться" },
+    },
+    {
+      id: "rh:text.combat.owlbear.drop_catch",
+      data: { source_message: "Бросить монстру дикарку и убежать" },
+    },
+    {
+      id: "rh:text.combat.owlbear.sic_hound",
+      data: { source_message: "Натравить ищейку и убежать" },
+    },
+    {
+      id: "rh:text.combat.owlbear.sic_retriever",
+      data: { source_message: "Натравить ретривера" },
+    },
+    {
+      id: "rh:text.combat.owlbear.smoke_bomb",
+      data: { source_message: "Создать дымовую завесу" },
+    },
+    {
+      id: "rh:text.combat.owlbear.outcome_won",
+      data: { source_message: "Вы отважно вступаете в схватку с совомедведем. К счастью, тяжелый двуручный меч — достаточно мощное оружие. Мощным ударом вы сносите уродливую башку зверя с плеч." },
+    },
+    {
+      id: "rh:text.combat.owlbear.outcome_fled",
+      data: { source_message: "Вы бросаетесь прочь. Прямо за вашей спиной слышится дикий рев и смрадное дыхание твари. Но удача сегодня на вашей стороне. Спустя некоторое время монстр отстает и прекращает преследование." },
+    },
+    // вариант 1 из «добычу / ищейку / ретривера»
+    {
+      id: "rh:text.combat.owlbear.outcome_escaped_catch",
+      data: { source_message: "Вы скрываетесь от монстра, оставив ему свою добычу." },
+    },
+    {
+      id: "rh:text.combat.owlbear.outcome_escaped_hound",
+      data: { source_message: "Вы скрываетесь от монстра, оставив ему свою ищейку." },
+    },
+    {
+      id: "rh:text.combat.owlbear.outcome_escaped_retriever",
+      data: { source_message: "Вы скрываетесь от монстра, оставив ему своего ретривера." },
+    },
+    // вариант 1 из двух: смерть при бегстве
+    {
+      id: "rh:text.combat.owlbear.outcome_died_flee",
+      data: { source_message: "Совомедведь догнал и разорвал вас." },
+    },
+    // вариант 2 из двух: смерть в схватке
+    {
+      id: "rh:text.combat.owlbear.outcome_died_fight",
+      data: { source_message: "Одним ударом своей могучей пернатой лапы монстр сбивает вас наземь и вгрызается клювом в ваше горло. Боль невыносима." },
+    },
+    {
+      id: "rh:text.combat.owlbear.outcome_escaped_smoke",
+      data: { source_message: "Вы кидаете перед собой дымовую шашку и тут же все вокруг заволакивает густым облаком дыма. Воспользовавшись этим прикрытием вы убегаете." },
+    },
+  ],
+}
