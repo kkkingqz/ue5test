@@ -1389,6 +1389,8 @@ end }
 
 ## 7. Ресурсы с номерами источника
 
+Полный перечень картинок и текстов игры с ID — [Resource Requests](../Status/ResourceRequests.md).
+
 ### 7.1. Облики из старой таблицы портретов
 
 Базовые облики (без условий): `rh:beast_look.<hair>_<NN>`, `NN` = зрелость 01…04, портрет `rh:resource.beast.portrait.<hair>_<NN>` (источник: `beast_blond_01…04`, `beast_black_01…04`, `beast_red_01…04`; `brunette` → `black` в имени ресурса). Особые облики:
