@@ -1,7 +1,7 @@
 ---
 title: Resource Requests
 status: informative
-version: 0.1
+version: 0.2
 updated: 2026-10-18
 depends_on:
   - ../RH/HunterGameplay.md
@@ -31,11 +31,11 @@ depends_on:
 | Диалоги | — | 26 + реплики дизайнера |
 | Магазины и имена NPC | — | 14 |
 | Танец | — | 88 |
-| Сообщения | — | 22 обязательных + 18 предложенных |
+| Сообщения | — | 23 обязательных + 18 предложенных |
 | Причины отказа | — | 23 |
 | Голод и время суток | — | 9 |
 | Общий интерфейс | — | 20 |
-| **Итого** | **88 обязательных** (до 119) | **386 + реплики + 18 предложенных** |
+| **Итого** | **88 обязательных** (до 119) | **387 + реплики + 18 предложенных** |
 
 ## 2. Графические ресурсы
 
@@ -118,7 +118,16 @@ depends_on:
 | `trophy` | `owlbear_head`, `owlbear_feather` |
 | `misc` | `nav_crystal`, `hunter_notes` |
 
+### 2.6. Токены темы
+
+| Токен | Вид | Где используется | Основание |
+|---|---|---|---|
+| `emphasis` | `TextStyleTokens` темы | выделение в описаниях классов: `<style=emphasis>…</>` | нужно; без токена текст не отрисуется |
+
 ## 3. Тексты
+
+Формат хранения — [правила игры, § 7.5](../RH/HunterGameplay.md#75-хранение-текстов): исходная строка русская, английский — перевод в `en.po`.
+
 
 ### 3.1. Дикарка: описание черт
 
@@ -235,7 +244,7 @@ depends_on:
 
 `rh:text.message.<ключ>`; показываются в «последнем событии» и в журнале сцены. Параметры подставляются в текст.
 
-**Названы в правилах (22):**
+**Названы в правилах (23):**
 
 | Механика | Ключи |
 |---|---|
@@ -243,7 +252,7 @@ depends_on:
 | Туманы | `fog.horse_heard`, `fog.lost` |
 | Ловушки | `traps.caught`, `traps.empty` |
 | Охота | `hunt.lured`, `hunt.nobody`, `hunt.noticed`, `hunt.unnoticed`, `hunt.branch_snapped`, `hunt.close`, `hunt.cant_catch_up`, `hunt.caught_up`, `hunt.capture_failed`, `hunt.escaped`, `hunt.lost` |
-| Добыча | `catch.escaped` |
+| Добыча | `catch.escaped` (отдых и сон), `catch.escaped_walk` (ходьба по лесу) |
 | Лагерь | `camp.slept_well`, `camp.froze` |
 | Птица-секретарь | `bird.describe`, `bird.estimate_alive` (`{market}`, `{shop}`), `bird.estimate_dead` (`{shop}`) |
 

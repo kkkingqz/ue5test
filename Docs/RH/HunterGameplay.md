@@ -1,7 +1,7 @@
 ---
 title: RH Hunter Gameplay
 status: draft
-version: 0.1
+version: 0.2
 updated: 2026-10-18
 depends_on:
   - GameplayArchitecture.md
@@ -782,7 +782,7 @@ services.effect_woods_walk = {
             services.effect_start_combat.apply(ctx, { combat = "rh:combat.owlbear" })   -- побег на этом шаге не проверяется
             return
         end
-        services.catch.check_escape(ctx, config.escape_threshold.walk)
+        services.catch.check_escape(ctx, config.escape_threshold.walk, "catch.escaped_walk")
     end,
 }
 ```
@@ -986,13 +986,13 @@ services.catch = {
         player.catch = nil
         services.catch.discard(beast)
     end,
-    check_escape = function(ctx, threshold)
+    check_escape = function(ctx, threshold, message)   -- сообщение: при ходьбе или во сне
         local hunter, beast = player, player.catch
         if beast == nil or not beast.alive then return end
         if hunter:has_trait("catch_never_escapes") or hunter:has(SHACKLES) then return end
         if escape_roll(beast, stream("rh:random_stream.wilds")) > threshold then
             services.catch.drop(ctx)
-            say(ctx, "catch.escaped")
+            say(ctx, message)
         end
     end,
 }
@@ -1021,7 +1021,7 @@ services.effect_rest = { apply = function(ctx)
     if world.time_of_day ~= "night" then
         hunter.fatigue = math.max(0, hunter.fatigue - 1)
         services.time.advance(ctx)
-        services.catch.check_escape(ctx, config.escape_threshold.rest)
+        services.catch.check_escape(ctx, config.escape_threshold.rest, "catch.escaped")
     else
         if hunter:has(BLANKET) then
             hunter.fatigue = 0; say(ctx, "camp.slept_well")
@@ -1029,7 +1029,7 @@ services.effect_rest = { apply = function(ctx)
             say(ctx, "camp.froze")                    -- усталость не меняется
         end
         services.time.advance(ctx)
-        services.catch.check_escape(ctx, config.escape_threshold.night_sleep)
+        services.catch.check_escape(ctx, config.escape_threshold.night_sleep, "catch.escaped")
     end
 end }
 ```
@@ -1451,6 +1451,21 @@ end }
 ### 7.4. Прочие тексты
 
 Описания черт — по шкалам § 3.8; состояния голода `rh:text.hunger.fed|hungry|very_hungry|famished|exhausted`; сообщения `rh:text.message.<key>` (ключи `say` в § 4); причины отказа `rh:text.error.<key>` (§ 3.7, § 4.9); названия действий танца `rh:text.dance.action.<id>`.
+
+### 7.5. Хранение текстов
+
+Формат — [ADR-0022](../ADR/0022-external-translation-catalog.md). Язык авторинга «Охотника» — русский:
+
+```text
+GameData/rh/
+  definitions/texts_hunter_<область>.json5   определения kind text; source_message — русская строка
+  localization/en.po                         английский перевод; msgctxt — text_id
+```
+
+- Область — `characters`, `beast`, `world`, `combat`, `dialogues`, `shops`, `messages`, `interactions`, `dance`, `errors`, `core_interface`.
+- Вариант текста — отдельный `text_id`; выбор между вариантами делает правило или условие данных, а не разбор строки. Например, побег добычи — `catch.escaped` при отдыхе и сне, `catch.escaped_walk` при ходьбе.
+- Параметры — `{имя}`, окончание по числу — `{n}|plural(…)` с формами своего языка, выделение — `<style=emphasis>…</>`. Токен `emphasis` объявляет тема ([заявка](../Status/ResourceRequests.md#26-токены-темы)).
+- Набор параметров и тегов в переводе совпадает с исходной строкой.
 
 ## 8. Проверка
 
