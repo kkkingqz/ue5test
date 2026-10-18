@@ -1,7 +1,7 @@
 ---
 title: Engine Gap Closure State And Authoring
 status: active
-version: 1.6
+version: 1.7
 updated: 2026-10-18
 decisions:
   - ../../ADR/0050-transactional-mutation-window.md
@@ -84,7 +84,7 @@ depends_on:
 
 ## EGC-04 — Сделать изоляцию временного состояния между spec case выводимой
 
-- [ ] EGC-04 — Сделать изоляцию временного состояния между spec case выводимой
+- [x] EGC-04 — Сделать изоляцию временного состояния между spec case выводимой
 
 **Зависимость:** EGC-03. **Файлы:** `Scripts/authoring/context.lua` (`snapshot_test_state`/`restore_test_state`/`reset_test_state`), `Scripts/runtime/test_isolation.lua`, `Tests/Lua/lifecycle/registry_sealing.lua`, `Tests/Lua/authoring/runtime_state.lua`. Docs: `Guides/AddLuaSpec.md`, `HeadlessSimulationContract.md`.
 
@@ -109,7 +109,15 @@ depends_on:
 - GAP-003 закрыт в своей механической половине; его тестовая половина (активный режим не переходит между case) закрывается EGC-07, и это названо здесь, чтобы гэп не остался без владельца.
 - Задача не закрывает `STATUS-026` (`test_isolation` в графе production-сессии): его условие закрытия — понятие профиля модулей и отдельный ADR.
 
-**Evidence:** красный и зелёный прогон spec протечки, вывод перечислителя, мутационная проба, оба host-а.
+**Evidence:** `Scripts/runtime/test_state_registry.lua` — новый реестр участников (`register_participant`/`snapshot_all`/`restore_all`/`reset_all`/`registered_names`); `Scripts/authoring/context.lua` регистрирует свои четыре переменные как первых участников, `snapshot_test_state`/`restore_test_state`/`reset_test_state` теперь делегируют реестру и не называют переменных. Перечислитель — не runtime-рефлексия (в песочнице `OpenEnvironment`, `Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp`, открыты только `base`/`table`/`string`/`math`/`utf8`: `debug`, `io`, `load` недоступны, поэтому ни один модуль не может обойти чужие upvalue во время исполнения), а статический: `Tools/Content/validate_test_state_registry.py` выводит фактические mutable module-level `local` каждого проверяемого файла (переприсваиваемые, то есть не `require(...)` и не write-once константы) и сверяет их с `test_state_registry.register_participant(...)`-вызовами того же файла; подключён в `ctest` как `test_state_registry_gate_contract` (позитив) и `test_state_registry_gate_negative_contract` (`--self-test`: флагает незарегистрированный синтетический `local`, снимает флаг после регистрации, не флагает `require()`/константу). `ctest --test-dir build` — 139/139 (было 137 в EGC-03; +2 — новый gate contract и его негативный self-test), включая `gv2_headless_golden_replay_matches_digest` (`state_hash` не изменился: `2b063c31c91de84ca867cf8f2980e6c67aa7d2a6116f1efc62f410ad34c6acad`; обновлены `script_set_hash`/`digest_hash` по `Guides/RegenerateGolden.md`, ожидаемо при правке `Scripts/`). `UnrealEditor-Cmd ... -ExecCmds="Automation RunTests GV2;Quit"` — 211/211 (без изменений: новые Lua-кейсы учтены внутри существующего `GV2.Runtime.Lua.SpecRunnerHost`, а не отдельными Automation-тестами). `validate_docs.py` — 209 файлов чисто.
+
+Spec протечки (`Tests/Lua/authoring/runtime_state.lua`): синтетическая `synthetic_leak_probe` зарегистрирована в `test_state_registry` ровно как это сделал бы пятый участник (EGC-05); `egc04_leak_probe_case_a_mutates_inside_isolated_context` мутирует её внутри `test_isolation.with_isolated_context`, `egc04_leak_probe_case_b_reads_default_if_isolated` (следующий по алфавиту, порядок прогона детерминирован сортировкой имён кейсов раннером) читает и требует значение по умолчанию.
+
+Мутационные пробы (две, обе зафиксированы и возвращены, финальный прогон после возврата снова 139/139):
+1. Снята регистрация `authoring.is_frozen` в `context.lua` → `validate_test_state_registry.py` краснеет на `is_frozen` и только на нём; `ctest` целиком тоже красный (`test_state_registry_gate_contract`).
+2. Снята регистрация `test.synthetic_leak_probe` в `runtime_state.lua` → краснеет ровно `runtime_state.egc04_leak_probe_case_b_reads_default_if_isolated` (а не "только сообщение перечислителя" — перечислитель тут не применим, он проверяет только `context.lua`, поэтому именно spec протечки несёт сигнал для любого участника за пределами исходных четырёх), остальные specs зелёные.
+
+Побочно: `Scripts/runtime/test_isolation.lua` не потребовал функциональных изменений (его вызовы `authoring_context.snapshot_test_state`/`reset_test_state`/`restore_test_state` остаются по тем же именам, теперь делегирующим реестру) — добавлен только пояснительный комментарий. При первой попытке участник был назван `test_state_registry.register`, что столкнулось с универсальным bootstrap lifecycle hook'ом `M.register(ctx)`, который `registry_lifecycle` вызывает на фазе `"register"` для каждого загруженного модуля (`Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp`, `RunLifecyclePhase("register", ...)`); переименовано в `register_participant` во всех вызывающих местах.
 
 ## EGC-05 — Ввести хранилище режимов и `modes` в authoring surface
 

@@ -1,8 +1,8 @@
 ---
 title: Add Lua Spec
 status: informative
-version: 2.1
-updated: 2026-09-14
+version: 2.2
+updated: 2026-10-18
 depends_on:
   - README.md
   - ../Architecture/HeadlessSimulationContract.md
@@ -47,6 +47,7 @@ return {
 - Case не зависит от порядка и восстанавливает изменённое state/registries.
 - Нужные до freeze declarations помещаются в подходящий fixture tier, а не внедряются в production session.
 - Проверка включает отрицательный case и убеждается, что без исправления действительно падает.
+- Новое module-level временное состояние в любом модуле `core` регистрируется в `core:module.runtime.test_state_registry` в момент появления — функциями `snapshot`/`restore`/`reset`, а не добавлением в чей-то рукописный список (GAP-003, EGC-04). Незарегистрированное состояние обнаруживает перечислитель `test_state_registry.find_unregistered_state`, выводящий upvalue-ы модуля по идентичности (`debug.upvalueid`), а не по списку имён; `Tests/Lua/lifecycle/registry_sealing.lua` держит эту проверку для `core:module.authoring.context`.
 
 Запуск:
 

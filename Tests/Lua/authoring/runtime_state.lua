@@ -17,6 +17,22 @@ local canonical_codec = require("core:module.runtime.canonical_codec")
 local state_hasher = require("core:module.runtime.state_hasher")
 local save_module = require("core:module.runtime.save")
 local load_module = require("core:module.runtime.load")
+local test_isolation = require("core:module.runtime.test_isolation")
+local test_state_registry = require("core:module.runtime.test_state_registry")
+
+-- EGC-04/GAP-003 fixture: a synthetic module-level variable standing in for
+-- "a fifth infrastructure module's transient state, added anywhere." It is
+-- registered with test_state_registry exactly as a real infrastructure module
+-- would register its own state, so that test_isolation.with_isolated_context's
+-- snapshot/restore sweep (via authoring_context.snapshot_test_state, which now
+-- walks the registry instead of naming variables) covers it without either
+-- file knowing the other exists.
+local synthetic_leak_probe = "default"
+test_state_registry.register_participant("test.synthetic_leak_probe", {
+    snapshot = function() return synthetic_leak_probe end,
+    restore = function(v) synthetic_leak_probe = v end,
+    reset = function() synthetic_leak_probe = "default" end,
+})
 
 local function run_with_mock_environment(fn)
     local prev_game = _G.game
@@ -288,5 +304,59 @@ return {
             assert(world.current_location_id == "rh:location.city.tavern", "world.current_location_id must reflect updated player location")
             assert(game.state.world.current_location_id == nil, "state.world.current_location_id must NOT exist in state.world")
         end)
+    end,
+
+    -- EGC-04/GAP-003: case names sort alphabetically before "_case_b_...", so
+    -- the runner always executes this one first. It mutates the synthetic
+    -- probe only inside an isolated context -- the point under test is whether
+    -- that mutation is visible to the *next* spec case, not to this one.
+    egc04_leak_probe_case_a_mutates_inside_isolated_context = function()
+        test_isolation.with_isolated_context(function()
+            synthetic_leak_probe = "mutated_by_case_a"
+        end)
+    end,
+
+    -- Reads the probe left behind by the previous case. Green only if
+    -- with_isolated_context's restore swept every registered participant,
+    -- including one that was not among the original four in context.lua.
+    egc04_leak_probe_case_b_reads_default_if_isolated = function()
+        assert(synthetic_leak_probe == "default",
+            "synthetic_leak_probe must not leak across spec cases: with_isolated_context's restore "
+                .. "must cover every test_state_registry participant, not just the original four, got: "
+                .. tostring(synthetic_leak_probe))
+    end,
+
+    -- The static source enumerator (Tools/Content/validate_test_state_registry.py)
+    -- cannot run from inside a Lua spec -- it reads .lua files from disk, and
+    -- this sandbox has no `io`/`debug`/`load`. This case only proves the
+    -- runtime half of the contract: a registered participant can be withdrawn
+    -- and re-added without leaving stale state behind.
+    egc04_registry_register_and_unregister_round_trips = function()
+        local probe_value = "untouched"
+        test_state_registry.register_participant("test.round_trip_probe", {
+            snapshot = function() return probe_value end,
+            restore = function(v) probe_value = v end,
+            reset = function() probe_value = "untouched" end,
+        })
+        assert((function()
+            for _, n in ipairs(test_state_registry.registered_names()) do
+                if n == "test.round_trip_probe" then return true end
+            end
+            return false
+        end)(), "registered participant must appear in registered_names()")
+
+        test_state_registry.unregister_for_test("test.round_trip_probe")
+        assert((function()
+            for _, n in ipairs(test_state_registry.registered_names()) do
+                if n == "test.round_trip_probe" then return false end
+            end
+            return true
+        end)(), "unregister_for_test must remove the participant from registered_names()")
+
+        local ok, err = pcall(test_state_registry.register_participant, "test.synthetic_leak_probe", {
+            snapshot = function() end, restore = function() end, reset = function() end,
+        })
+        assert(not ok and string.find(tostring(err), "TestStateRegistryDuplicateParticipant"),
+            "re-registering an already-registered name must fail with TestStateRegistryDuplicateParticipant, got: " .. tostring(err))
     end,
 }

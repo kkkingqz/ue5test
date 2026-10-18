@@ -20,6 +20,7 @@ local presentation_module = require("core:module.authoring.presentation")
 local entity_extension_registry = require("core:module.runtime.entity_extension_registry")
 local field_module = require("core:module.authoring.field")
 local instance_registry = require("core:module.runtime.instance_registry")
+local test_state_registry = require("core:module.runtime.test_state_registry")
 
 local M = {
     id = "core:module.authoring.context",
@@ -30,6 +31,31 @@ local all_declared_validators = {}
 local all_referenced_services = {}
 local is_frozen = false
 local FAIL_SENTINEL = setmetatable({}, { __tostring = function() return "AuthoringFailRefusal" end })
+
+-- GAP-003/EGC-04: these four are the registry's first participants. snapshot/
+-- restore/reset below sweep test_state_registry rather than naming variables
+-- directly; a fifth participant (EGC-05's mode_store) registers itself the same
+-- way, elsewhere, without touching this file.
+test_state_registry.register_participant("authoring.current_scope", {
+    snapshot = function() return current_scope end,
+    restore = function(v) current_scope = v end,
+    reset = function() current_scope = { kind = "none" } end,
+})
+test_state_registry.register_participant("authoring.all_declared_validators", {
+    snapshot = function() return all_declared_validators end,
+    restore = function(v) all_declared_validators = v end,
+    reset = function() all_declared_validators = {} end,
+})
+test_state_registry.register_participant("authoring.all_referenced_services", {
+    snapshot = function() return all_referenced_services end,
+    restore = function(v) all_referenced_services = v end,
+    reset = function() all_referenced_services = {} end,
+})
+test_state_registry.register_participant("authoring.is_frozen", {
+    snapshot = function() return is_frozen end,
+    restore = function(v) is_frozen = v end,
+    reset = function() is_frozen = false end,
+})
 
 local function is_fail_result(val)
     return type(val) == "table" and val.__gv2_fail == FAIL_SENTINEL
@@ -835,27 +861,15 @@ function M.is_frozen()
 end
 
 function M.snapshot_test_state()
-    return {
-        all_declared_validators = all_declared_validators,
-        current_scope = current_scope,
-        all_referenced_services = all_referenced_services,
-        is_frozen = is_frozen,
-    }
+    return test_state_registry.snapshot_all()
 end
 
 function M.restore_test_state(snap)
-    if not snap then return end
-    all_declared_validators = snap.all_declared_validators
-    current_scope = snap.current_scope
-    all_referenced_services = snap.all_referenced_services
-    is_frozen = snap.is_frozen
+    test_state_registry.restore_all(snap)
 end
 
 function M.reset_test_state()
-    all_declared_validators = {}
-    current_scope = { kind = "none" }
-    all_referenced_services = {}
-    is_frozen = false
+    test_state_registry.reset_all()
 end
 
 function M.create_authoring_environment(package_id, opt_module_id)

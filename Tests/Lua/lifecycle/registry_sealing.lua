@@ -12,6 +12,7 @@ local authoring_context = require("core:module.authoring.context")
 local authoring_properties = require("core:module.authoring.properties")
 local service_registry = require("core:module.runtime.service_registry")
 local handler_registry = require("core:module.runtime.handler_registry")
+local test_state_registry = require("core:module.runtime.test_state_registry")
 
 return {
     registry_lifecycle_module_present = function()
@@ -285,5 +286,29 @@ return {
         local regular_tbl = {}
         rawset(regular_tbl, "test_key", 42)
         assert(regular_tbl.test_key == 42, "rawset must work normally on non-facade tables")
+    end,
+
+    -- EGC-04/GAP-003: authoring_context.snapshot_test_state/restore_test_state/
+    -- reset_test_state now sweep test_state_registry rather than naming
+    -- variables directly; this is the runtime half of that contract (the four
+    -- original participants are present and distinct). The static half --
+    -- detecting a module-level local in context.lua that was never registered
+    -- at all -- cannot run inside this sandbox (no `debug`/`io`/`load`) and
+    -- lives in Tools/Content/validate_test_state_registry.py instead, wired
+    -- into ctest as test_state_registry_gate_contract.
+    authoring_context_registers_its_four_participants = function()
+        local expected = {
+            "authoring.current_scope",
+            "authoring.all_declared_validators",
+            "authoring.all_referenced_services",
+            "authoring.is_frozen",
+        }
+        local present = {}
+        for _, n in ipairs(test_state_registry.registered_names()) do
+            present[n] = true
+        end
+        for _, name in ipairs(expected) do
+            assert(present[name], "test_state_registry must have a participant named '" .. name .. "'")
+        end
     end,
 }

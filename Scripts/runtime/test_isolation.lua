@@ -29,6 +29,11 @@ function M.with_isolated_actors(fn)
     return registry_lifecycle.with_isolated_facade_slot(handle, game.instances, "actors", fresh_registry, fn)
 end
 
+-- GAP-003/EGC-04: authoring_context.snapshot_test_state/reset_test_state/
+-- restore_test_state sweep core:module.runtime.test_state_registry rather than
+-- naming variables, so any infrastructure module's registered transient state
+-- is covered here automatically, not just the four this call site originally
+-- isolated.
 function M.with_isolated_validators(fn)
     local authoring_context = require("core:module.authoring.context")
     local fresh_registry = validator_registry.create_registry()

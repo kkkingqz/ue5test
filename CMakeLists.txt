@@ -113,6 +113,22 @@ if(BUILD_TESTING)
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Content/validate_core_boundary.py"
     )
+    # GAP-003/EGC-04: the Lua sandbox has no `debug`/`io`/`load`, so no module can
+    # enumerate another module's live upvalues; this is the static half of the
+    # test_state_registry contract (Scripts/runtime/test_state_registry.lua).
+    add_test(
+        NAME test_state_registry_gate_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_test_state_registry.py"
+    )
+    add_test(
+        NAME test_state_registry_gate_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_test_state_registry.py"
+            "--self-test"
+    )
     # SAS-06: the package manifest is a generated artifact. Nothing prevents it
     # drifting from the sources by hand, so the committed manifest is verified
     # against what the generator produces — the same shape as the mods.lock check.
