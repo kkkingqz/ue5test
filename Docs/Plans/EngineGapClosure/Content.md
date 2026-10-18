@@ -1,8 +1,8 @@
 ---
 title: Engine Gap Closure Content
 status: active
-version: 1.1
-updated: 2026-10-17
+version: 1.2
+updated: 2026-10-18
 depends_on:
   - ../../RH/GameplayArchitecture.md
   - ../../Status/EngineGaps.md
@@ -32,11 +32,11 @@ decisions:
 
 - [ ] EGC-27 — Отвязать регрессию движка от пакета `rh`
 
-**Зависимость:** EGC-26. **Файлы:** двадцать spec-файлов в `Tests/Lua/`, ссылающихся на `rh:` (перечислитель ниже); `Tests/Fixtures/SyntheticMechanicalFixture/`; `Tools/Content/CMakeLists.txt`, `collect_texts.py`, `test_authoring_tools.py`; `Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp`; `Tools/Testing/test_content_coupling_baseline.json`, `Docs/Status/ImplementationStatus.md` (`STATUS-028`).
+**Зависимость:** EGC-26. **Файлы:** двадцать spec-файлов в `Tests/Lua/`, ссылающихся на `rh:` (перечислитель ниже); `Tests/Fixtures/SyntheticMechanicalFixture/` (включая фикстурный пакет `synthetic/`); `Tools/Content/CMakeLists.txt`, `collect_texts.py`, `test_authoring_tools.py`; `Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp`; `Tools/Testing/test_content_coupling_baseline.json`, `Docs/Status/ImplementationStatus.md` (`STATUS-028`).
 
 **Инвариант:** [ADR-0046](../../ADR/0046-test-content-coupling-boundary.md) и `STATUS-028`. Сегодня регрессия движка опирается на игровой контент: двадцать Lua-spec ссылаются на `rh:` (от одной ссылки в `save/canonical_codec` до шестидесяти одной в `authoring/simplified_surface`), цели `Tools/Content` исполняют `gv2-content describe GameData/rh item` и генерацию псевдолокали из пакета, `test_authoring_tools.py` копирует пакет целиком как фикстуру, а smoke-тест читает блок расширения `rh` и проверяет `EditorPackageRoots`. Пока это так, правка игры краснит проверки движка и наоборот: дефект механизма неотличим от изменения контента.
 
-**Решение:** задача выполняется **до** снятия заглушки, потому что иначе каждый её шаг будет красить проверки движка. Перечислитель зависимостей — файлы, содержащие `rh:`, цели `Tools/Content`, ссылающиеся на `GameData/rh`, и smoke-тесты; результат — таблица «файл → решение», где каждое решение одно из трёх: spec механизма переезжает на `SyntheticMechanicalFixture`; spec, проверяющий саму игру, остаётся и переписывается на новый контент задачами ниже; цель инструментария переводится на фикстурный пакет. Smoke-тест контента остаётся на `rh` осознанно — он для этого и существует (единственный `smoke_files` в baseline).
+**Решение:** задача выполняется **до** снятия заглушки, потому что иначе каждый её шаг будет красить проверки движка. Перечислитель зависимостей — файлы, содержащие `rh:`, цели `Tools/Content`, ссылающиеся на `GameData/rh`, и smoke-тесты; результат — таблица «файл → решение», где каждое решение одно из трёх: spec механизма переезжает на фикстурный пакет `SyntheticMechanicalFixture/synthetic/` (создан EGC-07); spec, проверяющий саму игру, остаётся и переписывается на новый контент задачами ниже; цель инструментария переводится на фикстурный пакет. Smoke-тест контента остаётся на `rh` осознанно — он для этого и существует (единственный `smoke_files` в baseline).
 
 **Не считается закрытием:** оставить specs на `rh` с рассуждением «их всё равно переписывать»; скопировать пакет `rh` в фикстуру целиком и переименовать идентификаторы; снять ratchet `STATUS-028`, не перенеся ни одного файла; переносить только те specs, которые краснеют на следующем шаге.
 

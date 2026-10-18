@@ -1,8 +1,8 @@
 ---
 title: Engine Gap Closure Presentation And Ui
 status: active
-version: 1.3
-updated: 2026-10-17
+version: 1.4
+updated: 2026-10-18
 depends_on:
   - ../../UI/UIDocumentAndReconciliation.md
   - ../../UI/ScreenTemplates.md
@@ -90,7 +90,7 @@ decisions:
 
 - [ ] EGC-18 — Источники действий меню локации
 
-**Зависимость:** EGC-11, EGC-17. **Файлы:** `GameData/textsystem/scripts/presentation/location_presenter.lua`, authoring-поверхность объявления источников в `GameData/textsystem/scripts/`, `Tests/Lua/presentation/dynamic_menu.lua`, `Tests/Fixtures/SyntheticMechanicalFixture/`. Docs: `ScreenTemplates.md`, `AuthoringSurfaceContract.md`, `Authoring/PresentationAuthoringReference.md`.
+**Зависимость:** EGC-11, EGC-17. **Файлы:** `GameData/textsystem/scripts/presentation/location_presenter.lua`, authoring-поверхность объявления источников в `GameData/textsystem/scripts/`, `Tests/Lua/presentation/dynamic_menu.lua`, `Tests/Fixtures/SyntheticMechanicalFixture/synthetic/` (фикстурный пакет из EGC-07). Docs: `ScreenTemplates.md`, `AuthoringSurfaceContract.md`, `Authoring/PresentationAuthoringReference.md`.
 
 **Инвариант:** [GAP-006](../../Status/EngineGaps.md#gap-006-сборка-меню-локации-из-источников-действий), [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md). Меню строит обычный, не authoring модуль: он берёт статичный список `actions` из screen Definition и добавляет переходы из `connected_location_ids`. Объявить источник действий, условие доступности или переопределение для локации из authoring нельзя. `textsystem` не знает имён характеристик и правил `rh`.
 
@@ -99,7 +99,7 @@ decisions:
 **Не считается закрытием:** оставить статичный список `actions` и добавить рядом один источник; зашить порядок источников в код презентера без объявления; реализовать переопределение как ветку по идентификатору локации.
 
 **Шаги:**
-1. Фикстуры в `SyntheticMechanicalFixture`: два источника, пустой источник, источник с недоступным пунктом и причиной, переопределение сборки для одной локации, конфликт ключей пунктов.
+1. Фикстуры в фикстурном пакете `SyntheticMechanicalFixture/synthetic/`: два источника, пустой источник, источник с недоступным пунктом и причиной, переопределение сборки для одной локации, конфликт ключей пунктов.
 2. Реализовать объявление источников и сборку; существующий статичный список выразить как один из источников, а не как особый случай.
 3. Проверить детерминированность порядка пунктов при разном порядке объявления источников.
 4. Проверить, что недоступный пункт приходит в документ без binding и с причиной (презентационная часть — EGC-22).
@@ -118,7 +118,7 @@ decisions:
 
 - [ ] EGC-19 — Данные панелей статуса из пакета игры
 
-**Зависимость:** EGC-18. **Файлы:** `GameData/textsystem/scripts/presentation/location_presenter.lua`, `Tests/Lua/presentation/location_description_spec.lua`, `Tests/Fixtures/SyntheticMechanicalFixture/`. Docs: `ScreenTemplates.md`, `Authoring/PresentationAuthoringReference.md`.
+**Зависимость:** EGC-18. **Файлы:** `GameData/textsystem/scripts/presentation/location_presenter.lua`, `Tests/Lua/presentation/location_description_spec.lua`, `Tests/Fixtures/SyntheticMechanicalFixture/synthetic/`. Docs: `ScreenTemplates.md`, `Authoring/PresentationAuthoringReference.md`.
 
 **Инвариант:** [GAP-007](../../Status/EngineGaps.md#gap-007-данные-панелей-статуса-из-пакета-игры). Презентер жёстко берёт золото и выносливость, одну полосу с делением на 100, предметы из `game.state.item_instances`, пустой список эффектов и день из `game.state.meta.day`. Нарушение — `textsystem`, знающий названия характеристик игры.
 

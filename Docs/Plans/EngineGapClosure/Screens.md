@@ -1,8 +1,8 @@
 ---
 title: Engine Gap Closure Screens
 status: active
-version: 1.0
-updated: 2026-10-17
+version: 1.1
+updated: 2026-10-18
 depends_on:
   - ../../UI/ScreenTemplates.md
   - ../../UI/WidgetRegistry.md
@@ -53,7 +53,7 @@ decisions:
 
 - [ ] EGC-23 — Screen Template отчёта о конце хода
 
-**Зависимость:** EGC-22. **Файлы:** новая schema записей отчёта в `GameData/textsystem/schemas/`; `WBP_TurnReport` и запись в Screen Registry через `unreal-mcp`; фикстурный документ в `Tests/Fixtures/SyntheticMechanicalFixture/`, spec в `Tests/Lua/presentation/`. Docs: `ScreenTemplates.md`, `WidgetRegistry.md`.
+**Зависимость:** EGC-22. **Файлы:** новая schema записей отчёта в `GameData/textsystem/schemas/`; `WBP_TurnReport` и запись в Screen Registry через `unreal-mcp`; фикстурный документ в `Tests/Fixtures/SyntheticMechanicalFixture/synthetic/`, spec в `Tests/Lua/presentation/`. Docs: `ScreenTemplates.md`, `WidgetRegistry.md`.
 
 **Инвариант:** [SR-002](../../Status/ScreenRequests.md#sr-002-отчёт-о-конце-хода) в редакции EGC-21. Записи показываются по одной, номер текущей записи — transient mode state активного режима, «Далее» — обычная команда режима, то есть каждый шаг является новой ревизией того же Screen Instance. Нарушение — попытка листать записи UI-локально: механизма объявленного UI-local действия в движке нет, и этот план его не вводит.
 
