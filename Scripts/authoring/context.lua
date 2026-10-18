@@ -498,14 +498,14 @@ function M.gameplay(package_id, opt_module_id)
         if mode_store.active() == nil then
             mode_fail("mode.not_active", {})
         end
-        mode_store.end_mode()
+        mode_store.end_mode("finished")
     end
 
     local function modes_cancel()
         if mode_store.active() == nil then
             mode_fail("mode.not_active", {})
         end
-        mode_store.end_mode()
+        mode_store.end_mode("cancelled")
     end
 
     local MODE_VERBS = {

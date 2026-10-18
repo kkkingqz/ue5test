@@ -1,4 +1,4 @@
--- EGC-05: Mode Store and `modes` Authoring Surface Specification (ADR-0051)
+-- EGC-05/EGC-06: Mode Store and `modes` Authoring Surface Specification (ADR-0050, ADR-0051)
 -- Verifies:
 --   1. modes.<key> = { start, view } declaration; missing view, duplicate and
 --      late declaration are rejected the same way services are.
@@ -16,11 +16,27 @@
 --      command, independent of this guard).
 --   8. core:command.session.save refuses with core:error.mode.active while a
 --      mode is active.
+--   9. EGC-06: run writes journal through the same transaction as canonical
+--      writes -- fail() after a run-only write is a normal refusal (not
+--      AuthoringFailAfterMutation) and rolls run back; a mixed canonical+run
+--      error rolls back both in the one journal; a run-only command does not
+--      change the canonical state hash.
+--  10. EGC-06: cancel() without a declared random_stream leaves the hash
+--      exactly unchanged; cancel() with one leaves exactly one divergence
+--      (core:random_stream.mode_seed), proven by neutralizing that one word
+--      and re-hashing rather than comparing one full hash.
+--  11. EGC-06: a failed draw rolls back the run-local stream word-for-word;
+--      replaying from the same stream state gives the same draw.
+--  12. EGC-06: start()/finish()/cancel() publish core:event.mode.started/
+--      finished post-commit (outcome "finished"/"cancelled"); a rolled-back
+--      start() publishes nothing.
 
 local authoring_context = require("core:module.authoring.context")
 local test_isolation = require("core:module.runtime.test_isolation")
 local mode_store = require("core:module.runtime.mode_store")
 local field = require("core:module.authoring.field")
+local state_hasher = require("core:module.runtime.state_hasher")
+local mutation_window = require("core:module.runtime.mutation_window")
 
 return {
     mode_declaration_requires_view = function()
@@ -442,5 +458,286 @@ return {
 
     unresolved_mode_run_leak_fixture_isolated_between_cases_case_b_sees_no_active_mode = function()
         assert(mode_store.active() == nil, "mode_store must not leak an active mode across spec cases")
+    end,
+
+    -- EGC-06: run writes share the canonical journal (ADR-0050 single-journal rule).
+
+    egc06_fail_after_run_only_write_is_normal_refusal_and_rolls_back_run = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.modes.duel.counter = field.integer({ default = 0 })
+            M.commands.start_duel = function() M.modes.start("duel") end
+            M.commands.bump_then_fail = function()
+                M.modes.state().counter = M.modes.state().counter + 1
+                M.fail("too_far")
+            end
+            M.register({})
+
+            assert(M.commands.start_duel:run().ok == true)
+            assert(M.modes.state().counter == 0)
+
+            local res = M.commands.bump_then_fail:run()
+            assert(res.ok == false, "fail() after a run-only write must be a normal refusal")
+            assert(res.error.code == "rh:error.too_far",
+                "refusal must be the package's own fail() code, not AuthoringFailAfterMutation, got: " .. tostring(res.error.code))
+            assert(M.modes.state().counter == 0, "the run write before fail() must roll back")
+        end)
+    end,
+
+    egc06_mixed_canonical_and_run_error_rolls_back_both_in_one_journal = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.modes.duel.counter = field.integer({ default = 0 })
+            M.commands.start_duel = function() M.modes.start("duel") end
+            M.commands.mixed_fault = function()
+                game.state.world.egc06_mixed_probe = "mutated"
+                M.modes.state().counter = 7
+                error("SyntheticMixedFault: simulated failure after canonical and run writes", 0)
+            end
+            M.register({})
+
+            assert(M.commands.start_duel:run().ok == true)
+            local hash_before = state_hasher.hash_state(game.state)
+            local counter_before = M.modes.state().counter
+
+            local ok, err = pcall(function() M.commands.mixed_fault:run() end)
+            assert(not ok, "a thrown error must propagate out of :run()")
+            assert(string.find(tostring(err), "SyntheticMixedFault"), "error must propagate, got: " .. tostring(err))
+
+            assert(state_hasher.hash_state(game.state) == hash_before, "canonical state must roll back")
+            assert(M.modes.state().counter == counter_before, "run state must roll back in the same journal")
+            assert(game.state.world.egc06_mixed_probe == nil, "canonical probe field must not persist")
+        end)
+    end,
+
+    egc06_run_only_command_does_not_change_state_hash = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.modes.duel.counter = field.integer({ default = 0 })
+            M.commands.start_duel = function() M.modes.start("duel") end
+            M.commands.bump_counter = function()
+                M.modes.state().counter = M.modes.state().counter + 1
+            end
+            M.register({})
+
+            assert(M.commands.start_duel:run().ok == true)
+            local hash_before = state_hasher.hash_state(game.state)
+
+            assert(M.commands.bump_counter:run().ok == true)
+
+            assert(state_hasher.hash_state(game.state) == hash_before,
+                "a command that only writes run must not change the canonical state hash")
+            assert(M.modes.state().counter == 1)
+        end)
+    end,
+
+    -- EGC-06: cancel() hash-equality criterion is two-part (ADR-0051 §D5).
+
+    egc06_cancel_without_random_stream_leaves_hash_exactly_unchanged = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.commands.start_duel = function() M.modes.start("duel") end
+            M.commands.cancel_duel = function() M.modes.cancel() end
+            M.register({})
+
+            local hash_before = state_hasher.hash_state(game.state)
+            assert(M.commands.start_duel:run().ok == true)
+            assert(M.commands.cancel_duel:run().ok == true)
+            local hash_after = state_hasher.hash_state(game.state)
+
+            assert(hash_after == hash_before, "cancel() of a stream-less mode must leave the hash exactly unchanged")
+        end)
+    end,
+
+    egc06_cancel_with_random_stream_leaves_exactly_one_divergence = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.modes.duel.dice = field.random_stream()
+            M.commands.start_duel = function() M.modes.start("duel") end
+            M.commands.cancel_duel = function() M.modes.cancel() end
+            M.register({})
+
+            local hash_before = state_hasher.hash_state(game.state)
+            -- A nil meta.prng and an empty meta.prng serialize differently, so
+            -- the neutralization below must restore which of the two this was,
+            -- not just the one key inside it.
+            local prng_was_absent = (game.state.meta.prng == nil)
+            -- Deep-copy, not alias: game.state.meta.prng[id] is itself a live
+            -- guarded-proxy view of the same raw table next_u32 advances in
+            -- place, so holding the reference would "restore" to whatever it
+            -- currently is, not to what it was at this moment.
+            local seed_before = nil
+            if not prng_was_absent then
+                local live = game.state.meta.prng["core:random_stream.mode_seed"]
+                if live ~= nil then
+                    seed_before = { algorithm = live.algorithm, s0 = live.s0, s1 = live.s1, s2 = live.s2, s3 = live.s3 }
+                end
+            end
+
+            assert(M.commands.start_duel:run().ok == true)
+            assert(M.commands.cancel_duel:run().ok == true)
+
+            local seed_after = game.state.meta.prng["core:random_stream.mode_seed"]
+            assert(seed_after ~= nil, "starting a mode with a declared random_stream field must draw core:random_stream.mode_seed")
+
+            local hash_after = state_hasher.hash_state(game.state)
+            assert(hash_after ~= hash_before, "drawing the mode_seed stream must change the state hash")
+
+            -- Prove the mode_seed advance is the ONLY divergence: neutralize it
+            -- (compared by slice, not by one opaque full-state hash) and re-hash.
+            local function neutralize()
+                mutation_window.execute_in_window(function()
+                    if prng_was_absent then
+                        game.state.meta.prng = nil
+                    else
+                        game.state.meta.prng["core:random_stream.mode_seed"] = seed_before
+                    end
+                end)
+            end
+            neutralize()
+            local neutralized_hash = state_hasher.hash_state(game.state)
+            assert(neutralized_hash == hash_before,
+                "neutralizing core:random_stream.mode_seed must exactly restore the pre-start hash")
+
+            -- Cleanup: leave canonical state as this case found it (neutralize()
+            -- already did; nothing further to undo since cancel() already
+            -- cleared run and the only canonical write was the seed draw).
+        end)
+    end,
+
+    -- EGC-06: draws are journaled through the run-local stream (ADR-0051 §D5).
+
+    egc06_failed_draw_rolls_back_stream_and_replay_gives_same_sequence = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.modes.duel.dice = field.random_stream()
+            M.commands.start_duel = function() M.modes.start("duel") end
+            M.register({})
+
+            game.commands.handlers.register("core:command.test.egc06_draw_then_fail", function()
+                local decl = mode_store.get_declaration(mode_store.active())
+                mode_store.draw_u32("dice", decl.fields.dice)
+                error("SyntheticDrawFault: simulated failure after a draw", 0)
+            end)
+            game.commands.handlers.register("core:command.test.egc06_draw_succeeds", function()
+                local decl = mode_store.get_declaration(mode_store.active())
+                return { ok = true, rolled = mode_store.draw_u32("dice", decl.fields.dice) }
+            end)
+
+            assert(M.commands.start_duel:run().ok == true)
+
+            local function copy_dice()
+                local d = M.modes.state().dice
+                return { algorithm = d.algorithm, s0 = d.s0, s1 = d.s1, s2 = d.s2, s3 = d.s3 }
+            end
+
+            local stream_before = copy_dice()
+
+            local dispatch_ok = pcall(function()
+                game.runtime.dispatch_command({ command_id = "core:command.test.egc06_draw_then_fail" })
+            end)
+            assert(not dispatch_ok, "the draw-then-fail command must propagate its error")
+
+            local stream_after_rollback = copy_dice()
+            assert(stream_after_rollback.s0 == stream_before.s0 and stream_after_rollback.s1 == stream_before.s1
+                and stream_after_rollback.s2 == stream_before.s2 and stream_after_rollback.s3 == stream_before.s3,
+                "a failed draw must roll back the run-local stream state word-for-word")
+
+            game.runtime.dispatch_command({ command_id = "core:command.test.egc06_draw_succeeds" })
+            local res1 = game.runtime.last_command_result
+            assert(res1 ~= nil and res1.ok == true, "the draw-succeeds command must report ok == true")
+            -- Raw handlers registered via game.commands.handlers.register are
+            -- not SAS-04-normalized (that wrapping only applies to authoring
+            -- commands), so the returned table is last_command_result itself.
+            local first_roll = res1.rolled
+
+            -- Rewind to the same starting point and replay: same input, same draw.
+            mutation_window.execute_in_window(function()
+                local dice = mode_store.run_proxy().dice
+                dice.s0, dice.s1, dice.s2, dice.s3 = stream_before.s0, stream_before.s1, stream_before.s2, stream_before.s3
+            end)
+
+            game.runtime.dispatch_command({ command_id = "core:command.test.egc06_draw_succeeds" })
+            local res2 = game.runtime.last_command_result
+            assert(res2 ~= nil and res2.ok == true, "the replayed draw-succeeds command must report ok == true")
+            assert(res2.rolled == first_roll, "replaying from the same stream state must give the same draw")
+        end)
+    end,
+
+    -- EGC-06: post-commit mode facts (ADR-0051 §D8).
+
+    egc06_start_and_finish_publish_mode_events_post_commit = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.commands.start_duel = function() M.modes.start("duel") end
+            M.commands.finish_duel = function() M.modes.finish() end
+            M.register({})
+
+            local received = {}
+            game.events.subscribers.register("core:subscriber.test.egc06_started_probe", "core:event.mode.started", function(env)
+                table.insert(received, { event_id = "core:event.mode.started", payload = env.payload })
+            end)
+            game.events.subscribers.register("core:subscriber.test.egc06_finished_probe", "core:event.mode.finished", function(env)
+                table.insert(received, { event_id = "core:event.mode.finished", payload = env.payload })
+            end)
+
+            assert(M.commands.start_duel:run().ok == true)
+            assert(#received == 1 and received[1].event_id == "core:event.mode.started")
+            assert(received[1].payload.mode_id == "rh:mode.duel")
+
+            assert(M.commands.finish_duel:run().ok == true)
+            assert(#received == 2 and received[2].event_id == "core:event.mode.finished")
+            assert(received[2].payload.mode_id == "rh:mode.duel")
+            assert(received[2].payload.outcome == "finished", "finish() must publish outcome 'finished', got: " .. tostring(received[2].payload.outcome))
+        end)
+    end,
+
+    egc06_cancel_publishes_finished_event_with_outcome_cancelled = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.commands.start_duel = function() M.modes.start("duel") end
+            M.commands.cancel_duel = function() M.modes.cancel() end
+            M.register({})
+
+            local received = {}
+            game.events.subscribers.register("core:subscriber.test.egc06_cancel_probe", "core:event.mode.finished", function(env)
+                table.insert(received, env.payload)
+            end)
+
+            assert(M.commands.start_duel:run().ok == true)
+            assert(M.commands.cancel_duel:run().ok == true)
+            assert(#received == 1 and received[1].outcome == "cancelled",
+                "cancel() must publish outcome 'cancelled', got: " .. tostring(received[1] and received[1].outcome))
+        end)
+    end,
+
+    egc06_rolled_back_start_publishes_no_mode_event = function()
+        test_isolation.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.modes.duel = { start = function() end, view = function() end }
+            M.commands.start_then_fail = function()
+                M.modes.start("duel")
+                error("SyntheticRollbackFault: simulated failure after start()", 0)
+            end
+            M.register({})
+
+            local received = {}
+            game.events.subscribers.register("core:subscriber.test.egc06_rollback_probe", "core:event.mode.started", function(env)
+                table.insert(received, env)
+            end)
+
+            local ok = pcall(function() M.commands.start_then_fail:run() end)
+            assert(not ok, "the command must propagate its error")
+            assert(#received == 0, "a rolled-back start() must not publish core:event.mode.started")
+            assert(mode_store.active() == nil, "the mode must not be active after rollback")
+        end)
     end,
 }

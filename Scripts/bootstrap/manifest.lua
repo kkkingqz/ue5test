@@ -333,6 +333,7 @@ return {
                 "core:module.runtime.test_state_registry",
                 "core:module.authoring.properties",
                 "core:module.runtime.random",
+                "core:module.runtime.event_bus",
             },
             replaceable = false,
         },

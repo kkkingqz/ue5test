@@ -18,6 +18,7 @@ local mutation_window = require("core:module.runtime.mutation_window")
 local test_state_registry = require("core:module.runtime.test_state_registry")
 local properties = require("core:module.authoring.properties")
 local random = require("core:module.runtime.random")
+local event_bus = require("core:module.runtime.event_bus")
 
 local M = {
     id = "core:module.runtime.mode_store",
@@ -71,6 +72,12 @@ function M.active()
     return active_raw.mode_id
 end
 
+-- EGC-06/ADR-0051 §D8: both facts are enqueued here (not published directly),
+-- so event_bus's existing per-command pending-events buffer is what gives
+-- them "post-commit only" delivery -- a command that begins or ends a mode
+-- and then fails rolls back the mode_store write via the ADR-0050 journal
+-- exactly like any other transient write, and event_bus.rollback_command_context
+-- discards the pending event the same way it discards any other.
 function M.begin(mode_id)
     if active_raw.mode_id ~= nil then
         error("ModeStoreAlreadyActive: cannot begin mode '" .. tostring(mode_id) .. "' while '" .. tostring(active_raw.mode_id) .. "' is active", 2)
@@ -79,16 +86,29 @@ function M.begin(mode_id)
         error("ModeStoreUnknownMode: mode '" .. tostring(mode_id) .. "' is not declared", 2)
     end
     active_proxy.mode_id = mode_id
+    event_bus.enqueue({
+        event_id = "core:event.mode.started",
+        payload = { mode_id = mode_id },
+    })
 end
 
-function M.end_mode()
+-- outcome: "finished" (modes.finish()) or "cancelled" (modes.cancel()).
+function M.end_mode(outcome)
+    if outcome ~= "finished" and outcome ~= "cancelled" then
+        error("ModeStoreInvalidOutcome: outcome must be 'finished' or 'cancelled', got " .. tostring(outcome), 2)
+    end
     if active_raw.mode_id == nil then
         error("ModeStoreNotActive: no mode is active", 2)
     end
+    local mode_id = active_raw.mode_id
     active_proxy.mode_id = nil
     for key in pairs(run_raw) do
         run_proxy[key] = nil
     end
+    event_bus.enqueue({
+        event_id = "core:event.mode.finished",
+        payload = { mode_id = mode_id, outcome = outcome },
+    })
 end
 
 -- Raw, unvalidated run access -- used internally (seeding, draws) and by

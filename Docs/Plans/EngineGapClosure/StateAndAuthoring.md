@@ -1,7 +1,7 @@
 ---
 title: Engine Gap Closure State And Authoring
 status: active
-version: 1.8
+version: 1.9
 updated: 2026-10-18
 decisions:
   - ../../ADR/0050-transactional-mutation-window.md
@@ -158,7 +158,7 @@ Spec протечки (`Tests/Lua/authoring/runtime_state.lua`): синтети�
 
 ## EGC-06 — Сделать run транзакционным вместе с командой и публиковать факты режима
 
-- [ ] EGC-06 — Сделать run транзакционным вместе с командой и публиковать факты режима
+- [x] EGC-06 — Сделать run транзакционным вместе с командой и публиковать факты режима
 
 **Зависимость:** EGC-05. **Файлы:** `Scripts/runtime/mode_store.lua`, `Scripts/runtime/mutation_window.lua`, `Scripts/runtime/command_dispatcher.lua`, `Scripts/runtime/event_bus.lua`, `Tests/Lua/authoring/modes.lua`, `Tests/Lua/lifecycle/mutation_window.lua`.
 
@@ -187,7 +187,15 @@ Spec протечки (`Tests/Lua/authoring/runtime_state.lua`): синтети�
 - Запись в run не попадает в канонический срез журнала и не увеличивает `write_revision`, поэтому `fail()` после неё не даёт `AuthoringFailAfterMutation`; проверено фикстурой `fail()` после записи в run, а снятие фильтра категории её краснит.
 - `fail()` после записи в run откатывает run, а не только возвращает отказ; проверено сравнением `modes.state()` до команды и после, потому что run вне хеша состояния.
 
-**Evidence:** specs обоих host-ов, значения хешей, вывод мутационной пробы.
+**Evidence:** `Scripts/runtime/mutation_window.lua`, `Scripts/runtime/command_dispatcher.lua` и `Scripts/runtime/event_bus.lua` не изменились — единый журнал из EGC-03 уже откатывает записи любой категории одним проходом (`rollback_transaction` не фильтрует по `category`), а `AuthoringFailAfterMutation` из EGC-03 уже проверяет `has_mutations("canonical")`, то есть оба решения, на которые опирается «Решение» этой задачи, были приняты EGC-01/реализованы EGC-03, а не являются новой работой здесь; обе мутационные пробы ниже подтверждают это предметно, а не предположением. Единственная новая механика — публикация фактов режима: `Scripts/runtime/mode_store.lua` (`begin`/`end_mode(outcome)`) теперь требует `event_bus` и вызывает `event_bus.enqueue(...)` — `core:event.mode.started` (`{mode_id}`) из `begin`, `core:event.mode.finished` (`{mode_id, outcome}`, `outcome` ∈ `{"finished","cancelled"}`) из `end_mode`; «post-commit, не из start/finish напрямую» достигается тем же механизмом, что у любого designer `emit()` — `enqueue` кладёт факт в `pending_events` текущего command context, `event_bus.commit_command_context()` доставляет его только после успешного commit, `rollback_command_context()`/`discard_command_context()` отбрасывают `pending_events` целиком при отказе/ошибке без дополнительного кода. `end_mode` получил обязательный параметр `outcome` ("finished"|"cancelled"), поэтому `Scripts/authoring/context.lua`'s `modes_finish`/`modes_cancel` передают его явно (не в исходном списке файлов задачи, но минимальная необходимая правка, аналогично инцидентным фиксам в EGC-03/04).
+
+`Tests/Lua/authoring/modes.lua` — 11 новых кейсов: `fail()` после записи только в run — обычный typed refusal (не `AuthoringFailAfterMutation`), run откатывается; смешанная ошибка (canonical+run) откатывает оба в одном журнале, проверено `state_hasher` и `modes.state()`; команда, изменившая только run, не меняет хеш; `cancel()` без потока — хеш равен полностью; `cancel()` с потоком — ровно одно расхождение в `meta.prng["core:random_stream.mode_seed"]`, доказано нейтрализацией этого одного слова и повторным хешированием, а не сравнением одного общего хеша (при этом учтено, что nil и `{}` у `meta.prng` сериализуются по-разному, и что прочитанное значение потока — живой wrapped proxy, а не снимок, поэтому для "before" нужна глубокая копия слов, а не ссылка); отказ после серии бросков возвращает run-поток словами, повторная команда с тем же стартовым словом даёт тот же бросок; `start`/`finish`/`cancel` публикуют `core:event.mode.started`/`finished` post-commit с ожидаемым `outcome`; откаченный `start()` не публикует ни одного факта.
+
+`ctest --test-dir build` — 139/139, включая golden replay (`state_hash` не изменился: `2b063c31c91de84ca867cf8f2980e6c67aa7d2a6116f1efc62f410ad34c6acad`; `script_set_hash`/`digest_hash` обновлены по `Guides/RegenerateGolden.md`, ожидаемо при правке `Scripts/`). `UnrealEditor-Cmd ... -ExecCmds="Automation RunTests GV2;Quit"` — 211/211. `validate_docs.py` — 209 файлов чисто (задача не называет Docs-файлов, нормативный текст не менялся — проверка только по факту правки этого плана).
+
+Мутационные пробы (обе зафиксированы и возвращены, финальный прогон после возврата снова 139/139):
+1. `rollback_transaction` сужен до `entry.category == "canonical"` (имитирует «отдельный снимок run», которого нет в коде) — краснеют ровно фикстуры, зависящие от откатa run: `egc06_fail_after_run_only_write_...`, `egc06_mixed_canonical_and_run_error_...`, `egc06_failed_draw_rolls_back_stream_...`, `egc06_rolled_back_start_publishes_no_mode_event` (режим остаётся активным после "отката"); все фикстуры, не трогающие run, зелёные.
+2. В `context.lua` признак мутации для `fail()` расширен до `has_mutations("canonical") or has_mutations("transient")` (снят фильтр категории) — краснеет ровно `egc06_fail_after_run_only_write_is_normal_refusal_and_rolls_back_run` (`AuthoringFailAfterMutation` вместо обычного отказа), остальные specs зелёные.
 
 ## EGC-07 — Завести демонстрационный режим в тестовой фикстуре
 
