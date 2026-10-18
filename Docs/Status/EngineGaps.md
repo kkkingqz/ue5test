@@ -1,7 +1,7 @@
 ---
 title: Engine Gaps for Gameplay Authoring
 status: informative
-version: 1.3
+version: 1.4
 updated: 2026-10-18
 depends_on:
   - ../Architecture/AuthoringSurfaceContract.md
@@ -37,6 +37,7 @@ depends_on:
 | Зона, фоны и эффекты входа локаций; характеристики персонажей в Definition | [GAP-012](#gap-012-поля-definition-из-блока-расширения-пакета) |
 | Specs и эталонные прогоны игры рядом с пакетом | [GAP-016](#gap-016-место-specs-и-эталонных-прогонов-пакета) |
 | Снятие заглушки `rh` | [GAP-017](#gap-017-тесты-движка-опираются-на-заглушку-rh) |
+| Тексты игры на русском с английским переводом из пакета; выделение слов в описаниях классов | [GAP-021](#gap-021-тексты-пакета-и-переводы-не-доходят-до-показа); токен темы `emphasis` — [заявка](ResourceRequests.md#26-токены-темы) |
 
 Реакция на событие не выполняется в самом подписчике: по [Commands and Events](../Architecture/CommandsAndEvents.md) подписчик работает при закрытом mutation window, а `game.random` пишет состояние потока в canonical `meta.prng`. Поэтому подписчик ставит в очередь команду реакции, а условия, бросок и запуск режима выполняет она. Это следствие contract, а не пробел.
 
@@ -265,4 +266,13 @@ depends_on:
 - **Требуется:** слой `core_interface`, опубликованный построителем по умолчанию, сохраняется при входе в режим и выходе из него тем же widget; режим объявляет при старте `core_interface: true | false`, и выбор держится до конца режима; вход и выход — по одной ревизии. Решение фиксируется новым ADR, дополняющим ADR-0051.
 - **Затрагивает:** [UI Document](../UI/UIDocumentAndReconciliation.md), [Screen Templates](../UI/ScreenTemplates.md), [ADR-0051](../ADR/0051-temporary-modes-and-presentation-routing.md).
 - **Приоритет:** блокирует сборку экранов «Охотника».
+- **Статус:** open.
+
+### GAP-021. Тексты пакета и переводы не доходят до показа
+
+- **Потребность:** «Охотник» хранит 235+ текстов в пакете: определения kind `text` с русской исходной строкой и английский каталог `localization/en.po` ([правила игры, § 7.5](../RH/HunterGameplay.md#75-хранение-текстов)). Игрок видит текст на языке игры, при отсутствии перевода — исходную строку; окончания по числу (`plural`) выбираются по правилам языка.
+- **Сейчас:** [ADR-0022](../ADR/0022-external-translation-catalog.md) и [Presentation Snapshot, § TextSpec and locale resolution](../UI/PresentationSnapshotAndEffects.md#textspec-and-locale-resolution) отдают разрешение `TextSpec` host-у: исходная строка пакета — fallback, перевод — из `<package>/localization/<locale>.po`. Фактически `GV2TextPipeline` ищет `text_id` только в `TextCatalog`/`FallbackTextCatalog` темы (`DA_UITheme_Default`) и в core-minimal теме; `source_message` и PO-каталоги пакетов production-путь не читает — `LoadPackageLocalization` вызывает только инструмент `coverage`. Тексты заглушки `rh` продублированы в ассете темы вручную. Язык пакета не объявлен: исходный язык неявно английский. Расхождение — [STATUS-030](ImplementationStatus.md).
+- **Требуется:** при старте сессии host строит каталог текстов из закреплённого snapshot: `source_message` каждой активной Definition kind `text` плюс перевод выбранного языка из PO пакета; пакет объявляет язык исходных строк; язык выбирается host-ом и не меняется до controlled restart; совпадение `text_id` в теме и в пакете — типизированная диагностика, а не тихий выбор; headless по-прежнему хранит неразрешённый `TextSpec`.
+- **Затрагивает:** [ADR-0022](../ADR/0022-external-translation-catalog.md), [Presentation Snapshot](../UI/PresentationSnapshotAndEffects.md), [Widget Registry](../UI/WidgetRegistry.md), [Build and Tooling](../Architecture/BuildAndTooling.md), манифест пакета.
+- **Приоритет:** блокирует показ любого текста «Охотника».
 - **Статус:** open.

@@ -124,7 +124,7 @@ depends_on:
 
 | Токен | Вид | Где используется | Основание |
 |---|---|---|---|
-| `emphasis` | `TextStyleTokens` темы | выделение в описаниях классов: `<style=emphasis>…</>` | нужно; без токена текст не отрисуется |
+| `emphasis` | `TextStyleTokens` темы | выделение в описаниях классов: `<style=emphasis>…</>` | нужно; без токена текст не отрисуется; реализует [EGC-20C](../Plans/EngineGapClosure/PresentationAndUi.md#egc-20c-токен-выделения-в-теме) |
 
 ## 3. Тексты
 
