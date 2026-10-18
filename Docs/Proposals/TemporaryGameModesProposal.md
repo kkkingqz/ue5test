@@ -2,7 +2,7 @@
 title: Temporary Game Modes Proposal
 status: draft
 proposal_state: accepted_for_planning
-version: 1.2
+version: 1.3
 updated: 2026-10-18
 depends_on:
   - ../Architecture/AuthoringSurfaceContract.md
@@ -35,7 +35,7 @@ decisions:
 
 Предложение закрывает пробелы [GAP-001, GAP-002 и GAP-003](../Status/EngineGaps.md#временные-игровые-режимы).
 
-Первые потребители — стартовый пакет `rh`: магазин, диалог (он же выводит оценку при продаже и взаимодействия, запущенные реакциями на события), танец и отчёт о конце хода ([Engine Gaps § стартовый пакет](../Status/EngineGaps.md#стартовый-пакет-rh-что-блокирует)).
+Первые потребители — игра «Охотник» пакета `rh`: сцены диалога (включая охоту), бой, магазины и танец ([Engine Gaps § Охотник](../Status/EngineGaps.md#игра-охотник-что-блокирует)).
 
 ## 2. Состояние на входе
 
