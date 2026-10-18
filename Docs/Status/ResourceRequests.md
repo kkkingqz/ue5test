@@ -173,7 +173,8 @@ depends_on:
 | `rome` | `to_menhunter`, `to_butcher`, `to_market`, `to_fog` (В Туманы), `to_square` (На площадь), `talk_farid` (Подойти к Фариду), `talk_menhunter` (Поговорить), `trade_menhunter`, `trade_butcher` | 9 |
 | `fog` | `wander` (Блуждать), `sleep` (Спать), `call_horse` («Лошаа-аадка!»), `ride_horse` (Сесть на коня) | 4 |
 | `woods` | `deeper` (Дальше в лес), `back` (Назад к опушке), `hunt` (Выслеживать), `lure` (Использовать приманку), `set_traps`, `check_traps`, `make_camp` (Разбить лагерь), `to_fog` | 8 |
-| `camp` | `inspect`, `subdue` (Показать, кто главный), `dance`, `dance_fashion` (Танец (красивый)), `kill` (Зарезать), `rob` (Обокрасть), `release` (Отпустить), `dump_corpse` (Выбросить труп), `eat_supplies`, `eat_meat`, `eat_canned`, `feed_hound`, `feed_retriever`, `rest` (Отдыхать), `sleep` (Спать), `to_woods` (Вернуться в лес) | 16 |
+| `camp` | `inspect`, `subdue` (Показать, кто главный), `dance`, `dance_fashion` (Танец (красивый)), `kill` (Зарезать), `rob` (Обокрасть), `release` (Отпустить), `dump_corpse` (Выбросить труп), `feed_hound`, `feed_retriever`, `rest` (Отдыхать), `sleep` (Спать), `to_woods` (Вернуться в лес) | 13 |
+| `food` | `eat_supplies`, `eat_meat`, `eat_canned` — в лагере и в Туманах | 3 |
 | `inventory` | `drink_tonic`, `read_notes`, `ask_bird` | 3 |
 
 Итого 40. Решить: «Отдыхать» и «Спать» — один пункт с текстом по времени суток или два; кормить питомца одной едой или выбором еды.

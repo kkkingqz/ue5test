@@ -525,10 +525,9 @@ msgctxt "rh:text.item.pet.retriever.description"
 msgid "Гигантский паукобогомол из сурового мира демонов. Умеет преследовать добычу с огромной скоростью, хватать ее клешнями и обездвиживать ядом. Специально натаскан на дикарок. У дикарок теперь нет шансов! Только бы не забыть его вовремя кормить... (Захватывает добычу автоматически при использовании)"
 msgstr "A giant spider-mantis from the harsh world of demons. Can pursue prey at great speed, seize it with claws and immobilise it with venom. Specially trained on beasts. Wild beasts stand no chance! Just do not forget to feed it in time... (Captures prey automatically when used)"
 
-#. еда только в лагере (G-18): «или в туманах» убрано
 msgctxt "rh:text.item.food.supplies.description"
-msgid "Дорожный паек. Съешьте в лагере, чтобы утолить голод. Также ими можно кормить питомцев."
-msgstr "Road rations. Eat them at camp to reset hunger. Also used to feed pets."
+msgid "Дорожный паек. Ешьте в лагере или в Туманах, чтобы утолить голод. Также ими можно кормить питомцев."
+msgstr "Road rations. Eat them at camp or while travelling through the Mists to reset hunger. Also used to feed pets."
 
 #. было «Окрыляет! / Очень бодрит!» и «energy = 0»
 msgctxt "rh:text.item.potion.tonic.description"
@@ -583,6 +582,21 @@ msgstr "You stand in the middle of a noisy market square. Ahead, on a platform s
 msgctxt "rh:text.hunger.exhausted"
 msgid "Вы истощены. Усталость растёт быстрее."
 msgstr "You are exhausted from hunger. Fatigue grows faster."
+
+#. draft
+msgctxt "rh:text.item.food.meat.description"
+msgid "Свежее мясо из леса. Съешьте в лагере или в Туманах, чтобы утолить голод, или отдайте питомцам. По дороге в Рим портится."
+msgstr "Fresh meat from the forest. Eat it at camp or in the Mists to satisfy your hunger, or feed it to your pets. It spoils on the way to Rome."
+
+#. draft
+msgctxt "rh:text.item.food.canned_meat.description"
+msgid "Мясо, законсервированное по рецепту мясника. Утоляет голод и даже немного снимает усталость. Увы, дорогу в Рим тоже не переживает."
+msgstr "Meat preserved by the butcher's recipe. Satisfies hunger and even takes the edge off fatigue a little. Alas, it does not survive the road to Rome either."
+
+#. draft
+msgctxt "rh:text.item.potion.lure.description"
+msgid "Пузырек афродизиака, перед запахом которого не устоит ни одна дикарка. Откройте его в лесу и спрячьтесь — она сама выйдет к вам и ничего не заметит. [Используйте в лесу вместо выслеживания]"
+msgstr "A vial of aphrodisiac whose scent no wild beast can resist. Open it in the forest and hide — she will come to you herself, without noticing you. [Use in the forest instead of tracking]"
 
 # ---- texts_hunter_combat ----
 
@@ -871,6 +885,11 @@ msgstr "That is roughly how we work."
 msgctxt "rh:text.dialogue.butcher.lessons.lesson.finish"
 msgid "Вы научились обкрадывать мертвых дикарок."
 msgstr "You have learned how to rob dead wild beasts."
+
+#. draft: по формуле цены рынка
+msgctxt "rh:text.farid.price_factors3"
+msgid "Потом фигура: покупатели любят стройные ножки и крепкое тело. Ловкость и ум тоже в цене — смышленая девушка быстрее учится. Зрелых ценят выше, чем молоденьких. А татуировка, друг мой, удваивает цену: нетронутая дикарка — большая редкость!"
+msgstr "Then the figure: buyers love slender legs and a firm body. Agility and a sharp mind count too — a clever girl learns faster. Mature ones are valued more than young girls. And a tattoo, my friend, doubles the price: an untouched beast is a rare treasure!"
 
 # ---- texts_hunter_shops ----
 
@@ -1385,11 +1404,11 @@ msgctxt "rh:text.interaction.camp.dump_corpse.title"
 msgid "Выбросить труп"
 msgstr "Dump the corpse"
 
-msgctxt "rh:text.interaction.camp.eat_supplies.title"
+msgctxt "rh:text.interaction.food.eat_supplies.title"
 msgid "Перекусить"
 msgstr "Have a snack (supplies)"
 
-msgctxt "rh:text.interaction.camp.eat_meat.title"
+msgctxt "rh:text.interaction.food.eat_meat.title"
 msgid "Поесть мяса"
 msgstr "Eat meat"
 
@@ -1424,6 +1443,26 @@ msgstr "Hunter's Notes"
 msgctxt "rh:text.interaction.inventory.ask_bird.title"
 msgid "Спросить птицу-секретаря"
 msgstr "Ask the secretary bird"
+
+#. draft
+msgctxt "rh:text.interaction.camp.dance.title"
+msgid "Танцевать с дикаркой"
+msgstr "Dance with the wild beast"
+
+#. draft
+msgctxt "rh:text.interaction.camp.dance_fashion.title"
+msgid "Красивый танец"
+msgstr "A beautiful dance"
+
+#. draft
+msgctxt "rh:text.interaction.camp.rob.title"
+msgid "Разделать тело"
+msgstr "Butcher the body"
+
+#. draft
+msgctxt "rh:text.interaction.food.eat_canned.title"
+msgid "Поесть консервов"
+msgstr "Eat canned food"
 
 # ---- texts_hunter_errors ----
 
@@ -1516,6 +1555,11 @@ msgstr "You cannot go any deeper."
 msgctxt "rh:text.error.woods.at_edge"
 msgid "Вы уже на опушке."
 msgstr "You are already at the forest edge."
+
+#. draft
+msgctxt "rh:text.error.condition.catch_tattoo"
+msgid "У добычи нет татуировки."
+msgstr "The catch has no tattoo."
 
 # ---- texts_hunter_core_interface ----
 

@@ -384,7 +384,7 @@ FILES.setdefault('texts_hunter_world', []).extend([
     ('rh:text.item.pet.secretary_bird.description', "Actually this is not a bird at all, but a minor accounting demon. A living feathered reference book. No need to feed it — it will catch something itself. Of little use to a hunter, but the little devil can calculate the approximate value of your catch on the slave market and at the butcher's. [Use when you have a catch]", 'На самом-то деле это совсем не птица, а мелкий бес-счетовод. Фактически, это живой пернатый справочник. Кормить его не надо — сам что-нибудь поймает. Правда, пользы от такой птички охотнику не слишком много. Но бесенок может просчитать приблизительную стоимость вашей добычи на рынке рабов и у мясника. [Используйте когда захватите дикарку]', None),
     ('rh:text.item.pet.hound.description', 'A small hunting dog trained on the scent of beast. With such an excellent hound tracking a wild beast will be no problem! Just remember to feed your pet at least once a day. (Makes finding prey automatic)', 'Небольшая охотничья собака, натасканная на запах дикарки. С такой отличной ищейкой выследить дикарку не будет проблемой! Только надо не забывать кормить своего питомца хотя бы раз в день. (Делает поиск добычи автоматическим)', None),
     ('rh:text.item.pet.retriever.description', 'A giant spider-mantis from the harsh world of demons. Can pursue prey at great speed, seize it with claws and immobilise it with venom. Specially trained on beasts. Wild beasts stand no chance! Just do not forget to feed it in time... (Captures prey automatically when used)', 'Гигантский паукобогомол из сурового мира демонов. Умеет преследовать добычу с огромной скоростью, хватать ее клешнями и обездвиживать ядом. Специально натаскан на дикарок. У дикарок теперь нет шансов! Только бы не забыть его вовремя кормить... (Захватывает добычу автоматически при использовании)', None),
-    ('rh:text.item.food.supplies.description', 'Road rations. Eat them at camp to reset hunger. Also used to feed pets.', 'Дорожный паек. Съешьте в лагере, чтобы утолить голод. Также ими можно кормить питомцев.', 'еда только в лагере (G-18): «или в туманах» убрано'),
+    ('rh:text.item.food.supplies.description', 'Road rations. Eat them at camp or while travelling through the Mists to reset hunger. Also used to feed pets.', 'Дорожный паек. Ешьте в лагере или в Туманах, чтобы утолить голод. Также ими можно кормить питомцев.', None),
     ('rh:text.item.potion.tonic.description', 'Very invigorating! Instantly removes all fatigue.', 'Очень бодрит! Мгновенно снимает всю усталость.', 'было «Окрыляет! / Очень бодрит!» и «energy = 0»'),
     ('rh:text.item.potion.smoke_bomb.description', "If a hunter suddenly becomes the prey, nothing is better than throwing smoke in the enemy's eyes and vanishing! [Use if you meet a dangerous monster in the forest]", 'Если охотник вдруг становится жертвой, для него нет ничего лучше чем пустить дым в глаза врагу. И смыться! [Используйте если встретитесь с опасным монстром в лесу]', None),
     ('rh:text.item.potion.sleeping_gas.description', 'An expensive but effective gas bomb. Perfect for paralysing a wild beast without having to sneak right up to her. [Use when you have tracked a wild beast]', 'Дорогая но эффективная газовая бомба. Отлично подойдет, чтобы парализовать дикарку не подкрадываясь к ней вплотную. [Используйте когда выследите дикарку]', None),
@@ -426,8 +426,8 @@ FILES.setdefault('texts_hunter_interactions', []).extend([
     ('rh:text.interaction.camp.kill.title', "Cut the wild beast's throat", 'Зарезать дикарку', None),
     ('rh:text.interaction.camp.release.title', 'Release the wild beast', 'Отпустить дикарку на волю', None),
     ('rh:text.interaction.camp.dump_corpse.title', 'Dump the corpse', 'Выбросить труп', None),
-    ('rh:text.interaction.camp.eat_supplies.title', 'Have a snack (supplies)', 'Перекусить', None),
-    ('rh:text.interaction.camp.eat_meat.title', 'Eat meat', 'Поесть мяса', None),
+    ('rh:text.interaction.food.eat_supplies.title', 'Have a snack (supplies)', 'Перекусить', None),
+    ('rh:text.interaction.food.eat_meat.title', 'Eat meat', 'Поесть мяса', None),
     ('rh:text.interaction.camp.feed_hound.title', 'Feed the hound', 'Покормить ищейку', None),
     ('rh:text.interaction.camp.feed_retriever.title', 'Feed the retriever', 'Покормить ретривера', None),
     ('rh:text.interaction.camp.rest.title', 'Rest', 'Отдохнуть', None),
@@ -521,4 +521,31 @@ FILES.setdefault('texts_hunter_shops', []).extend([
 FILES.setdefault('texts_hunter_messages', []).extend([
     ('rh:text.message.camp.robbed_meat', 'You butcher the body. You get {amount} {amount}|plural(one=portion,other=portions) of meat.', 'Вы разделываете тело. Добыто {amount} {amount}|plural(one=порция,few=порции,many=порций,other=порции) мяса.', 'draft: обокрасть тело без тату'),
     ('rh:text.message.camp.robbed_canned', 'You butcher the tattooed body and preserve the meat. You get {amount} {amount}|plural(one=can,other=cans) of canned food.', 'Вы разделываете тело татуированной дикарки и консервируете мясо. Добыто {amount} {amount}|plural(one=банка,few=банки,many=банок,other=банки) консервов.', 'draft: обокрасть тело с тату'),
+])
+
+# ---- недостающие 9: написаны мной ----
+FILES["texts_hunter_world"].extend([
+    ("rh:text.item.food.meat.description",
+     "Fresh meat from the forest. Eat it at camp or in the Mists to satisfy your hunger, or feed it to your pets. It spoils on the way to Rome.",
+     "Свежее мясо из леса. Съешьте в лагере или в Туманах, чтобы утолить голод, или отдайте питомцам. По дороге в Рим портится.", "draft"),
+    ("rh:text.item.food.canned_meat.description",
+     "Meat preserved by the butcher's recipe. Satisfies hunger and even takes the edge off fatigue a little. Alas, it does not survive the road to Rome either.",
+     "Мясо, законсервированное по рецепту мясника. Утоляет голод и даже немного снимает усталость. Увы, дорогу в Рим тоже не переживает.", "draft"),
+    ("rh:text.item.potion.lure.description",
+     "A vial of aphrodisiac whose scent no wild beast can resist. Open it in the forest and hide — she will come to you herself, without noticing you. [Use in the forest instead of tracking]",
+     "Пузырек афродизиака, перед запахом которого не устоит ни одна дикарка. Откройте его в лесу и спрячьтесь — она сама выйдет к вам и ничего не заметит. [Используйте в лесу вместо выслеживания]", "draft"),
+])
+FILES["texts_hunter_interactions"].extend([
+    ("rh:text.interaction.camp.dance.title", "Dance with the wild beast", "Танцевать с дикаркой", "draft"),
+    ("rh:text.interaction.camp.dance_fashion.title", "A beautiful dance", "Красивый танец", "draft"),
+    ("rh:text.interaction.camp.rob.title", "Butcher the body", "Разделать тело", "draft"),
+    ("rh:text.interaction.food.eat_canned.title", "Eat canned food", "Поесть консервов", "draft"),
+])
+FILES["texts_hunter_dialogues"].extend([
+    ("rh:text.farid.price_factors3",
+     "Then the figure: buyers love slender legs and a firm body. Agility and a sharp mind count too — a clever girl learns faster. Mature ones are valued more than young girls. And a tattoo, my friend, doubles the price: an untouched beast is a rare treasure!",
+     "Потом фигура: покупатели любят стройные ножки и крепкое тело. Ловкость и ум тоже в цене — смышленая девушка быстрее учится. Зрелых ценят выше, чем молоденьких. А татуировка, друг мой, удваивает цену: нетронутая дикарка — большая редкость!", "draft: по формуле цены рынка"),
+])
+FILES["texts_hunter_errors"].extend([
+    ("rh:text.error.condition.catch_tattoo", "The catch has no tattoo.", "У добычи нет татуировки.", "draft"),
 ])

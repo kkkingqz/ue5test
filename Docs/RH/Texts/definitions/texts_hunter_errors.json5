@@ -92,5 +92,10 @@
       id: "rh:text.error.woods.at_edge",
       data: { source_message: "Вы уже на опушке." },
     },
+    // draft
+    {
+      id: "rh:text.error.condition.catch_tattoo",
+      data: { source_message: "У добычи нет татуировки." },
+    },
   ],
 }

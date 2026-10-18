@@ -108,11 +108,11 @@
       data: { source_message: "Выбросить труп" },
     },
     {
-      id: "rh:text.interaction.camp.eat_supplies.title",
+      id: "rh:text.interaction.food.eat_supplies.title",
       data: { source_message: "Перекусить" },
     },
     {
-      id: "rh:text.interaction.camp.eat_meat.title",
+      id: "rh:text.interaction.food.eat_meat.title",
       data: { source_message: "Поесть мяса" },
     },
     {
@@ -146,6 +146,26 @@
     {
       id: "rh:text.interaction.inventory.ask_bird.title",
       data: { source_message: "Спросить птицу-секретаря" },
+    },
+    // draft
+    {
+      id: "rh:text.interaction.camp.dance.title",
+      data: { source_message: "Танцевать с дикаркой" },
+    },
+    // draft
+    {
+      id: "rh:text.interaction.camp.dance_fashion.title",
+      data: { source_message: "Красивый танец" },
+    },
+    // draft
+    {
+      id: "rh:text.interaction.camp.rob.title",
+      data: { source_message: "Разделать тело" },
+    },
+    // draft
+    {
+      id: "rh:text.interaction.food.eat_canned.title",
+      data: { source_message: "Поесть консервов" },
     },
   ],
 }
