@@ -64,7 +64,9 @@ return {
             assert(observed_command_scope.kind == "command", "Scope kind must be 'command'")
             assert(observed_command_scope.package_id == "rh", "Scope package must be 'rh'")
             assert(observed_command_scope.command_id == "rh:command.test_scope", "Scope command_id must match")
-            assert(observed_command_scope.initial_write_revision ~= nil, "Scope initial_write_revision must be present")
+            -- ADR-0050 §2.3 (EGC-03): the mutation signal for fail() moved from
+            -- write_revision to the transaction journal; scope no longer carries it.
+            assert(observed_command_scope.initial_write_revision == nil, "Scope must no longer carry initial_write_revision (ADR-0050 §2.3)")
 
             assert(observed_validator_scope ~= nil, "Validator scope must be captured")
             assert(observed_validator_scope.kind == "validator", "Scope kind must be 'validator'")

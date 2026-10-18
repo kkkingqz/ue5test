@@ -495,12 +495,13 @@ function M.gameplay(package_id, opt_module_id)
         end
 
         if current_scope.kind == "command" then
-            local cur_rev = mutation_window.write_revision()
-            if cur_rev > current_scope.initial_write_revision then
+            -- ADR-0050 §2.3: the signal is a non-empty canonical slice of the
+            -- current transaction's journal, not write_revision growth — the
+            -- counter is not rolled back and does not distinguish category.
+            if mutation_window.has_mutations("canonical") then
                 error("AuthoringFailAfterMutation: command '" .. tostring(current_scope.command_id)
-                    .. "' attempted to fail() after state mutation (write_revision " .. cur_rev
-                    .. " > " .. current_scope.initial_write_revision
-                    .. "). Move precondition checks before state mutations.", 2)
+                    .. "' attempted to fail() after state mutation."
+                    .. " Move precondition checks before state mutations.", 2)
             end
         end
 
@@ -643,13 +644,11 @@ function M.gameplay(package_id, opt_module_id)
             local raw_handler = decl.handler
 
             local function wrapped_handler(request)
-                local initial_rev = mutation_window.write_revision()
                 local prev_scope = current_scope
                 current_scope = {
                     kind = "command",
                     package_id = package_id,
                     command_id = cmd_id,
-                    initial_write_revision = initial_rev,
                 }
 
                 local args_list = M.decode_authoring_args(request.args)

@@ -89,7 +89,7 @@ Field descriptor задаёт type/constraints, `storage` (`definition` или `
 
 ## Execution scope and attribution
 
-Каждый wrapped call исполняется в scope `none | command | validator | event`. Scope хранит declaring package, target ID и начальный `write_revision`, наследуется service/entity method call-ами и восстанавливается при success, refusal и exception.
+Каждый wrapped call исполняется в scope `none | command | validator | event`. Scope хранит declaring package и target ID, наследуется service/entity method call-ами и восстанавливается при success, refusal и exception. Признак мутации для `fail()` — непустой канонический срез журнала текущей транзакции `mutation_window` (`has_mutations("canonical")`), а не начальный `write_revision`, который scope больше не хранит (ADR-0050 §2.3; нормативный перенос правила — EGC-21).
 
 - `command`: canonical mutation разрешена только открытым mutation window. `fail(key, params)` до первой записи создаёт `<declaring_package>:error.<key>`; после записи даёт `AuthoringFailAfterMutation`.
 - `validator`: состояние read-only. `emit`, `show_*`, `commands.*:later` и mutating service operation дают `AuthoringValidatorSideEffectDisallowed`. `fail()` атрибутируется пакету validator-а.

@@ -12,6 +12,7 @@ local tagged_ref = require("core:module.authoring.tagged_ref")
 local mutation_window = require("core:module.runtime.mutation_window")
 local test_isolation = require("core:module.runtime.test_isolation")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local state_hasher = require("core:module.runtime.state_hasher")
 
 local function ensure_player(initial_stamina, initial_gold)
     local player = game.instances.actors.player()
@@ -207,6 +208,86 @@ return {
             assert(not ok, "fail() after mutation must raise Lua error / fault")
             assert(string.find(tostring(err), "AuthoringFailAfterMutation"),
                 "Error must mention AuthoringFailAfterMutation, got: " .. tostring(err))
+        end)
+    end,
+
+    -- ADR-0050 (EGC-03): command_dispatcher resolves the mutation-window
+    -- transaction itself once the outcome is known, so a thrown Lua error
+    -- after mutation must leave canonical state exactly as it was before the
+    -- command, proven by hash rather than by reading individual fields. The
+    -- sibling trigger (a handler returning `{ ok = false }` as a plain table,
+    -- without fail()) is exercised at the programmer-API level in
+    -- Tests/Lua/lifecycle/mutation_window.lua: the authoring wrapper's SAS-04
+    -- "implicit success" normalization only recognizes fail()'s sentinel, so
+    -- a designer handler can reach this trigger only through fail().
+
+    fail_before_mutation_leaves_canonical_state_hash_unchanged = function()
+        test_isolation.with_isolated_handlers(function()
+            mutation_window.execute_in_window(function()
+                ensure_player(20, 50)
+            end)
+            local before = state_hasher.hash_state(game.state)
+
+            local M = authoring_context.gameplay("rh")
+            M.commands.refuse_before_mutation = function()
+                return M.fail("shop.insufficient_gold", { current = 50, required = 1000 })
+            end
+            M.register()
+
+            local res = M.commands.refuse_before_mutation:run()
+            assert(type(res) == "table" and res.ok == false, "fail() before mutation must return a table refusal")
+
+            local after = state_hasher.hash_state(game.state)
+            assert(after == before, "fail() before mutation must leave canonical state hash unchanged: " .. before .. " vs " .. after)
+        end)
+    end,
+
+    runtime_error_mid_handler_rolls_back_canonical_state = function()
+        test_isolation.with_isolated_handlers(function()
+            local player = nil
+            mutation_window.execute_in_window(function()
+                player = ensure_player(20, 50)
+            end)
+            local before = state_hasher.hash_state(game.state)
+
+            local M = authoring_context.gameplay("rh")
+            M.commands.crash_after_mutation = function()
+                player.gold = player.gold - 10
+                error("SyntheticHandlerFault: simulated programmer error after mutation", 0)
+            end
+            M.register()
+
+            local ok, err = pcall(function()
+                M.commands.crash_after_mutation:run()
+            end)
+            assert(not ok, "A thrown Lua error must propagate out of :run()")
+            assert(string.find(tostring(err), "SyntheticHandlerFault"), "Error must propagate unchanged, got: " .. tostring(err))
+
+            local after = state_hasher.hash_state(game.state)
+            assert(after == before, "A thrown error mid-handler must roll back canonical state: " .. before .. " vs " .. after)
+            assert(player.gold == 50, "Gold must be restored to its pre-command value")
+        end)
+    end,
+
+    successful_command_leaves_single_journal_entry_per_key_and_commits = function()
+        test_isolation.with_isolated_handlers(function()
+            local player = nil
+            mutation_window.execute_in_window(function()
+                player = ensure_player(20, 50)
+            end)
+
+            local M = authoring_context.gameplay("rh")
+            M.commands.pay_twice = function()
+                player.gold = player.gold - 5
+                player.gold = player.gold - 5
+                return { ok = true }
+            end
+            M.register()
+
+            local res = M.commands.pay_twice:run()
+            assert(res.ok == true, "Command must succeed")
+            assert(player.gold == 40, "Both writes to the same key must apply: 50 - 5 - 5 = 40")
+            assert(not mutation_window.has_mutations("canonical"), "has_mutations must be false once the command's transaction has committed")
         end)
     end,
 

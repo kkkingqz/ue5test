@@ -1,8 +1,8 @@
 ---
 title: Engine Gap Closure State And Authoring
 status: active
-version: 1.5
-updated: 2026-10-17
+version: 1.6
+updated: 2026-10-18
 decisions:
   - ../../ADR/0050-transactional-mutation-window.md
 depends_on:
@@ -44,7 +44,7 @@ depends_on:
 
 ## EGC-03 — Реализовать журнал окна мутации и откат канонического состояния
 
-- [ ] EGC-03 — Реализовать журнал окна мутации и откат канонического состояния
+- [x] EGC-03 — Реализовать журнал окна мутации и откат канонического состояния
 
 **Зависимость:** EGC-01. **Файлы:** `Scripts/runtime/mutation_window.lua`, `Scripts/runtime/command_dispatcher.lua`, `Scripts/authoring/context.lua`, `Tests/Lua/lifecycle/mutation_window.lua`, `Tests/Lua/authoring/commands.lua`. Docs: `CanonicalStateAndSave.md`, `CommandsAndEvents.md`, `AuthoringSurfaceContract.md` (scope больше не хранит `initial_write_revision`).
 
@@ -78,7 +78,9 @@ depends_on:
 - Ни один из 18 spec-файлов и ни один C++-тест, вызывающие `execute_in_window`, не правятся.
 - Отключение откатa краснит проверку равенства хешей и только её; сужение триггера до вылетевшей ошибки краснит ровно фикстуры отказа.
 
-**Evidence:** specs на обоих host-ах, вывод мутационной пробы, значения хешей до и после, `ctest`.
+**Evidence:** `ctest --test-dir build` — 137/137, включая `gv2_headless_self_test` (headless Lua specs) и `gv2_headless_golden_replay_matches_digest` (state_hash golden run не изменился: `2b063c31c91de84ca867cf8f2980e6c67aa7d2a6116f1efc62f410ad34c6acad`, только `script_set_hash`/`digest_hash` — ожидаемо при правке `Scripts/`, обновлены в golden fixture по `Guides/RegenerateGolden.md`). `UnrealEditor-Cmd ... -ExecCmds="Automation RunTests GV2;Quit"` — 211/211, включая `GV2.Runtime.Lua.SpecRunnerHost` и `CommandValidatorSpecRunnerHost` (UE host). `validate_docs.py` — 209 файлов чисто. Мутационная проба 1 (отключено применение журнала в `rollback_transaction`): красными становятся ровно семь фикстур, сравнивающих хеш через `state_hasher` (sparse key, nested, repeated-write, boolean-false, error-mid-write, table-refusal, unresolved-left-open) — остальные specs зелёные. Мутационная проба 2 (в `command_dispatcher` триггер отката сужен до вылетевшей ошибки, `commit_transaction` вызывается и на отказе): красной становится ровно `dispatcher_rolls_back_canonical_state_on_table_refusal_after_mutation` — остальные specs зелёные, включая `fail()`-based фикстуры (у них откат идёт через тот же путь, что и ошибка). Обе пробы зафиксированы и возвращены к правильной реализации, финальный прогон после возврата — снова 137/137.
+
+Побочно найдено и исправлено в рамках той же задачи (не входило в исходный список файлов): `Tests/Lua/authoring/command_validators.lua:67` проверял `observed_command_scope.initial_write_revision ~= nil` — после удаления поля из scope (ADR-0050 §2.3) assertion обязана проверять обратное; изменена на `== nil` с пометкой на ADR. Отдельно: `game.presentation.resolve()`, вызванный диспетчером после `event_bus.commit_command_context()`, оставляет `game.runtime.phase == "pumping_events"` при ошибке построителя презентации (диспетчер на ветке ошибки сбрасывает фазу только из `"executing_command"`) — это предсуществующий пробел, а не следствие журнала, и ADR-0051 прямо говорит, что обработка ошибки презентации «остаётся сегодняшней» и не входит в это решение; фикстура `dispatcher_commits_before_resolve_so_a_failing_presentation_builder_does_not_roll_back` восстанавливает фазу сама, не трогая `command_dispatcher.lua`.
 
 ## EGC-04 — Сделать изоляцию временного состояния между spec case выводимой
 

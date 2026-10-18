@@ -183,9 +183,21 @@ function M.new(handlers_registry)
                 outbound_handler.begin_command_context()
             end
 
-            mutation_window.execute_in_window(function()
+            -- ADR-0050 §2.2: fail() is caught by the handler wrapper's own pcall
+            -- *inside* the window (Scripts/authoring/context.lua), so the window
+            -- sees a normal return even on refusal. The dispatcher is the only
+            -- caller that knows the command's outcome, so it alone resolves the
+            -- transaction (commit or rollback), using the deferred entry point
+            -- instead of the self-determining execute_in_window.
+            mutation_window.begin_transaction()
+            local handler_ok, handler_err = pcall(function()
                 command_result = handler_fn(request)
             end)
+
+            if not handler_ok then
+                mutation_window.rollback_transaction()
+                error(handler_err, 0)
+            end
 
             -- GEW-07: Deliver events only after successful commit.
             -- If command handler succeeded (result is nil/not provided, or ok ~= false, or boolean true),
@@ -198,7 +210,11 @@ function M.new(handlers_registry)
                 is_success = command_result
             end
 
+            -- The transaction is resolved before facts are delivered and before
+            -- presentation is rebuilt (ADR-0050/ADR-0051): an error from either
+            -- step does not roll back state already committed by this decision.
             if is_success then
+                mutation_window.commit_transaction()
                 event_bus.commit_command_context()
                 if outbound_handler then
                     outbound_handler.commit_command_context()
@@ -207,6 +223,7 @@ function M.new(handlers_registry)
                     game.presentation.resolve()
                 end
             else
+                mutation_window.rollback_transaction()
                 event_bus.rollback_command_context()
                 if outbound_handler then
                     outbound_handler.rollback_command_context()
