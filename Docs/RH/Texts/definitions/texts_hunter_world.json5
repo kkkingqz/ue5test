@@ -1,0 +1,237 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.location.rome.square.title",
+      data: { source_message: "Вечный Рим" },
+    },
+    {
+      id: "rh:text.location.rome.menhunter.title",
+      data: { source_message: "Магазин Менхантера" },
+    },
+    {
+      id: "rh:text.location.rome.butcher.title",
+      data: { source_message: "Лавка мясника" },
+    },
+    {
+      id: "rh:text.location.rome.market.title",
+      data: { source_message: "Рынок" },
+    },
+    {
+      id: "rh:text.location.fog.mists.title",
+      data: { source_message: "Туманы" },
+    },
+    {
+      id: "rh:text.location.woods.camp.title",
+      data: { source_message: "Лагерь" },
+    },
+    // название леса на глубине; заменяет заголовок локации леса
+    {
+      id: "rh:text.woods.depth_0",
+      data: { source_message: "Опушка леса" },
+    },
+    {
+      id: "rh:text.woods.depth_1",
+      data: { source_message: "Густой лес" },
+    },
+    {
+      id: "rh:text.woods.depth_2",
+      data: { source_message: "Лесная глушь" },
+    },
+    // en: было «Windfall / Deep Thicket»
+    {
+      id: "rh:text.woods.depth_3",
+      data: { source_message: "Бурелом" },
+    },
+    {
+      id: "rh:text.time_of_day.morning",
+      data: { source_message: "утро" },
+    },
+    {
+      id: "rh:text.time_of_day.day",
+      data: { source_message: "день" },
+    },
+    {
+      id: "rh:text.time_of_day.evening",
+      data: { source_message: "вечер" },
+    },
+    {
+      id: "rh:text.time_of_day.night",
+      data: { source_message: "ночь" },
+    },
+    // показ вместо времени суток в Туманах
+    {
+      id: "rh:text.time_of_day.fog",
+      data: { source_message: "в туманах царит безвременье" },
+    },
+    // ru дополнен до предложения, как en
+    {
+      id: "rh:text.hunger.fed",
+      data: { source_message: "Вы сыты." },
+    },
+    {
+      id: "rh:text.hunger.hungry",
+      data: { source_message: "Вы проголодались." },
+    },
+    {
+      id: "rh:text.hunger.very_hungry",
+      data: { source_message: "Вы очень голодны." },
+    },
+    {
+      id: "rh:text.hunger.famished",
+      data: { source_message: "Вы истощены." },
+    },
+    {
+      id: "rh:text.item.tool.blanket.title",
+      data: { source_message: "Одеяло" },
+    },
+    {
+      id: "rh:text.item.tool.shackles.title",
+      data: { source_message: "Оковы" },
+    },
+    {
+      id: "rh:text.item.tool.traps.title",
+      data: { source_message: "Ловушки" },
+    },
+    {
+      id: "rh:text.item.weapon.knife.title",
+      data: { source_message: "Нож" },
+    },
+    {
+      id: "rh:text.item.weapon.club.title",
+      data: { source_message: "Дубинка" },
+    },
+    {
+      id: "rh:text.item.weapon.crossbow.title",
+      data: { source_message: "Арбалет" },
+    },
+    {
+      id: "rh:text.item.weapon.sword.title",
+      data: { source_message: "Меч" },
+    },
+    {
+      id: "rh:text.item.weapon.taser.title",
+      data: { source_message: "Шокер" },
+    },
+    {
+      id: "rh:text.item.clothes.soft_boots.title",
+      data: { source_message: "Мягкие ботинки" },
+    },
+    {
+      id: "rh:text.item.clothes.chainmail.title",
+      data: { source_message: "Кольчуга" },
+    },
+    {
+      id: "rh:text.item.clothes.elven_cloak.title",
+      data: { source_message: "Эльфийский плащ" },
+    },
+    {
+      id: "rh:text.item.pet.secretary_bird.title",
+      data: { source_message: "Птица-секретарь" },
+    },
+    {
+      id: "rh:text.item.pet.hound.title",
+      data: { source_message: "Ищейка" },
+    },
+    {
+      id: "rh:text.item.pet.retriever.title",
+      data: { source_message: "Ретривер" },
+    },
+    {
+      id: "rh:text.item.food.supplies.title",
+      data: { source_message: "Припасы" },
+    },
+    {
+      id: "rh:text.item.potion.tonic.title",
+      data: { source_message: "Тоник" },
+    },
+    {
+      id: "rh:text.item.potion.smoke_bomb.title",
+      data: { source_message: "Дымовые шашки" },
+    },
+    {
+      id: "rh:text.item.potion.lure.title",
+      data: { source_message: "Приманка" },
+    },
+    {
+      id: "rh:text.item.potion.sleeping_gas.title",
+      data: { source_message: "Усыпляющий газ" },
+    },
+    {
+      id: "rh:text.item.food.meat.title",
+      data: { source_message: "Мясо" },
+    },
+    // en было «Canning goods»
+    {
+      id: "rh:text.item.food.canned_meat.title",
+      data: { source_message: "Консервы" },
+    },
+    {
+      id: "rh:text.item.trophy.owlbear_head.title",
+      data: { source_message: "Голова совомедведя" },
+    },
+    {
+      id: "rh:text.item.trophy.owlbear_feather.title",
+      data: { source_message: "Перо совомедведя" },
+    },
+    {
+      id: "rh:text.item.misc.hunter_notes.title",
+      data: { source_message: "Записки охотника" },
+    },
+    // подпись панели добычи
+    {
+      id: "rh:text.core_interface.catch",
+      data: { source_message: "Добыча" },
+    },
+    // конь — флаг, не предмет; подпись в инвентаре
+    {
+      id: "rh:text.core_interface.ghost_horse",
+      data: { source_message: "Конь-призрак" },
+    },
+    {
+      id: "rh:text.look.fog",
+      data: { source_message: "Вас окружает туман, настолько густой что вы с трудом различаете собственные руки. Вокруг нет ничего кроме проклятого тумана и совершенно неизвестно, сколько еще вам придется тут блуждать." },
+    },
+    {
+      id: "rh:text.look.enter_fog_from_rome",
+      data: { source_message: "Вы стоите на самой окраине Вечного Рима, где стеной стоят волшебные Туманы. Если сделать туда шаг, выйти можно будет только добравшись до другого мира. Стоит проверить достаточно ли вы взяли припасов!" },
+    },
+    {
+      id: "rh:text.look.enter_fog_from_woods",
+      data: { source_message: "Вы стоите на опушке леса, где клубится небольшое облако волшебного Тумана. Если сделать туда шаг, выйти можно будет только добравшись до Вечного Рима." },
+    },
+    {
+      id: "rh:text.look.woods.deep0",
+      data: { source_message: "Вас окружает редкий лиственный лес. Отсюда совсем недалеко до Туманов через которые вы пришли в этот мир." },
+    },
+    {
+      id: "rh:text.look.woods.deep1",
+      data: { source_message: "Лес тут гуще чем на опушке, но пройти по нему не составляет труда. У ручья вы находите старый след, оставленный огромной когтистой лапой. Да, это явно не дикарка!" },
+    },
+    {
+      id: "rh:text.look.woods.deep2",
+      data: { source_message: "Вас окружает непролазный, темный лес. Даже в полдень сюда с трудом пробивается свет солнца. На земле видна цепочка следов, оставленных огромными когтистыми лапами. Похоже недавно тут прошел крупный и опасный зверь. Надо быть осторожнее." },
+    },
+    {
+      id: "rh:text.look.woods.deep3",
+      data: { source_message: "В поисках добычи вы забрались в самую дремучую чащу. Через бурелом приходится продираться с большими усилиями. С некоторого расстояния до вас доносится рев крупного хищника." },
+    },
+    {
+      id: "rh:text.look.camp.empty",
+      data: { source_message: "Вы поставили палатку на полянке возле тихого пруда и развели рядом костерок. Лес вокруг выглядит достаточно мирным." },
+    },
+    {
+      id: "rh:text.look.camp.alive_no_chains",
+      data: { source_message: "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня сидит дикарка со связанными за спиной руками и с тоской смотрит в лес." },
+    },
+    {
+      id: "rh:text.look.camp.alive_chains",
+      data: { source_message: "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня сидит закованая в цепи дикарка и тихонечко плачет." },
+    },
+    {
+      id: "rh:text.look.camp.dead",
+      data: { source_message: "Вы поставили палатку на берегу звонкого ручья и развели рядом костерок. Возле огня лежит тело дикарки." },
+    },
+  ],
+}
