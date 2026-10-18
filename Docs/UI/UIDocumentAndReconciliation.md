@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.28
-updated: 2026-09-15
+version: 1.29
+updated: 2026-10-18
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -307,7 +307,9 @@ Presentation source, который возвращает уже опублико
 
 ## UI-local state
 
-UE хранит focus, hover, pressed, scroll offset, animation progress и local tooltip state. Lua хранит только значение, влияющее на gameplay или обязанное пережить reconstruction. Такое значение возвращается Semantic Input/Command и становится canonical state.
+UE хранит focus, hover, pressed, scroll offset, animation progress и local tooltip state. Lua хранит только значение, влияющее на gameplay или обязанное пережить reconstruction. Такое значение возвращается Semantic Input/Command и становится canonical state **либо** transient mode state активного временного режима ([ADR-0051](../ADR/0051-temporary-modes-and-presentation-routing.md)): вторая категория не сохраняется, но живёт под теми же правилами записи, отката и изоляции, что canonical state. Механизм режимов реализуется подэтапом Д1 плана [Engine Gap Closure](../Plans/EngineGapClosure/README.md); до него доступна только первая категория.
+
+Значение, решающее, открыт ли слой, и влияющее при этом на правила режима, — не UI-local: оно принадлежит transient mode state, а слой остаётся его оформлением.
 
 Open screen/focus/animation progress не входят в save. После load UI строится из canonical state заново.
 

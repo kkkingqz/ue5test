@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: informative
-version: 4.12
-updated: 2026-10-17
+version: 4.13
+updated: 2026-10-18
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -41,7 +41,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [ContentDiagnosticsAndToolingProposal](ContentDiagnosticsAndToolingProposal.md) | accepted for planning | Content, CI, Tooling | Source spans, deterministic diagnostics, CLI validation, fuzzing и будущий LSP |
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
-| [TemporaryGameModesProposal](TemporaryGameModesProposal.md) | accepted for planning | Authoring, Runtime, Presentation | Временные игровые режимы: несохраняемое транзакционное состояние запуска, `modes` в authoring surface, routing экрана активного режима через единственный source |
+| [TemporaryGameModesProposal](TemporaryGameModesProposal.md) | accepted for planning | Authoring, Runtime, Presentation | Временные игровые режимы: несохраняемое транзакционное состояние запуска, `modes` в authoring surface, routing экрана активного режима через единственный source; решение принято [ADR-0051](../ADR/0051-temporary-modes-and-presentation-routing.md), реализация — подэтапы Д1 и Д2 |
 | [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей окна мутации и откат канонического состояния при ошибке и при отказе; решение принято [ADR-0050](../ADR/0050-transactional-mutation-window.md), реализация — задачи EGC-03 и EGC-06 |
 | [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: идентичность повторяемых элементов, слои, оверлеи, модалки, вкладки, принадлежность темы слою |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |

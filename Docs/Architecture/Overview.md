@@ -1,8 +1,8 @@
 ---
 title: Architecture Overview
 status: normative
-version: 1.6
-updated: 2026-08-15
+version: 1.7
+updated: 2026-10-18
 depends_on:
   - ../README.md
   - ../ADR/README.md
@@ -49,10 +49,13 @@ Authoritative gameplay runtime является portable и запускаетс
 | Категория | Owner | Восстановление |
 |---|---|---|
 | Canonical gameplay-state | Lua | Из save или new-game defaults |
+| Transient mode state | Lua, `core`-хранилище режимов | Не восстанавливается: незавершённый режим отбрасывается |
 | Static definitions | GameDataRepository | Из core/mod packages |
 | Lua runtime state | Lua VM | Перестраивается при bootstrap/load |
 | UE world/UI projection | Presentation | Из state + repository + presentation snapshot |
 | Ephemeral UX state | UE/Blueprint | Не сохраняется |
+
+Transient mode state ([ADR-0051](../ADR/0051-temporary-modes-and-presentation-routing.md)) отличается от «Lua runtime state» тем, что подчиняется правилам canonical state — запись только в command handler, откат вместе с командой, объявленная форма полей, изоляция между spec case, — но не входит ни в state hash, ни в save. Механизм реализуется подэтапом Д1 плана [Engine Gap Closure](../Plans/EngineGapClosure/README.md).
 
 Definition, runtime instance и physical UE object — разные сущности. Runtime state хранит Stable ID, а не mutable definition table или UObject reference.
 

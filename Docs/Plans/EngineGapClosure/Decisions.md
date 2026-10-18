@@ -1,10 +1,11 @@
 ---
 title: Engine Gap Closure Decisions
 status: active
-version: 1.5
-updated: 2026-10-17
+version: 1.6
+updated: 2026-10-18
 decisions:
   - ../../ADR/0050-transactional-mutation-window.md
+  - ../../ADR/0051-temporary-modes-and-presentation-routing.md
 depends_on:
   - ../../Architecture/CanonicalStateAndSave.md
   - ../../Architecture/CommandsAndEvents.md
@@ -59,7 +60,7 @@ depends_on:
 
 ## EGC-02 — Зафиксировать временные режимы и маршрутизацию презентации
 
-- [ ] EGC-02 — Зафиксировать временные режимы и маршрутизацию презентации
+- [x] EGC-02 — Зафиксировать временные режимы и маршрутизацию презентации
 
 **Зависимость:** EGC-01. **Файлы:** создать `Docs/ADR/0051-temporary-modes-and-presentation-routing.md`; обновить `Docs/ADR/README.md` (строка 0051 и переписанная строка 0039), `Docs/ADR/0039-presentation-source-singleton.md` (пометка об израсходованном условии), `Docs/Architecture/StableIDSpecification.md` (строка kind `mode`). Docs: `UIDocumentAndReconciliation.md` (раздел UI-local state), `Overview.md` (категории состояния), `AuthoringSurfaceContract.md` (правила объявления режима), `ScreenTemplates.md` (владелец правила о единственном source).
 
@@ -104,4 +105,4 @@ depends_on:
 - Отношение к ADR-0039 названо с двух сторон: раздел в ADR-0051 и пометка в самом 0039; условие пересмотра переформулировано в опровержимой форме.
 - Причина отказа `start()` при активном режиме зафиксирована решением.
 
-**Evidence:** ADR-0051, правка `StableIDSpecification.md` и раздела UI-local state, пометка в ADR-0039, две строки в индексе ADR, обновлённое состояние предложения, `validate_docs`.
+**Evidence:** [ADR-0051](../../ADR/0051-temporary-modes-and-presentation-routing.md) (`accepted`, 2026-10-18, решения D1–D8 плюс раздел об ADR-0039); строки `0051` и переписанная `0039` в [индексе ADR](../../ADR/README.md) (версия 2.13); пометка «Условие израсходовано частично» в [ADR-0039](../../ADR/0039-presentation-source-singleton.md); kind `mode` в реестре [спецификации Stable ID](../../Architecture/StableIDSpecification.md#kind-registry) (версия 1.7) вместе с разделением двух заморозок; правило [UI-local state](../../UI/UIDocumentAndReconciliation.md#ui-local-state) (версия 1.29) и категория состояния в [Overview](../../Architecture/Overview.md#категории-состояния) (версия 1.7); [предложение](../../Proposals/TemporaryGameModesProposal.md) версии 1.2 — три расхождения названы, раздел 11 заменён таблицей «вопрос → где решён», критерии приёмки приведены к принятому решению; `validate_docs` — 209 файлов, self-test — 39 кейсов. Требования UE-local листания в предложении не было: оно живёт в SR-002 и правится EGC-21.

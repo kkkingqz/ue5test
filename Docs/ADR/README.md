@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.12
-updated: 2026-10-17
+version: 2.13
+updated: 2026-10-18
 ---
 
 # Architecture Decision Records
@@ -50,7 +50,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0036](0036-pre-1-0-compatibility-policy.md) | accepted | Project version в descriptor `core`; до 1.0 нет гарантии совместимости, но breaking changes явны |
 | [0037](0037-content-authoring-layer.md) | accepted | Content Authoring Layer and Atomic Storage Operations: библиотечный backend, атомарная запись набора полей, оптимистичная блокировка по штампу файла |
 | [0038](0038-screen-field-value-flat-struct.md) | superseded | Screen Field Value Stays a Flat Struct: `FGV2ScreenFieldValue` остаётся плоской структурой; заменено UPP-30 — union из 13 payload удалён физически, не пересмотрен по условию |
-| [0039](0039-presentation-source-singleton.md) | rejected | Presentation Source Stays a Singleton: композиция источников не вводится; пересмотр — при втором реальном потребителе |
+| [0039](0039-presentation-source-singleton.md) | rejected | Presentation Source Stays a Singleton: композиция источников не вводится; маршрутизация между `view` активного режима и построителем по умолчанию ([0051](0051-temporary-modes-and-presentation-routing.md)) композицией не является; пересмотр — при двух владельцах route на один `ui_instance_id` |
 | [0040](0040-universal-ui-property-pipeline.md) | accepted | Universal UI Property Pipeline: подготовленное дерево значений вместо schema-specific DTO, Prepare/Commit, `SchemaContract ⊆ WidgetCapabilities` с наблюдаемостью capability, namespace ownership, mod-only отказ, без обратной совместимости |
 | [0041](0041-ui-commit-rollback-model.md) | accepted | UI Commit Rollback Model: захват предыдущего состояния перед live-мутацией и откат в обратном порядке той же Prepare/Commit-машиной на всех границах reused host/screen/collection/Shell attach — `REM-02`/`GBH-09` |
 | [0042](0042-presentation-authority-and-publication.md) | accepted | Presentation Authority and Publication: один неизменяемый снимок контента сессии, отсутствие обнаружения после `Ready`, одна абстракция реконсиляции для повторяемых структур, одно зафиксированное логическое состояние с восстановимой физической проекцией, семантика решается до подготовленной транзакции |
@@ -62,6 +62,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0048](0048-widget-exit-lifecycle-and-input-gating.md) | accepted | Два вида ухода виджета: stale-удаление гасит ввод в момент логического удаления, self-dismissal остаётся интерактивным до конца; интерактивный stale невыразим |
 | [0049](0049-control-size-owned-by-surface.md) | accepted | Размер кнопки задаёт поверхность одним значением в виртуальных единицах, масштабируемым кривой viewport; подпись в размер не входит, непомещающаяся подпись — типизированная ошибка |
 | [0050](0050-transactional-mutation-window.md) | accepted | Журнал окна мутации живёт командой и покрывает обе категории состояния одним списком с категорией в записи; триггеры отката перечислены (ошибка, отказ таблицей, `fail()`), признак мутации для `fail()` — журнал, а не `write_revision` |
+| [0051](0051-temporary-modes-and-presentation-routing.md) | accepted | Transient mode state как категория: одно хранилище, один активный режим, run вне hash и save; презентация выбирает между `view` активного режима и построителем по умолчанию при единственной регистрации source; случайность режима объявляется и сохраняет воспроизводимость; сохранение при активном режиме отказывается |
 
 ## Template
 

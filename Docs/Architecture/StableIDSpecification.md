@@ -1,8 +1,8 @@
 ---
 title: Stable ID Specification
 status: normative
-version: 1.6
-updated: 2026-08-17
+version: 1.7
+updated: 2026-10-18
 decisions:
   - ../ADR/0002-stable-id-format.md
   - ../ADR/0023-stable-id-publication-freeze.md
@@ -83,8 +83,10 @@ Editor/CLI может предложить отдельную fix-команду
 ```text
 item, actor, quest, location, screen, command, event, module,
 schema, text, resource, widget, slot, effect, operation, validator,
-error, diagnostic, action, service
+error, diagnostic, action, service, mode
 ```
+
+Kind `mode` обозначает временный игровой режим ([ADR-0051](../ADR/0051-temporary-modes-and-presentation-routing.md)): `<package>:mode.<key>`. Правила объявления и freeze реестров на фазе `register` принадлежат [Authoring Surface](AuthoringSurfaceContract.md) — это другая заморозка, чем публикационная ниже. Публикационное правило совпадает с правилом для `command`: сейв mode-id не несёт, но `mode_id` входит в payload `core:event.mode.*`, поэтому переименование опубликованного режима ломает подписчиков.
 
 Package может добавить новый kind только вместе с declarative schema binding. Конфликтующие bindings одного kind/schema version являются fatal. Kind не выводится из directory.
 
